@@ -9,6 +9,9 @@ edition = "2021"
 # репозитория и собраны пока только под macOS, поэтому она за фичей.
 default = ["diarize"]
 diarize = []
+# Считать на видеокарте: Vulkan-бэкенд движка отдельными модулями, которые
+# подгружаются на ходу и молча пропускаются, если драйвера нет.
+gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

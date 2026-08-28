@@ -111,5 +111,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: cargo check с vulkan
         shell: bash
-        run: cargo check --no-default-features --features vulkan,dynamic-backends
+        run: cargo check --no-default-features --features gpu
 
