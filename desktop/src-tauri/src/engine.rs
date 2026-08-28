@@ -5,13 +5,28 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
-use transcribe_cpp::{Model, RunOptions, Session};
+use transcribe_cpp::{Model, RunOptions, Session, SessionOptions};
 
 use crate::{cleanup, segmenter};
 
 pub struct Engine {
     session: Mutex<Option<Session>>,
     pub model_name: Mutex<Option<String>>,
+}
+
+/// Сколько потоков отдать движку. Ноль — «как решит библиотека», а решает
+/// она консервативно: на многоядерном процессоре это заметно медленнее, чем
+/// нужно. На Apple тяжёлое считает Metal, и лишние потоки только мешают
+/// ему, — там оставляем выбор библиотеке.
+fn cpu_threads() -> i32 {
+    if cfg!(target_os = "macos") {
+        return 0;
+    }
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    // Одно ядро оставляем интерфейсу, выше восьми ggml почти не ускоряется.
+    cores.saturating_sub(1).clamp(1, 8) as i32
 }
 
 impl Engine {
@@ -34,7 +49,10 @@ impl Engine {
     pub fn load(&self, path: &PathBuf) -> Result<()> {
         let model = Model::load(path).map_err(|e| anyhow!("модель не загрузилась: {e}"))?;
         let session = model
-            .session()
+            .session_with(&SessionOptions {
+                n_threads: cpu_threads(),
+                ..Default::default()
+            })
             .map_err(|e| anyhow!("сессия не создалась: {e}"))?;
         *self.session.lock().unwrap() = Some(session);
         *self.model_name.lock().unwrap() = path
