@@ -61,3 +61,37 @@ jobs:
       # мак-сборка тоже проверяется без диаризации.
       - name: cargo check
         run: cargo check --locked --no-default-features
+
+  # Установщик для Windows: его и ставят на живую машину для проверки.
+  # Собирается на каждый push в main и по кнопке — лежит в артефактах
+  # прогона неделю.
+  installer:
+    runs-on: windows-latest
+    needs: windows
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: win-release-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: win-release-
+
+      - name: Ставим tauri-cli
+        run: npm install -g @tauri-apps/cli@^2
+
+      - name: Сборка
+        run: tauri build --bundles nsis -- --no-default-features
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SolFlow-Windows
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+

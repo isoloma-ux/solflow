@@ -31,14 +31,42 @@ pub fn create(app: &AppHandle) {
         .build();
 
     match window {
-        // Клики сквозь пилюлю: окно висит поверх чужих и не должно
-        // перехватывать мышь на своей полоске экрана.
         Ok(window) => {
+            // Клики сквозь пилюлю: окно висит поверх чужих и не должно
+            // перехватывать мышь на своей полоске экрана.
             let _ = window.set_ignore_cursor_events(true);
+            keep_focus_elsewhere(&window);
         }
         Err(e) => log::error!("оверлей не создался: {e}"),
     }
 }
+
+/// Windows забирает фокус на всякое показанное окно — а пилюля появляется
+/// ровно в тот момент, когда человек диктует в чужое приложение, и увести
+/// оттуда фокус нельзя: текст вставится не туда. Просят об этом окно
+/// стилем WS_EX_NOACTIVATE, ставить его надо после создания.
+/// TOOLWINDOW заодно убирает пилюлю из перебора по Alt+Tab.
+#[cfg(windows)]
+fn keep_focus_elsewhere(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    };
+
+    let Ok(handle) = window.hwnd() else {
+        return;
+    };
+    let hwnd = handle.0 as *mut std::ffi::c_void;
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let extra = (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW) as isize;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | extra);
+    }
+}
+
+/// На других системах этот файл собирается только ради проверок — там
+/// окно и так не забирает фокус.
+#[cfg(not(windows))]
+fn keep_focus_elsewhere(_window: &tauri::WebviewWindow) {}
 
 /// По центру основного монитора — снизу или сверху, как выбрано в
 /// настройках.

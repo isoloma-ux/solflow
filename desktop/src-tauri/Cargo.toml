@@ -46,7 +46,7 @@ transcribe-cpp = { version = "0.2.0", default-features = false }
 # Звук начала записи проигрывает сама система (PlaySound), громоздкий
 # аудиостек ради полусекундного «поп» не нужен.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation"] }
+windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
 
 [lib]
 name = "solflow_lib"
