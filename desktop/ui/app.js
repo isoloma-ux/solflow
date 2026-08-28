@@ -71,7 +71,17 @@ function render(state) {
   if (!recording) levels.fill(0);
 
   setPerm("permAccessibility", state.accessibility);
+
+  // Чем считается модель — видно в подсказке переключателя: обещать
+  // видеокарту и молча считать процессором нельзя.
+  if (state.device) {
+    lastDevice = state.device;
+    const hint = el("gpuHint");
+    if (hint) hint.textContent = `Сейчас считает ${state.device}`;
+  }
 }
+
+let lastDevice = null;
 
 function setPerm(id, granted) {
   // Строки может не быть: «Универсальный доступ» на Windows убран совсем.
@@ -2136,6 +2146,13 @@ async function refreshSettings(reloadDevices = false) {
   );
   el("overlayPositionRow").hidden = settings.overlay_style === "none";
 
+  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], settings.use_gpu);
+  el("gpuHint").textContent = lastDevice
+    ? `Сейчас считает ${lastDevice}`
+    : settings.use_gpu
+      ? "Расшифровка идет быстрее, если видеокарта подходит"
+      : "Считает процессор";
+
   markToggle("trayIcon", "trayIconLabel", ["Показана", "Скрыта"], settings.show_tray_icon);
   el("trayHint").textContent = settings.show_tray_icon
     ? "Через нее открывается окно и выход"
@@ -2312,6 +2329,16 @@ el("pickDownloadsDir").addEventListener("click", async () => {
   if (!dir) return;
   await invoke("set_downloads_dir", { dir });
   refreshSettings();
+});
+
+el("useGpu").addEventListener("click", async () => {
+  const enabled = !el("useGpu").classList.contains("on");
+  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], enabled);
+  // Устройство выбирается при загрузке модели, поэтому она поднимается
+  // заново — пара секунд, и в подсказке появится, чем считает.
+  el("gpuHint").textContent = "Перезагружаю модель";
+  lastDevice = null;
+  await invoke("set_use_gpu", { enabled });
 });
 
 el("pickExportDir").addEventListener("click", async () => {

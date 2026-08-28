@@ -401,6 +401,25 @@
               <button class="segment" data-start="hide">Скрывать</button>
             </div>
           </div>
+          <div class="perm" id="permGpu">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect x="3.5" y="6.5" width="17" height="11" rx="2"/>
+              <rect x="7.5" y="10" width="4" height="4" rx="1"/>
+              <path d="M14.5 10h3M14.5 14h3"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Считать на видеокарте</p>
+              <p class="muted small" id="gpuHint">
+                Расшифровка идет быстрее, если видеокарта подходит
+              </p>
+            </div>
+            <button class="toggle" id="useGpu">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="useGpuLabel">Включено</span>
+            </button>
+          </div>
           <div class="perm">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="1.6" stroke-linecap="round" aria-hidden="true">

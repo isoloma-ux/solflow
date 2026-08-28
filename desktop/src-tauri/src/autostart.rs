@@ -136,7 +136,7 @@ fn cached() -> &'static std::sync::atomic::AtomicBool {
 
 #[cfg(windows)]
 fn ask_registry() -> bool {
-    Command::new("reg")
+    crate::sys::command("reg")
         .args(["query", RUN_KEY, "/v", RUN_NAME])
         .output()
         .map(|o| o.status.success())
@@ -151,7 +151,7 @@ pub fn enabled() -> bool {
 #[cfg(windows)]
 pub fn set(enabled: bool) -> Result<()> {
     if !enabled {
-        let _ = Command::new("reg")
+        let _ = crate::sys::command("reg")
             .args(["delete", RUN_KEY, "/v", RUN_NAME, "/f"])
             .output();
         cached().store(false, std::sync::atomic::Ordering::Relaxed);
@@ -162,7 +162,7 @@ pub fn set(enabled: bool) -> Result<()> {
     // Кавычки — часть значения: без них Windows спотыкается о пробел в
     // «Sol Flow.exe» и ищет программу «Sol».
     let value = format!("\"{}\"", exe.display());
-    let out = Command::new("reg")
+    let out = crate::sys::command("reg")
         .args(["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ", "/d", &value, "/f"])
         .output()?;
     if !out.status.success() {

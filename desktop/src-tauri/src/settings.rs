@@ -33,6 +33,12 @@ pub struct Settings {
     #[serde(default)]
     pub export_dir: Option<String>,
 
+    /// Считать на видеокарте, если она подходит. Выключенное — строго
+    /// процессор: на редких драйверах видеокарта считает неверно, и человеку
+    /// нужен способ это обойти.
+    #[serde(default = "default_use_gpu")]
+    pub use_gpu: bool,
+
     // --- запуск и оформление ---
     /// Запускаться без окна: приложение сразу уходит в меню-бар.
     #[serde(default)]
@@ -111,6 +117,10 @@ impl Settings {
 
 /// На Windows Alt+Space занят системой — им открывается меню окна, —
 /// поэтому там по умолчанию Ctrl+Space.
+fn default_use_gpu() -> bool {
+    true
+}
+
 fn default_hotkey() -> String {
     if cfg!(target_os = "macos") {
         "alt+space".to_string()
@@ -165,6 +175,7 @@ impl Default for Settings {
             theme: default_theme(),
             downloads_dir: None,
             export_dir: None,
+            use_gpu: default_use_gpu(),
             start_hidden: false,
             show_tray_icon: true,
             overlay_style: default_overlay_style(),

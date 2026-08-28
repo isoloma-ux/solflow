@@ -869,10 +869,22 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     let mut segments: Vec<Segment> = Vec::new();
     for (index, (from, to)) in ranges.iter().enumerate() {
         if cancelled() {
+            engine.clear_cancel();
             return Ok(());
         }
         let pcm = wav.read(*from, (*to - *from) as usize)?;
-        let text = cleanup::clean(&engine.transcribe_segment(&pcm)?);
+        // Брошенный по отмене кусок возвращает ошибку — это не поломка, а
+        // ровно то, чего просил человек.
+        let text = match engine.transcribe_segment(&pcm) {
+            Ok(text) => cleanup::clean(&text),
+            Err(e) => {
+                engine.clear_cancel();
+                if cancelled() {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        };
         if !text.is_empty() {
             segments.push(Segment {
                 s: *from as f32 / sr as f32,
@@ -1126,8 +1138,15 @@ fn keep_or_drop_source(app: &AppHandle, file: &Path, title: &str) {
 /// Остановить работу над встречей: загрузку, импорт, расшифровку.
 pub fn cancel(app: &AppHandle, id: i64) {
     let state = app.state::<MeetingState>();
+    let phase = state.phase.lock().unwrap().get(&id).copied();
     if let Some(flag) = state.cancel.lock().unwrap().get(&id) {
         flag.store(true, Ordering::Relaxed);
+    }
+    // Кусок в двадцать четыре секунды на медленной машине считается минуту, и
+    // всё это время флага никто не видит. Движку говорим отдельно — он
+    // бросает работу между шагами декодера.
+    if phase == Some("transcribing") {
+        app.state::<crate::AppState>().engine.request_cancel();
     }
     notify(app);
 }

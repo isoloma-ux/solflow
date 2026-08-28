@@ -140,7 +140,7 @@ pub fn downsampler_for_test(src: usize, dst: usize) -> meetings::Downsampler {
 /// Загруженный движок для примеров — в приложении он живёт в AppState.
 pub fn engine_for_test(path: &std::path::PathBuf) -> Engine {
     let engine = Engine::new();
-    engine.load(path).expect("модель не загрузилась");
+    engine.load(path, true).expect("модель не загрузилась");
     engine
 }
 
@@ -197,7 +197,8 @@ fn ensure_model_loaded(app: AppHandle) {
         }
         if let Some(path) = model_path(&app) {
             log::info!("модель поднимается обратно в память");
-            if let Err(e) = state.engine.load(&path) {
+            let use_gpu = state.settings.lock().unwrap().use_gpu;
+            if let Err(e) = state.engine.load(&path, use_gpu) {
                 log::error!("модель не поднялась: {e}");
             }
             emit_state(&app, None);
@@ -288,6 +289,8 @@ struct StateEvent {
     accessibility: bool,
     hotkey: String,
     hotkey_label: String,
+    /// Чем считается модель: «видеокарта Intel Arc» или «процессор».
+    device: Option<String>,
 }
 
 fn phase_name(phase: u8) -> &'static str {
@@ -310,6 +313,7 @@ fn emit_state(app: &AppHandle, detail: Option<String>) {
         accessibility: paste::accessibility_granted(),
         hotkey_label: hotkey::label(&hotkey_text),
         hotkey: hotkey_text,
+        device: state.engine.device_label(),
     };
     let _ = app.emit("solflow-state", event);
 }
@@ -864,7 +868,8 @@ fn set_active_model(app: AppHandle, filename: String) {
             .app_data_dir()
             .map(|d| d.join("models").join(&filename))
             .unwrap_or_default();
-        match state.engine.load(&path) {
+        let use_gpu = state.settings.lock().unwrap().use_gpu;
+        match state.engine.load(&path, use_gpu) {
             Ok(()) => state.phase.store(PHASE_READY, Ordering::SeqCst),
             Err(e) => {
                 state.phase.store(PHASE_NO_MODEL, Ordering::SeqCst);
@@ -957,6 +962,24 @@ fn set_export_dir(app: AppHandle, dir: Option<String>) {
     let mut s = state.settings.lock().unwrap();
     s.export_dir = dir.filter(|d| !d.is_empty());
     settings::save(&app, &s);
+}
+
+/// Считать на видеокарте или строго на процессоре. Модель перезагружается:
+/// устройство выбирается при загрузке и на лету не меняется.
+#[tauri::command]
+fn set_use_gpu(app: AppHandle, enabled: bool) {
+    {
+        let state = app.state::<AppState>();
+        let mut s = state.settings.lock().unwrap();
+        if s.use_gpu == enabled {
+            return;
+        }
+        s.use_gpu = enabled;
+        settings::save(&app, &s);
+    }
+    let state = app.state::<AppState>();
+    state.engine.unload();
+    ensure_model_loaded(app);
 }
 
 #[tauri::command]
@@ -1209,6 +1232,7 @@ pub fn run() {
             pick_downloads_dir,
             set_export_dir,
             pick_export_dir,
+            set_use_gpu,
             downloader_ready,
             install_downloader,
             meeting_transcribe,
@@ -1245,6 +1269,13 @@ pub fn run() {
 
             // Где лежат скачанные yt-dlp и ffmpeg — запоминается один раз.
             tools::init(app.handle());
+
+            // Модули вычислительных бэкендов (процессор, видеокарта) — до
+            // первой загрузки модели. В сборке без отдельных модулей это
+            // ничего не делает.
+            if let Err(e) = transcribe_cpp::init_backends_default() {
+                log::error!("бэкенды не поднялись: {e}");
+            }
 
             let loaded_settings = settings::load(app.handle());
             // Дописываем в файл поля, которых там ещё нет: после обновления
@@ -1324,7 +1355,8 @@ pub fn run() {
                     Some(path) => {
                         state.phase.store(PHASE_LOADING, Ordering::SeqCst);
                         emit_state(&handle, None);
-                        match state.engine.load(&path) {
+                        let use_gpu = state.settings.lock().unwrap().use_gpu;
+                        match state.engine.load(&path, use_gpu) {
                             Ok(()) => state.phase.store(PHASE_READY, Ordering::SeqCst),
                             Err(e) => {
                                 state.phase.store(PHASE_NO_MODEL, Ordering::SeqCst);
