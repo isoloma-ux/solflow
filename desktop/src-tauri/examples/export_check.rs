@@ -31,16 +31,25 @@ fn main() {
     let source = out_dir.join("export.html");
     std::fs::write(&source, &html).unwrap();
 
+    // docx собирает свой генератор, а читает его системный textutil: если
+    // тот разобрал файл и вернул текст реплик — формат корректный.
     let docx = out_dir.join("Планерка.docx");
+    std::fs::write(&docx, solflow_lib::export_docx("Планерка по 2.1", "1 ч 3 мин", &segments)).unwrap();
+    let back = out_dir.join("docx-back.txt");
     let ok = Command::new("/usr/bin/textutil")
-        .args(["-convert", "docx", "-output"])
+        .args(["-convert", "txt", "-output"])
+        .arg(&back)
         .arg(&docx)
-        .arg(&source)
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    println!("docx: {ok}, {} байт", docx.metadata().map(|m| m.len()).unwrap_or(0));
-    assert!(ok && docx.metadata().unwrap().len() > 0);
+    let read_back = std::fs::read_to_string(&back).unwrap_or_default();
+    println!("docx: {ok}, {} байт, прочитано обратно:\n{read_back}",
+             docx.metadata().map(|m| m.len()).unwrap_or(0));
+    assert!(ok, "textutil не смог прочитать собранный docx");
+    assert!(read_back.contains("Планерка по 2.1"), "в docx нет заголовка");
+    assert!(read_back.contains("волну"), "в docx нет текста реплики");
+    assert!(read_back.contains("1:03:20"), "в docx нет метки времени");
 
     // Длинная встреча — чтобы проверить перенос строк и вторую страницу.
     let mut many = segments.clone();

@@ -10,6 +10,7 @@ mod cleanup;
 /// Без фичи `diarize` подставляется заглушка: sherpa-onnx собран не везде.
 #[cfg_attr(not(feature = "diarize"), path = "diarize_off.rs")]
 mod diarize;
+mod docx;
 mod engine;
 mod fetch;
 mod history;
@@ -27,6 +28,7 @@ mod segmenter;
 mod ttf;
 mod settings;
 mod sys;
+mod tools;
 /// pub — им пользуется проверочный пример wav_check.
 pub mod wav;
 
@@ -77,6 +79,11 @@ pub fn inter_medium() -> &'static ttf::Font {
 /// Сборка PDF для примера export_check.
 pub fn export_pdf(title: &str, duration: &str, segments: &[MeetingSegment]) -> Vec<u8> {
     meetings::as_pdf(title, duration, segments, &Default::default()).expect("pdf не собрался")
+}
+
+/// Сборка docx для примера export_check.
+pub fn export_docx(title: &str, duration: &str, segments: &[MeetingSegment]) -> Vec<u8> {
+    meetings::as_docx(title, duration, segments, &Default::default())
 }
 
 /// Сборка текста экспорта для примера export_check.
@@ -955,12 +962,16 @@ fn pick_downloads_dir(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 fn downloader_ready() -> bool {
-    fetch::ytdlp_ready()
+    tools::ready()
 }
 
 #[tauri::command]
-fn install_downloader() -> Result<(), String> {
-    fetch::install_ytdlp().map_err(|e| e.to_string())
+fn install_downloader(app: AppHandle) -> Result<(), String> {
+    // Проценты уходят в окно: на Windows качается ещё и ffmpeg, это долго.
+    let report = |pct: u8| {
+        let _ = app.emit("solflow-downloader-progress", pct);
+    };
+    tools::install(&report).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1189,6 +1200,9 @@ pub fn run() {
                 }
                 Err(e) => log::error!("enigo не создался: {e}"),
             }
+
+            // Где лежат скачанные yt-dlp и ffmpeg — запоминается один раз.
+            tools::init(app.handle());
 
             let loaded_settings = settings::load(app.handle());
             // Дописываем в файл поля, которых там ещё нет: после обновления

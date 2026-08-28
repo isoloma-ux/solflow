@@ -3,9 +3,8 @@
 //! 1. Публичная ссылка Яндекс.Диска — у него есть открытый API, который
 //!    отдаёт прямой адрес файла без ключей и авторизации.
 //! 2. Прямая ссылка на медиафайл — качаем как есть.
-//! 3. Страница с видео (YouTube, VK и прочие) — нужен yt-dlp. Он ставится
-//!    одной командой pip, поэтому приложение умеет предложить установку,
-//!    а не просто разводить руками.
+//! 3. Страница с видео (YouTube, VK и прочие) — нужен yt-dlp. Приложение
+//!    умеет поставить его само (см. tools), а не просто разводить руками.
 //!
 //! Скачиваем только звуковую дорожку: видео весит в разы больше, а
 //! расшифровке нужен один моно-канал.
@@ -14,48 +13,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Result};
-
-/// Где искать yt-dlp: pip кладёт его в пользовательский bin, homebrew — в
-/// свой. PATH у приложения из Finder куцый, поэтому перебираем руками.
-fn ytdlp_path() -> Option<PathBuf> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut candidates = vec![
-        PathBuf::from("/opt/homebrew/bin/yt-dlp"),
-        PathBuf::from("/usr/local/bin/yt-dlp"),
-        PathBuf::from(format!("{home}/.local/bin/yt-dlp")),
-    ];
-    // ~/Library/Python/3.x/bin — сюда ставит системный pip.
-    if let Ok(dirs) = std::fs::read_dir(format!("{home}/Library/Python")) {
-        for dir in dirs.filter_map(|d| d.ok()) {
-            candidates.push(dir.path().join("bin/yt-dlp"));
-        }
-    }
-    candidates.into_iter().find(|p| p.exists())
-}
-
-pub fn ytdlp_ready() -> bool {
-    ytdlp_path().is_some()
-}
-
-/// Ставит yt-dlp пользовательским pip — без sudo и не трогая систему.
-pub fn install_ytdlp() -> Result<()> {
-    let out = Command::new("/usr/bin/python3")
-        .args(["-m", "pip", "install", "--user", "--upgrade", "yt-dlp"])
-        .output()?;
-    if !out.status.success() {
-        return Err(anyhow!(
-            "pip не справился: {}",
-            String::from_utf8_lossy(&out.stderr)
-                .lines()
-                .last()
-                .unwrap_or("неизвестная ошибка")
-        ));
-    }
-    if !ytdlp_ready() {
-        return Err(anyhow!("yt-dlp поставился, но не нашёлся"));
-    }
-    Ok(())
-}
 
 /// Загрузка прямой ссылки с отчётом о прогрессе.
 fn download_to(url: &str, target: &Path, progress: &Progress) -> Result<()> {
@@ -194,7 +151,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
     }
 
     // 3. Страница с видео — работа для yt-dlp.
-    let tool = ytdlp_path().ok_or_else(|| {
+    let tool = crate::tools::ytdlp().ok_or_else(|| {
         anyhow!("для этой ссылки нужен загрузчик — поставьте его в настройках")
     })?;
 

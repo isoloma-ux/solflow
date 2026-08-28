@@ -7,10 +7,15 @@ const { listen } = window.__TAURI__.event;
 
 const el = (id) => document.getElementById(id);
 
+// Какая система под окном: значки клавиш, «Универсальный доступ» и часть
+// подписей на Windows выглядят иначе. Берём из user-agent — он приходит
+// вместе с окном, ещё до первого ответа из Rust.
+const IS_MAC = navigator.userAgent.includes("Mac");
+
 const statusText = {
   no_model: "Модель не найдена — положите .gguf в папку моделей",
   loading: "Загружаю модель в память",
-  ready: "Готово. Нажмите кнопку или ⌘⇧Пробел",
+  ready: "Готово. Нажмите кнопку или сочетание",
   recording: "Идет запись",
   transcribing: "Распознаю",
 };
@@ -69,7 +74,9 @@ function render(state) {
 }
 
 function setPerm(id, granted) {
+  // Строки может не быть: «Универсальный доступ» на Windows убран совсем.
   const perm = el(id);
+  if (!perm) return;
   perm.querySelector(".perm-done").hidden = !granted;
   perm.querySelector("button").hidden = granted;
 }
@@ -97,7 +104,7 @@ el("record").addEventListener("click", () => invoke("ui_toggle"));
 el("copy").addEventListener("click", () => {
   navigator.clipboard.writeText(el("result").textContent);
 });
-el("grantAccessibility").addEventListener("click", () =>
+el("grantAccessibility")?.addEventListener("click", () =>
   invoke("open_accessibility")
 );
 
@@ -129,7 +136,9 @@ window.addEventListener("keydown", async (e) => {
   if (e.altKey) parts.push("alt");
   if (e.shiftKey) parts.push("shift");
   if (parts.length === 0) {
-    el("hotkeyHint").textContent = "Нужен модификатор: ⌘, ⌥, ⌃ или ⇧";
+    el("hotkeyHint").textContent = IS_MAC
+      ? "Нужен модификатор: ⌘, ⌥, ⌃ или ⇧"
+      : "Нужен модификатор: Ctrl, Alt или Shift";
     return;
   }
 
@@ -574,10 +583,10 @@ setInterval(() => {
   swipeLocked = false;
 }, 400);
 
-// ⌘[ — тот же возврат, что и свайп: если жест почему-то не доходит до
-// окна, привычное сочетание macOS остаётся.
+// ⌘[ на Mac и Alt+← на Windows — тот же возврат, что и свайп: если жест
+// почему-то не доходит до окна, привычное системе сочетание остаётся.
 window.addEventListener("keydown", (e) => {
-  if (e.metaKey && e.key === "[") {
+  if ((e.metaKey && e.key === "[") || (e.altKey && e.key === "ArrowLeft")) {
     e.preventDefault();
     goBack();
   }
@@ -675,7 +684,7 @@ function stateLabel(m) {
 // --- встречи: список и проекты --------------------------------------------
 
 const MEET_HINT =
-  "Запись уходит в файл на диске, расшифровка — на этом Mac. " +
+  "Запись уходит в файл на диске, расшифровка — на этом компьютере. " +
   "Файл можно перетащить в окно";
 
 let meetRows = [];
@@ -1743,7 +1752,7 @@ el("meetSpeakers").addEventListener("click", async (e) => {
   // Первая диаризация тянет модель голосов — предупреждаем о докачке.
   const [ready, mb] = await invoke("diarize_status");
   el("speakersHint").textContent = ready
-    ? "Разбор идет на этом Mac"
+    ? "Разбор идет на этом компьютере"
     : `Первый раз докачает модель голосов, ${mb} МБ`;
 });
 
@@ -2327,7 +2336,7 @@ document.querySelectorAll(".link[data-url]").forEach((button) => {
  */
 const INTRO = [
   {
-    title: "Голос становится текстом на вашем Mac",
+    title: `Голос становится текстом на вашем ${IS_MAC ? "Mac" : "компьютере"}`,
     text:
       "Ничего не уходит в интернет: ни диктовки, ни записи встреч. Модель " +
       "распознавания живет на диске и работает без сети.",
@@ -2350,7 +2359,8 @@ const INTRO = [
   {
     title: "Диктуйте в любое приложение",
     text:
-      "Нажмите ⌥Пробел где угодно: быстрое нажатие — запись пошла, второе — " +
+      `Нажмите ${IS_MAC ? "⌥Пробел" : "Ctrl+Пробел"} где угодно: быстрое нажатие — ` +
+      "запись пошла, второе — " +
       "текст вставился в активное поле. Или зажмите, скажите и отпустите. " +
       "Сочетание и микрофон меняются в настройках.",
     shot: `<div class="shot">
@@ -2534,3 +2544,22 @@ try {
 }
 
 drawWave();
+
+// --- различия систем в разметке -------------------------------------------
+
+if (!IS_MAC) {
+  // «Универсальный доступ» — разрешение macOS: на Windows вставка работает
+  // сразу, и строке в настройках там взяться неоткуда.
+  el("permAccessibility")?.remove();
+
+  // ⌃Enter и ⌘Enter на Windows — одно и то же нажатие, второй сегмент лишний.
+  document.querySelector('[data-submit="cmd_enter"]')?.remove();
+  const ctrlEnter = document.querySelector('[data-submit="ctrl_enter"]');
+  if (ctrlEnter) ctrlEnter.textContent = "Ctrl+Enter";
+
+  // Подпись сочетания до первого ответа из Rust.
+  for (const id of ["hotkeyLabel", "hotkeyLabel2"]) {
+    const node = el(id);
+    if (node && node.textContent.includes("⌥")) node.textContent = "Ctrl + Пробел";
+  }
+}

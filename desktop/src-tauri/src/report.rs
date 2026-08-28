@@ -121,7 +121,7 @@ pub fn build(app: &tauri::AppHandle, description: &str) -> String {
     ));
     out.push_str(&format!(
         "Загрузчик ссылок: {}\n",
-        if crate::fetch::ytdlp_ready() { "стоит" } else { "нет" }
+        if crate::tools::ready() { "стоит" } else { "нет" }
     ));
     out.push_str(&format!(
         "Разделение голосов: {}\n",

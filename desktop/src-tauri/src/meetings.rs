@@ -1161,9 +1161,27 @@ pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
 fn import_job(app: &AppHandle, id: i64, source: &Path, mut meta: Meta) -> Result<()> {
     let target = audio_file(app, id);
 
-    // Сначала напрямую: afconvert читает всё, что умеет CoreAudio (wav, m4a,
-    // mp3, aiff...). Видео он не берёт — тогда avconvert вытаскивает
-    // дорожку в m4a, и afconvert дожимает её. Цепочка проверена руками.
+    to_wav_16k(app, id, source, &target)?;
+
+    let wav = WavReader::open(&target)?;
+    if wav.total_samples < SAMPLE_RATE as u64 / 2 {
+        return Err(anyhow!("в файле не нашлось звука"));
+    }
+    meta.seconds = wav.total_samples as f32 / SAMPLE_RATE as f32;
+    save_meta(app, id, &meta);
+    notify(app);
+    Ok(())
+}
+
+/// Приводит любой звук или видео к 16 кГц моно WAV — тому виду, в котором
+/// работает движок.
+///
+/// На macOS этим занимаются встроенные утилиты: afconvert читает всё, что
+/// умеет CoreAudio (wav, m4a, mp3, aiff...), а видео он не берёт — тогда
+/// avconvert вытаскивает дорожку в m4a, и afconvert дожимает её. Цепочка
+/// проверена руками.
+#[cfg(target_os = "macos")]
+fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<()> {
     let direct = convert_ok(
         "/usr/bin/afconvert",
         &[
@@ -1177,48 +1195,72 @@ fn import_job(app: &AppHandle, id: i64, source: &Path, mut meta: Meta) -> Result
             &target.to_string_lossy(),
         ],
     );
-    if !direct {
-        let m4a = dir(app, id).join("import.m4a");
-        if !convert_ok(
-            "/usr/bin/avconvert",
-            &[
-                "--preset",
-                "PresetAppleM4A",
-                "--source",
-                &source.to_string_lossy(),
-                "--output",
-                &m4a.to_string_lossy(),
-                "--replace",
-            ],
-        ) {
-            return Err(anyhow!("файл не читается как аудио или видео"));
-        }
-        let ok = convert_ok(
-            "/usr/bin/afconvert",
-            &[
-                "-f",
-                "WAVE",
-                "-d",
-                "LEI16@16000",
-                "-c",
-                "1",
-                &m4a.to_string_lossy(),
-                &target.to_string_lossy(),
-            ],
-        );
-        let _ = std::fs::remove_file(&m4a);
-        if !ok {
-            return Err(anyhow!("не удалось привести звук к нужному формату"));
-        }
+    if direct {
+        return Ok(());
     }
 
-    let wav = WavReader::open(&target)?;
-    if wav.total_samples < SAMPLE_RATE as u64 / 2 {
-        return Err(anyhow!("в файле не нашлось звука"));
+    let m4a = dir(app, id).join("import.m4a");
+    if !convert_ok(
+        "/usr/bin/avconvert",
+        &[
+            "--preset",
+            "PresetAppleM4A",
+            "--source",
+            &source.to_string_lossy(),
+            "--output",
+            &m4a.to_string_lossy(),
+            "--replace",
+        ],
+    ) {
+        return Err(anyhow!("файл не читается как аудио или видео"));
     }
-    meta.seconds = wav.total_samples as f32 / SAMPLE_RATE as f32;
-    save_meta(app, id, &meta);
-    notify(app);
+    let ok = convert_ok(
+        "/usr/bin/afconvert",
+        &[
+            "-f",
+            "WAVE",
+            "-d",
+            "LEI16@16000",
+            "-c",
+            "1",
+            &m4a.to_string_lossy(),
+            &target.to_string_lossy(),
+        ],
+    );
+    let _ = std::fs::remove_file(&m4a);
+    if !ok {
+        return Err(anyhow!("не удалось привести звук к нужному формату"));
+    }
+    Ok(())
+}
+
+/// На Windows встроенного конвертера нет — работу делает ffmpeg, который
+/// приложение качает себе в настройках. Одной командой: он и видео берёт,
+/// и в нужный формат кладёт сразу.
+#[cfg(windows)]
+fn to_wav_16k(_app: &AppHandle, _id: i64, source: &Path, target: &Path) -> Result<()> {
+    let ffmpeg = crate::tools::ffmpeg().ok_or_else(|| {
+        anyhow!("для импорта нужен ffmpeg — поставьте его в настройках")
+    })?;
+    let ok = convert_ok(
+        &ffmpeg.to_string_lossy(),
+        &[
+            "-y",
+            "-i",
+            &source.to_string_lossy(),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            &target.to_string_lossy(),
+        ],
+    );
+    if !ok {
+        return Err(anyhow!("файл не читается как аудио или видео"));
+    }
     Ok(())
 }
 
@@ -1334,6 +1376,24 @@ pub fn as_html(title: &str, duration: &str, segments: &[Segment], names: &HashMa
     out
 }
 
+/// docx собирается своим генератором: textutil, который делал это раньше,
+/// есть только на macOS.
+pub fn as_docx(
+    title: &str,
+    duration: &str,
+    segments: &[Segment],
+    names: &HashMap<String, String>,
+) -> Vec<u8> {
+    crate::docx::build(
+        title,
+        duration,
+        segments,
+        names,
+        &|i| speaker_at(segments, i, names),
+        &clock_label,
+    )
+}
+
 /// PDF собирается своим генератором со встроенным Inter — вид тот же, что
 /// в окне приложения и в экспорте на Android.
 pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap<String, String>) -> Result<Vec<u8>> {
@@ -1396,24 +1456,7 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
 
     match format {
         "md" => std::fs::write(&path, as_markdown(title, &duration, &segments, &meta.names))?,
-        "docx" => {
-            let source = dir(app, id).join("export.html");
-            std::fs::write(&source, as_html(title, &duration, &segments, &meta.names))?;
-            let ok = convert_ok(
-                "/usr/bin/textutil",
-                &[
-                    "-convert",
-                    "docx",
-                    "-output",
-                    &path.to_string_lossy(),
-                    &source.to_string_lossy(),
-                ],
-            );
-            let _ = std::fs::remove_file(&source);
-            if !ok {
-                return Err(anyhow!("не удалось собрать docx"));
-            }
-        }
+        "docx" => std::fs::write(&path, as_docx(title, &duration, &segments, &meta.names))?,
         "pdf" => std::fs::write(&path, as_pdf(title, &duration, &segments, &meta.names)?)?,
         _ => std::fs::write(&path, as_text(title, &duration, &segments, &meta.names))?,
     }
