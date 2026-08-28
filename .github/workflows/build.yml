@@ -103,16 +103,18 @@ jobs:
       # свои аргументы (проверено падением прогона).
       # Движок в модульном режиме — это отдельные DLL (сам движок, ggml и
       # модули бэкендов). Cargo кладёт их рядом с экзешником в target, а в
-      # установщик они попадают ресурсами: tauri.windows.conf.json просит
-      # «*.dll» рядом с конфигом, поэтому сначала собираем, потом копируем,
-      # потом пакуем.
+      # установщик они попадают ресурсами. Список ресурсов лежит отдельным
+      # конфигом и подмешивается только здесь: Tauri проверяет, что ресурсы
+      # существуют, ещё на сборке, а в обычной проверке никаких DLL нет
+      # (проверено падением прогона).
       - name: Сборка
         shell: bash
         run: |
           cargo build --release --locked --no-default-features --features gpu
           cp target/release/*.dll .
           ls -la *.dll
-          tauri build --bundles nsis -- --no-default-features --features gpu
+          tauri build --config tauri.gpu.conf.json --bundles nsis -- \
+            --no-default-features --features gpu
 
       - uses: actions/upload-artifact@v4
         with:
