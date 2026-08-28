@@ -2298,9 +2298,20 @@ el("clearDownloadsDir").addEventListener("click", async () => {
   refreshSettings();
 });
 
+// Проценты приходят из Rust: на Windows качается не только yt-dlp, но и
+// ffmpeg — это десятки мегабайт, и молчащая кнопка выглядит как зависшая.
+listen("solflow-downloader-progress", (e) => {
+  const pct = e.payload;
+  if (pct > 0 && pct < 100) {
+    el("downloaderHint").textContent = `Ставлю загрузчик, ${pct}%`;
+  }
+});
+
 el("installDownloader").addEventListener("click", async () => {
   el("installDownloader").disabled = true;
-  el("downloaderHint").textContent = "Ставлю загрузчик, это займет минуту";
+  el("downloaderHint").textContent = IS_MAC
+    ? "Ставлю загрузчик, это займет минуту"
+    : "Ставлю загрузчик и ffmpeg, это займет несколько минут";
   try {
     await invoke("install_downloader");
     el("downloaderHint").textContent = "Готово, ссылки на видео теперь работают";
