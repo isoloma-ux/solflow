@@ -157,7 +157,7 @@ pub fn install(on_progress: &dyn Fn(u8)) -> Result<()> {
 
         // Распаковка средствами системы: свой распаковщик ради одного архива
         // тянуть незачем.
-        let out = std::process::Command::new("powershell")
+        let out = crate::sys::command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command"])
             .arg(format!(
                 "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",

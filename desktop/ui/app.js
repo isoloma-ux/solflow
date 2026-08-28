@@ -676,7 +676,9 @@ function stateLabel(m) {
   if (m.phase === "downloading") return `Качаю модель голосов${pct}`;
   if (m.phase === "diarizing") return `Разделяю говорящих${pct}`;
   if (m.phase === "transcribing") return `Расшифровываю${pct}`;
-  if (m.state === "failed") return "Не удалось расшифровать";
+  // Причину показываем прямо в строке: раньше она уходила в подпись над
+  // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
+  if (m.state === "failed") return m.error ? `Не вышло: ${m.error}` : "Не удалось расшифровать";
   if (m.state === "transcribing") return "Расшифровка прервана";
   if (m.state === "recorded") return "Ожидает расшифровки";
   return "";
@@ -2280,15 +2282,21 @@ function applyTheme(theme) {
 
 el("autostart").addEventListener("click", async () => {
   const enabled = !el("autostart").classList.contains("on");
+  // Переключатель встаёт сразу, запись в систему идёт следом: она занимает
+  // доли секунды, но ждать ответа, глядя на неподвижный переключатель,
+  // неприятно. Если система откажет — вернём как было и скажем почему.
+  el("autostart").classList.toggle("on", enabled);
+  el("autostartLabel").textContent = enabled ? "Включен" : "Выключен";
+  el("autostartHint").textContent = enabled
+    ? "Приложение появится в трее после входа"
+    : "Запускать придется вручную";
   try {
     await invoke("set_autostart", { enabled });
-    el("autostartHint").textContent = enabled
-      ? "Приложение появится в меню-баре после входа"
-      : "Запускать придется вручную";
   } catch (err) {
+    el("autostart").classList.toggle("on", !enabled);
+    el("autostartLabel").textContent = !enabled ? "Включен" : "Выключен";
     el("autostartHint").textContent = String(err);
   }
-  refreshSettings();
 });
 
 document.querySelectorAll("#themeSegments .segment").forEach((button) => {
@@ -2584,6 +2592,17 @@ drawWave();
 // --- различия систем в разметке -------------------------------------------
 
 if (!IS_MAC) {
+  // На Windows это не меню-бар, а трей — правим подписи разом, чтобы не
+  // держать два варианта разметки.
+  for (const node of document.querySelectorAll(".perm-title, .muted")) {
+    if (node.children.length) continue;
+    if (node.textContent.includes("меню-бар")) {
+      node.textContent = node.textContent
+        .replace("меню-баре", "трее")
+        .replace("меню-бар", "трей");
+    }
+  }
+
   // «Универсальный доступ» — разрешение macOS: на Windows вставка работает
   // сразу, и строке в настройках там взяться неоткуда.
   el("permAccessibility")?.remove();

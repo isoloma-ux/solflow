@@ -10,7 +10,6 @@
 //! расшифровке нужен один моно-канал.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{anyhow, Result};
 
@@ -173,7 +172,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
 
     for extra in clients {
         if title.is_empty() {
-            title = Command::new(&tool)
+            title = crate::sys::command(&tool)
                 .args(["--no-warnings", "--skip-download", "--print", "%(title)s"])
                 .args(extra)
                 .arg(url)
@@ -186,7 +185,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
 
         // Общий размер спрашиваем заранее: сам загрузчик о нём молчит,
         // пока не закончит, а ждать вслепую неприятно.
-        let total = Command::new(&tool)
+        let total = crate::sys::command(&tool)
             .args(["--no-warnings", "--skip-download", "--print", "%(filesize_approx)s"])
             .args(extra)
             .arg(url)
@@ -201,7 +200,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
             })
             .unwrap_or(0);
 
-        let mut child = Command::new(&tool)
+        let mut child = crate::sys::command(&tool)
             .args([
                 "--no-warnings",
                 "--no-playlist",

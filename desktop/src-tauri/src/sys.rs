@@ -3,8 +3,24 @@
 //! версию системы. Всё, что различается, живёт здесь, чтобы в остальном
 //! коде не было `#[cfg]` вперемешку с логикой.
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
+
+/// Запуск внешней программы без окна консоли. На Windows каждый запуск
+/// консольной программы иначе поднимает чёрное окно поверх всего — при
+/// импорте так мигали ffmpeg и распаковка, хотя работа шла в фоне.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
 
 /// Открывает ссылку в браузере (или почтовом клиенте для mailto:).
 #[cfg(target_os = "macos")]
@@ -16,7 +32,7 @@ pub fn open_url(url: &str) {
 /// Windows, не воюя с тем, как cmd разбирает кавычки и знак «&».
 #[cfg(windows)]
 pub fn open_url(url: &str) {
-    let _ = Command::new("rundll32")
+    let _ = command("rundll32")
         .arg("url.dll,FileProtocolHandler")
         .arg(url)
         .spawn();
@@ -37,7 +53,7 @@ pub fn reveal_file(path: &Path) {
     // всё в кавычки целиком (там пробел в «Sol Flow»), explorer такого не
     // понимает и молча открывает «Документы» — из-за этого «показать файл»
     // и выглядело как будто ничего не делает.
-    let _ = Command::new("explorer")
+    let _ = command("explorer")
         .raw_arg(format!("/select,\"{}\"", path.display()))
         .spawn();
 }
@@ -71,7 +87,7 @@ pub fn os_version() -> String {
 
 #[cfg(windows)]
 pub fn os_version() -> String {
-    Command::new("cmd")
+    command("cmd")
         .args(["/C", "ver"])
         .output()
         .ok()
@@ -129,7 +145,7 @@ pub fn cpu_name() -> String {
 /// выпилен, а PowerShell ради одной строки поднимается почти секунду.
 #[cfg(windows)]
 pub fn cpu_name() -> String {
-    Command::new("reg")
+    command("reg")
         .args([
             "query",
             r"HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0",

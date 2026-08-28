@@ -10,7 +10,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
@@ -52,6 +51,10 @@ pub struct Meta {
     /// Имена, которые пользователь дал говорящим, по их номерам.
     #[serde(default)]
     pub names: HashMap<String, String>,
+    /// Почему не вышло, если не вышло: строку показывает список встреч.
+    /// Молчаливая неудача — худшее, что может случиться с импортом.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// Одна реплика таймлайна: границы в секундах от начала записи.
@@ -83,6 +86,8 @@ pub struct MeetingRow {
     pub speakers: u32,
     /// Имена говорящих по номерам — их показывает и экспортирует окно.
     pub names: HashMap<String, String>,
+    /// Почему не вышло, если не вышло.
+    pub error: Option<String>,
     /// Проценты идущей работы; None — работа не идёт или без процентов.
     pub progress: Option<u8>,
     /// Скачано и всего байт, пока идёт загрузка по ссылке.
@@ -181,6 +186,7 @@ fn create(app: &AppHandle, imported: bool) -> Result<(i64, Meta)> {
         project: None,
         speakers: 0,
         names: HashMap::new(),
+        error: None,
     };
     std::fs::create_dir_all(dir(app, now))?;
     save_meta(app, now, &meta);
@@ -223,6 +229,7 @@ pub fn rows(app: &AppHandle) -> Vec<MeetingRow> {
                 project: m.project,
                 speakers: m.speakers,
                 names: m.names,
+                error: m.error,
                 progress: progress.get(&id).copied(),
                 fetched: fetched.get(&id).copied(),
                 phase: phase.get(&id).map(|p| p.to_string()),
@@ -1061,7 +1068,10 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
             Ok(()) => transcribe(&app, id),
             Err(e) => {
                 log::error!("ссылка не пошла: {e}");
-                let _ = std::fs::remove_dir_all(dir(&app, id));
+                // Встречу не удаляем: строка с причиной — единственный
+                // способ узнать, что пошло не так, не открывая логи.
+                let _ = std::fs::remove_file(audio_file(&app, id));
+                mark_failed(&app, id, &e.to_string());
                 let _ = app.emit("solflow-import-failed", format!("{e}"));
             }
         }
@@ -1148,6 +1158,7 @@ pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
             Ok(()) => transcribe(&app, id),
             Err(e) => {
                 log::error!("импорт не удался: {e}");
+                mark_failed(&app, id, &e.to_string());
                 // Встреча без звука в списке бессмысленна — убираем след.
                 let _ = std::fs::remove_dir_all(dir(&app, id));
                 let _ = app.emit("solflow-import-failed", format!("{e}"));
@@ -1288,8 +1299,18 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
     Ok(())
 }
 
+/// Помечает встречу неудавшейся и запоминает причину.
+fn mark_failed(app: &AppHandle, id: i64, reason: &str) {
+    if let Some(mut meta) = load_meta(app, id) {
+        meta.state = "failed".to_string();
+        meta.error = Some(reason.to_string());
+        save_meta(app, id, &meta);
+    }
+    notify(app);
+}
+
 fn convert_ok(bin: &str, args: &[&str]) -> bool {
-    Command::new(bin)
+    crate::sys::command(bin)
         .args(args)
         .output()
         .map(|o| o.status.success())
