@@ -169,7 +169,7 @@ pub fn models_ready(app: &tauri::AppHandle) -> bool {
     embedding_file(app).metadata().map(|m| m.len()).unwrap_or(0) == EMB_BYTES
 }
 
-/// Докачка эмбеддинг-модели тем же curl, что и модели распознавания.
+/// Докачка эмбеддинг-модели — тем же способом, что и модели распознавания.
 pub fn download(
     app: &tauri::AppHandle,
     on_progress: &dyn Fn(u8),
@@ -179,35 +179,17 @@ pub fn download(
     let tmp = target.with_extension("part");
     let _ = std::fs::remove_file(&tmp);
 
-    let mut child = std::process::Command::new("/usr/bin/curl")
-        .args(["-L", "-f", "-s", "--connect-timeout", "10", "-o"])
-        .arg(&tmp)
-        .arg(EMB_URL)
-        .spawn()?;
+    let percent = |done: u64, _total: u64| {
+        on_progress(((done * 100 / EMB_BYTES).min(99)) as u8);
+    };
+    crate::net::download(EMB_URL, &tmp, &percent, cancelled)?;
 
-    loop {
-        if cancelled() {
-            let _ = child.kill();
-            let _ = std::fs::remove_file(&tmp);
-            return Err(anyhow!("отменено"));
-        }
-        match child.try_wait()? {
-            Some(status) => {
-                let size = tmp.metadata().map(|m| m.len()).unwrap_or(0);
-                if !status.success() || size != EMB_BYTES {
-                    let _ = std::fs::remove_file(&tmp);
-                    return Err(anyhow!("модель не скачалась"));
-                }
-                std::fs::rename(&tmp, &target)?;
-                return Ok(());
-            }
-            None => {
-                let done = tmp.metadata().map(|m| m.len()).unwrap_or(0);
-                on_progress(((done * 100 / EMB_BYTES).min(99)) as u8);
-                std::thread::sleep(std::time::Duration::from_millis(400));
-            }
-        }
+    if tmp.metadata().map(|m| m.len()).unwrap_or(0) != EMB_BYTES {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(anyhow!("модель не скачалась"));
     }
+    std::fs::rename(&tmp, &target)?;
+    Ok(())
 }
 
 // --- разбор ----------------------------------------------------------------

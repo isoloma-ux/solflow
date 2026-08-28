@@ -57,60 +57,14 @@ pub fn install_ytdlp() -> Result<()> {
     Ok(())
 }
 
-/// Сколько всего байт по ссылке — по заголовкам, до начала загрузки.
-fn remote_size(url: &str) -> u64 {
-    Command::new("/usr/bin/curl")
-        .args([
-            "-L", "-s", "-I", "--connect-timeout", "15", "-o", "/dev/null", "-w",
-            "%{size_download}\n%{header_json}", url,
-        ])
-        .output()
-        .ok()
-        .and_then(|o| {
-            let text = String::from_utf8_lossy(&o.stdout).to_string();
-            let json: serde_json::Value = serde_json::from_str(text.split_once('\n')?.1).ok()?;
-            json.get("content-length")?
-                .get(0)?
-                .as_str()?
-                .trim()
-                .parse::<u64>()
-                .ok()
-        })
-        .unwrap_or(0)
-}
-
-/// Загрузка с отчётом о прогрессе: curl пишет файл, мы смотрим, как он
-/// растёт. Отмена убивает процесс и убирает недокачанное.
-fn curl_to(url: &str, target: &Path, progress: &Progress) -> Result<()> {
-    let total = remote_size(url);
-    let mut child = Command::new("/usr/bin/curl")
-        .args(["-L", "-f", "-s", "--connect-timeout", "15", "-o"])
-        .arg(target)
-        .arg(url)
-        .spawn()?;
-
-    loop {
-        if (progress.cancelled)() {
-            let _ = child.kill();
-            let _ = std::fs::remove_file(target);
-            return Err(anyhow!("отменено"));
-        }
-        match child.try_wait()? {
-            Some(status) => {
-                let size = target.metadata().map(|m| m.len()).unwrap_or(0);
-                if !status.success() || size == 0 {
-                    return Err(anyhow!("файл по ссылке не скачался"));
-                }
-                (progress.report)(size, total.max(size));
-                return Ok(());
-            }
-            None => {
-                let done = target.metadata().map(|m| m.len()).unwrap_or(0);
-                (progress.report)(done, total);
-                std::thread::sleep(std::time::Duration::from_millis(400));
-            }
-        }
+/// Загрузка прямой ссылки с отчётом о прогрессе.
+fn download_to(url: &str, target: &Path, progress: &Progress) -> Result<()> {
+    crate::net::download(url, target, progress.report, progress.cancelled)?;
+    if target.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+        let _ = std::fs::remove_file(target);
+        return Err(anyhow!("файл по ссылке не скачался"));
     }
+    Ok(())
 }
 
 /// Как сообщать о ходе загрузки и как узнать про отмену.
@@ -126,11 +80,7 @@ fn yandex_direct(url: &str) -> Option<(String, String)> {
         "https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key={}",
         urlencode(url)
     );
-    let out = Command::new("/usr/bin/curl")
-        .args(["-L", "-f", "-s", "--connect-timeout", "15", &api])
-        .output()
-        .ok()?;
-    let body: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let body = crate::net::get_json(&api).ok()?;
     let href = body.get("href")?.as_str()?.to_string();
 
     // Имя файла берём из соседнего вызова: в ссылке на скачивание его нет.
@@ -138,11 +88,8 @@ fn yandex_direct(url: &str) -> Option<(String, String)> {
         "https://cloud-api.yandex.net/v1/disk/public/resources?public_key={}",
         urlencode(url)
     );
-    let name = Command::new("/usr/bin/curl")
-        .args(["-L", "-f", "-s", "--connect-timeout", "15", &meta_api])
-        .output()
+    let name = crate::net::get_json(&meta_api)
         .ok()
-        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
         .and_then(|v| v.get("name")?.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "Запись с Яндекс.Диска".to_string());
     Some((href, name))
@@ -172,13 +119,7 @@ fn looks_like_media(url: &str) -> bool {
 
 /// Тип содержимого по HEAD-запросу — для ссылок без расширения.
 fn content_type(url: &str) -> String {
-    Command::new("/usr/bin/curl")
-        .args(["-L", "-s", "-I", "--connect-timeout", "15", "-o", "/dev/null",
-               "-w", "%{content_type}", url])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_lowercase())
-        .unwrap_or_default()
+    crate::net::content_type(url)
 }
 
 /// Сколько уже на диске: загрузчик пишет во временные .part и .ytdl.
@@ -218,7 +159,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
     if host.contains("disk.yandex") || host.contains("yadi.sk") {
         if let Some((direct, name)) = yandex_direct(url) {
             let target = dir.join("download");
-            curl_to(&direct, &target, progress)?;
+            download_to(&direct, &target, progress)?;
             let title = Path::new(&name)
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
@@ -236,7 +177,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
     };
     if media_type {
         let target = dir.join("download");
-        curl_to(url, &target, progress)?;
+        download_to(url, &target, progress)?;
         let name = url
             .split(['?', '#'])
             .next()

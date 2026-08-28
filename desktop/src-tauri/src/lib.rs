@@ -19,6 +19,7 @@ mod hotkey;
 mod hud;
 mod meetings;
 mod models;
+mod net;
 mod paste;
 mod pdf;
 mod report;
@@ -593,13 +594,8 @@ fn send_bug_report(app: AppHandle, description: String) {
 #[tauri::command]
 fn check_update() -> UpdateInfo {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let latest = std::process::Command::new("/usr/bin/curl")
-        .args([
-            "-sL", "--connect-timeout", "10", "-H", "User-Agent: SolFlow", RELEASES_API,
-        ])
-        .output()
+    let latest = net::get_json(RELEASES_API)
         .ok()
-        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
         .and_then(|v| v.get("tag_name")?.as_str().map(|s| s.to_string()));
 
     UpdateInfo {
@@ -790,11 +786,7 @@ fn machine_chip() -> String {
 fn catalog_news(app: AppHandle) -> Option<String> {
     const UPSTREAM: &str =
         "https://raw.githubusercontent.com/cjpais/Handy/main/src-tauri/src/catalog/catalog.json";
-    let out = std::process::Command::new("/usr/bin/curl")
-        .args(["-sL", "--connect-timeout", "10", UPSTREAM])
-        .output()
-        .ok()?;
-    let upstream: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let upstream = net::get_json(UPSTREAM).ok()?;
     let names: Vec<&str> = upstream
         .get("models")?
         .as_array()?

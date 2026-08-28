@@ -7,6 +7,7 @@
 Запуск: python3 make-icon.py, дальше iconutil из скрипта сборки.
 """
 
+import io
 import struct
 import zlib
 from pathlib import Path
@@ -81,6 +82,7 @@ def render(size, margin_ratio=0.0, corner_ratio=0.0):
 
 
 def write_png(path, rows, size):
+    """path — файл или объект с .write (нужно для сборки .ico)."""
     raw = b"".join(b"\x00" + row for row in rows)
 
     def chunk(tag, data):
@@ -95,7 +97,52 @@ def write_png(path, rows, size):
     png += chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(raw, 9))
     png += chunk(b"IEND", b"")
-    Path(path).write_bytes(png)
+    if hasattr(path, "write"):
+        path.write(png)
+    else:
+        Path(path).write_bytes(png)
+
+
+def write_ico(path, rendered):
+    """Иконка для Windows: тот же рисунок, что на Mac, в одном .ico.
+    Мелкие размеры кладём классическим DIB — его понимают все версии
+    Windows, — а 256 отдаём PNG, иначе файл распухает на мегабайт."""
+    entries = []
+    for size in [16, 24, 32, 48, 64, 128]:
+        rows = rendered[size]
+        # DIB внутри .ico: заголовок, пиксели BGRA снизу вверх и пустая
+        # маска прозрачности (её роль играет альфа-канал).
+        header = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+        pixels = bytearray()
+        for row in reversed(rows):
+            for x in range(size):
+                r, g, b, a = row[x * 4 : x * 4 + 4]
+                pixels += bytes((b, g, r, a))
+        mask_row = ((size + 31) // 32) * 4
+        entries.append((size, header + bytes(pixels) + bytes(mask_row * size)))
+
+    png = io.BytesIO()
+    write_png(png, rendered[256], 256)
+    entries.append((256, png.getvalue()))
+
+    out = bytearray(struct.pack("<HHH", 0, 1, len(entries)))
+    offset = 6 + 16 * len(entries)
+    for size, data in entries:
+        out += struct.pack(
+            "<BBBBHHII",
+            0 if size == 256 else size,
+            0 if size == 256 else size,
+            0,
+            0,
+            1,
+            32,
+            len(data),
+            offset,
+        )
+        offset += len(data)
+    for _, data in entries:
+        out += data
+    Path(path).write_bytes(bytes(out))
 
 
 def main():
@@ -104,12 +151,13 @@ def main():
     iconset.mkdir(parents=True, exist_ok=True)
 
     # Иконка приложения: плашка со скруглением как у macOS, с полями.
-    sizes = [16, 32, 64, 128, 256, 512, 1024]
+    sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024]
     rendered = {}
     for size in sizes:
         rendered[size] = render(size, margin_ratio=0.06, corner_ratio=0.225)
         print(f"нарисовал {size}")
 
+    write_ico(icons / "icon.ico", rendered)
     write_png(icons / "icon.png", rendered[512], 512)
     write_png(icons / "icon_1024.png", rendered[1024], 1024)
 

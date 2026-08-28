@@ -30,6 +30,8 @@ tcpp/
 *.gguf
 *.bin
 *.wav
+# Звук начала записи вшит в бинарь через include_bytes — он часть кода.
+!desktop/src-tauri/sounds/*.wav
 
 # Система
 .DS_Store

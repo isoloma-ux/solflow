@@ -24,6 +24,11 @@ serde_json = "1"
 anyhow = "1"
 # Сжатие потоков в своём генераторе PDF — шрифт весит 400 КБ на файл.
 flate2 = "1"
+# HTTP без внешнего curl: системный TLS, чтобы сборка не тянула ни nasm
+# (rustls/ring под MSVC), ни OpenSSL.
+ureq = { version = "3", default-features = false, features = ["native-tls"] }
+# Контрольные суммы моделей: раньше их считал /usr/bin/shasum.
+sha2 = "0.10"
 log = "0.4"
 env_logger = "0.11"
 

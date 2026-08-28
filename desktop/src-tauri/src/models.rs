@@ -2,17 +2,17 @@
 //! build-catalog.py из каталога Handy). На Mac показываем по одной
 //! рекомендуемой версии на модель: выбор квантов — лишняя сложность здесь.
 //!
-//! Скачивание — системным curl: свой HTTP-стек ради загрузки файла не нужен,
-//! а прогресс читается по росту файла (полный размер известен из каталога).
+//! Скачивание идёт через net: прогресс считается от размера из каталога,
+//! контрольная сумма — на месте, зеркала перебираются по очереди.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Deserialize)]
@@ -241,45 +241,31 @@ impl ModelStore {
             let tmp = dir.join(format!("{}.part", file.filename));
             let mut ok = false;
 
-            'sources: for url in urls {
-                let _ = std::fs::remove_file(&tmp);
-                let mut child = match Command::new("/usr/bin/curl")
-                    .args(["-L", "-f", "-s", "--connect-timeout", "10", "-o"])
-                    .arg(&tmp)
-                    .arg(&url)
-                    .spawn()
-                {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
+            // Прогресс считается от размера из каталога: сервер зеркала
+            // content-length иногда не отдаёт, а полоска дёргаться не должна.
+            let report = |done: u64, _total: u64| {
+                let pct = ((done * 100) / file.size_bytes.max(1)).min(99) as u8;
+                let store = app.state::<ModelStore>();
+                store.progress.lock().unwrap().insert(file.filename.clone(), pct);
+                let _ = app.emit("solflow-models", ());
+            };
+            let stop = || cancelled.load(Ordering::Relaxed);
 
-                loop {
-                    if cancelled.load(Ordering::Relaxed) {
-                        let _ = child.kill();
-                        break 'sources;
+            for url in urls {
+                let _ = std::fs::remove_file(&tmp);
+                if crate::net::download(&url, &tmp, &report, &stop).is_err() {
+                    // Отмена — не повод идти к следующему зеркалу.
+                    if stop() {
+                        break;
                     }
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            if status.success()
-                                && tmp.metadata().map(|m| m.len()).unwrap_or(0) == file.size_bytes
-                                && sha256_ok(&tmp, &file.sha256)
-                            {
-                                let _ = std::fs::rename(&tmp, &target);
-                                ok = true;
-                                break 'sources;
-                            }
-                            break;
-                        }
-                        Ok(None) => {
-                            let done = tmp.metadata().map(|m| m.len()).unwrap_or(0);
-                            let pct = ((done * 100) / file.size_bytes.max(1)).min(99) as u8;
-                            let store = app.state::<ModelStore>();
-                            store.progress.lock().unwrap().insert(file.filename.clone(), pct);
-                            let _ = app.emit("solflow-models", ());
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                        Err(_) => break,
-                    }
+                    continue;
+                }
+                if tmp.metadata().map(|m| m.len()).unwrap_or(0) == file.size_bytes
+                    && sha256_ok(&tmp, &file.sha256)
+                {
+                    let _ = std::fs::rename(&tmp, &target);
+                    ok = true;
+                    break;
                 }
             }
 
@@ -310,17 +296,17 @@ fn sha256_ok(path: &PathBuf, expected: &str) -> bool {
     if expected.is_empty() {
         return true;
     }
-    Command::new("/usr/bin/shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()
-        .ok()
-        .map(|out| {
-            String::from_utf8_lossy(&out.stdout)
-                .split_whitespace()
-                .next()
-                .map(|h| h.eq_ignore_ascii_case(expected))
-                .unwrap_or(false)
-        })
-        .unwrap_or(false)
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut hasher = Sha256::new();
+    if std::io::copy(&mut file, &mut hasher).is_err() {
+        return false;
+    }
+    let sum = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    sum.eq_ignore_ascii_case(expected)
 }
