@@ -101,9 +101,18 @@ jobs:
 
       # Через bash, а не pwsh: PowerShell съедает «--», и cargo не получает
       # свои аргументы (проверено падением прогона).
+      # Движок в модульном режиме — это отдельные DLL (сам движок, ggml и
+      # модули бэкендов). Cargo кладёт их рядом с экзешником в target, а в
+      # установщик они попадают ресурсами: tauri.windows.conf.json просит
+      # «*.dll» рядом с конфигом, поэтому сначала собираем, потом копируем,
+      # потом пакуем.
       - name: Сборка
         shell: bash
-        run: tauri build --bundles nsis -- --no-default-features --features gpu
+        run: |
+          cargo build --release --locked --no-default-features --features gpu
+          cp target/release/*.dll .
+          ls -la *.dll
+          tauri build --bundles nsis -- --no-default-features --features gpu
 
       - uses: actions/upload-artifact@v4
         with:
