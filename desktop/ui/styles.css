@@ -1,0 +1,1419 @@
+/*
+  Дизайн-система ivansolomin.ru: редакционный минимализм, монохром плюс один
+  зелёный акцент. Тёмная тема основная. Веса Inter — только 400 и 500.
+  Цвета — только через токены, иначе ломается светлая тема.
+*/
+:root {
+  --canvas: #1c1d20;
+  --ink: #ffffff;
+  --fog: #999d9e;
+  --graphite: #2a2b2e;
+  --graphite-2: #36383b;
+  --hairline: rgba(255, 255, 255, 0.14);
+  --accent: #8bd23a;
+  --accent-solid: #7bc72e;
+  --accent-deep: #5fa01f;
+  --on-accent: #1c1d20;
+  --danger: #e0685f;
+
+  /* Кривые и длительности движения. Встроенные ease слишком вялые, эти
+     взяты из практики Emil Kowalski: вход и выход — ease-out, движение
+     по экрану — ease-in-out. ease-in на интерфейсе не используем: он
+     задерживает тот самый момент, ради которого пользователь смотрит. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --press: 120ms;
+  --tap: 160ms;
+  --panel: 220ms;
+  --sheet: 280ms;
+}
+
+/*
+  Светлая тема приходит либо из системы, либо принудительно из настроек.
+  Набор токенов один и тот же, но записан дважды: у CSS нет способа
+  переиспользовать блок объявлений, а атрибут на корне должен побеждать
+  системное предпочтение в обе стороны.
+*/
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --canvas: #f4f3f1;
+    --ink: #16171a;
+    --fog: #6b6e70;
+    --graphite: #eceae6;
+    --graphite-2: #e3e1db;
+    --hairline: rgba(22, 23, 26, 0.12);
+    --accent: #437414;
+    --accent-solid: #7bc72e;
+    --accent-deep: #2f5708;
+    --on-accent: #16171a;
+    --danger: #c2352b;
+  }
+}
+
+:root[data-theme="light"] {
+  --canvas: #f4f3f1;
+  --ink: #16171a;
+  --fog: #6b6e70;
+  --graphite: #eceae6;
+  --graphite-2: #e3e1db;
+  --hairline: rgba(22, 23, 26, 0.12);
+  --accent: #437414;
+  --accent-solid: #7bc72e;
+  --accent-deep: #2f5708;
+  --on-accent: #16171a;
+  --danger: #c2352b;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Авторский display:flex иначе перебивает атрибут hidden. */
+[hidden] { display: none !important; }
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.015em;
+  line-height: 1.5;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* --- оболочка: сайдбар слева, содержимое справа ------------------------- */
+
+.shell { display: flex; height: 100vh; }
+
+.sidebar {
+  flex: none;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 12px 16px;
+  border-right: 1px solid var(--hairline);
+  background: var(--graphite);
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 0 10px 16px;
+}
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+
+.nav-item {
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.015em;
+  color: var(--fog);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: color var(--press) var(--ease-out), background var(--press) var(--ease-out);
+}
+.nav-item:hover { color: var(--ink); background: var(--graphite-2); }
+.nav-item.on {
+  color: var(--ink);
+  background: var(--graphite-2);
+  font-weight: 500;
+}
+
+/* Проекты — подпункты под «Встречами», как ветки в боковом меню. */
+.nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
+.nav-sub .nav-item {
+  font-size: 13px;
+  padding: 6px 10px 6px 22px;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 12px 10px 0;
+  color: var(--fog);
+  font-size: 12px;
+  line-height: 1.35;
+  border-top: 1px solid var(--hairline);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 36px 32px 64px;
+}
+
+/* Кнопка быстрого возврата наверх. */
+.to-top {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity var(--press) var(--ease-out), transform var(--press) var(--ease-out);
+}
+.to-top:hover { opacity: 1; }
+.to-top:active { transform: scale(0.94); }
+
+/* Действие, которое нельзя отменить, — красным. */
+.danger-text {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.danger-text:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+/* --- запись ------------------------------------------------------------- */
+
+.record-zone {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+  height: 88px;
+  align-items: center;
+}
+
+.record {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--press) var(--ease-out), background var(--tap) var(--ease-out);
+}
+.record:hover { background: var(--accent-deep); }
+.record:active { transform: scale(0.94); }
+.record:disabled { opacity: 0.4; cursor: default; }
+
+.pulse {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-solid);
+  opacity: 0;
+  pointer-events: none;
+}
+.pulse.on { animation: pulse 1.4s ease-out infinite; }
+@keyframes pulse {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse.on { animation: none; opacity: 0.5; }
+}
+
+#wave {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 14px;
+}
+
+.result {
+  font-size: 17px;
+  margin-top: 24px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* --- кнопки-пилюли ------------------------------------------------------ */
+
+.pill-inset {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 100px;
+  padding: 10px 22px;
+  margin-top: 16px;
+  cursor: pointer;
+  transition: background var(--tap) var(--ease-out), transform var(--press) var(--ease-out);
+}
+.pill-inset:hover { background: var(--graphite); }
+.pill-inset:active { transform: scale(0.97); }
+.pill-inset.compact { padding: 7px 16px; font-size: 13px; margin: 0; }
+
+/* --- панель подготовки -------------------------------------------------- */
+
+.panel {
+  margin-top: 44px;
+  background: var(--graphite);
+  border-radius: 12px;
+  padding: 20px 16px;
+}
+
+.perm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.perm-text { flex: 1; }
+.perm-title { font-size: 15px; }
+.perm-done {
+  color: var(--fog);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.bullet {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-solid);
+  display: inline-block;
+}
+
+/* --- каталог моделей ---------------------------------------------------- */
+
+/* Фильтры — как пункты меню на сайте: подчеркивание у включенного. */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.filter-anchor { position: relative; }
+
+.filter-chip {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 4px 0 3px;
+  cursor: pointer;
+  transition: color var(--tap) var(--ease-out), border-color var(--tap) var(--ease-out);
+}
+.filter-chip:hover { color: var(--ink); }
+.filter-chip.on {
+  color: var(--ink);
+  border-bottom-color: var(--accent-solid);
+}
+
+/* Выпадающий список языков: их больше сотни, поэтому с поиском. */
+.lang-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 300px;
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.lang-panel .search { margin-top: 0; background: var(--canvas); }
+
+.lang-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.015em;
+  color: var(--ink);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+.lang-row:hover { background: var(--graphite); }
+.lang-row .bullet { flex: none; visibility: hidden; }
+.lang-row.chosen .bullet { visibility: visible; }
+.lang-row .lang-name { flex: 1; min-width: 0; }
+.lang-row .lang-count { color: var(--fog); font-size: 13px; }
+.lang-empty { color: var(--fog); font-size: 13px; padding: 8px; }
+
+/* Поле поиска с крестиком очистки. */
+.search-box { position: relative; }
+.search-box .search { padding-right: 34px; }
+
+.search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.search-clear:hover { color: var(--ink); background: var(--graphite); }
+
+.search {
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  outline: none;
+}
+.search::placeholder { color: var(--fog); }
+
+.model {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--hairline);
+}
+.model:first-of-type { border-top: none; }
+.model-text { flex: 1; min-width: 0; }
+.model-name {
+  font-size: 15px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.model-name .bullet { flex: none; }
+.model-meta { color: var(--fog); font-size: 13px; margin-top: 2px; }
+
+/* Ярлык рекомендованной модели: чем именно она хороша. */
+.model-tag {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 100px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.list-head { margin-top: 22px; }
+
+.show-all {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-top: 1px solid var(--hairline);
+  width: 100%;
+  text-align: left;
+  padding: 14px 0 4px;
+  cursor: pointer;
+}
+.show-all:hover { color: var(--ink); }
+.model-progress {
+  height: 3px;
+  background: var(--hairline);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.model-progress > div {
+  height: 100%;
+  background: var(--accent-solid);
+  transition: width 300ms ease;
+}
+.model-remove {
+  color: var(--fog);
+  font-size: 13px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px;
+}
+.model-remove:hover { color: var(--ink); }
+
+/* --- встречи ------------------------------------------------------------- */
+
+.record.small {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+
+.meet-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.spacer { flex: 1; }
+
+.meet-rec-hint { color: var(--fog); font-size: 14px; }
+
+.meet-rec-live { display: flex; align-items: center; gap: 12px; }
+.meet-timer {
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+#meetWave { display: block; width: 180px; height: 28px; }
+
+.filter-row.wrap { flex-wrap: wrap; row-gap: 6px; }
+
+.project-edit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.project-edit .search { flex: 1; margin-top: 0; }
+
+.formats { margin-top: 10px; }
+
+/* Строка встречи в списке — та же кость, что у модели в каталоге. */
+.meeting {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.meeting:first-of-type { border-top: none; }
+#meetingList { margin-top: 8px; }
+
+/* Галочка выбора: появляется по наведению, остаётся у выбранных. */
+.meet-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--press) var(--ease-out), background var(--press) var(--ease-out),
+    border-color var(--press) var(--ease-out);
+}
+.meeting:hover .meet-check,
+.meet-check.on,
+body.selecting .meet-check { opacity: 1; }
+.meet-check.on {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.meet-check.on::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 9px;
+  margin: 1px auto 0;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Три точки — меню строки. */
+.row-menu {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--press) var(--ease-out), color var(--press) var(--ease-out), background var(--press) var(--ease-out);
+}
+.meeting:hover .row-menu, .row-menu.open { opacity: 1; }
+.row-menu:hover, .row-menu.open { color: var(--ink); background: var(--graphite-2); }
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--graphite-2);
+  border-radius: 10px;
+}
+.bulk-count { font-size: 13px; font-weight: 500; }
+
+/* Меню строки открывается от трёх точек — вправо не уходит за край. */
+.row-menu-panel {
+  top: calc(100% + 4px);
+  left: auto;
+  right: 0;
+  width: 220px;
+}
+.row-menu-panel.above { top: auto; bottom: calc(100% + 4px); }
+.lang-row.danger {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+.lang-row.danger:hover { color: var(--ink); background: var(--graphite); }
+
+/* Полоса без процентов — бегущая, когда работа идет, а счета нет. */
+.model-progress.busy > div {
+  width: 30%;
+  animation: slide 1.2s ease-in-out infinite alternate;
+}
+@keyframes slide {
+  from { margin-left: 0; }
+  to { margin-left: 70%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .model-progress.busy > div { animation: none; width: 100%; opacity: 0.5; }
+}
+
+/* Меню форматов — та же панель, что у языков, но без поиска. */
+.lang-panel.menu { width: 200px; padding: 6px; }
+.lang-panel.menu .lang-row .bullet { display: none; }
+
+/* Перетаскивание файла: кнопка импорта на время превращается в поле. */
+.drop-target {
+  border-style: solid;
+  transition: border-color var(--tap) var(--ease-out), background var(--tap) var(--ease-out),
+    color var(--tap) var(--ease-out), padding var(--tap) var(--ease-out);
+}
+body.dropping .drop-target {
+  border-style: dashed;
+  border-color: var(--accent-solid);
+  color: var(--accent);
+  background: var(--graphite);
+  padding: 14px 22px;
+}
+
+/* --- деталь встречи ------------------------------------------------------ */
+
+.back {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fog);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.back:hover { color: var(--ink); }
+
+.meet-title { cursor: text; margin-top: 14px; }
+.title-input { margin-top: 14px; font-size: 20px; }
+
+.meet-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+/* Прижимается вправо и в своей строке, если кнопки перенеслись. */
+.push-right { margin-left: auto; }
+
+.meet-select {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--graphite);
+  border: 1px solid var(--hairline);
+  border-radius: 100px;
+  padding: 7px 12px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#meetSegments { margin-top: 20px; }
+
+/* Говорящие в своих цветах — палитра как на Android, по кругу на шестерых. */
+.speaker {
+  display: block;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  background: none;
+  border: none;
+  padding: 14px 0 2px;
+  cursor: pointer;
+}
+.speaker:hover { text-decoration: underline; }
+.speaker-0 { color: var(--accent); }
+.speaker-1 { color: #6aa9e0; }
+.speaker-2 { color: #d99a4e; }
+.speaker-3 { color: #b98ad6; }
+.speaker-4 { color: #4fbfa8; }
+.speaker-5 { color: #d97ea0; }
+
+.segment {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0;
+}
+.segment-clock {
+  flex: none;
+  width: 56px;
+  color: var(--fog);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+.segment-text {
+  font-size: 15px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* --- история диктовки ---------------------------------------------------- */
+
+.search-box.grow { flex: 1; }
+.filter-row .search-box .search { margin-top: 0; }
+
+.history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--hairline);
+}
+.history-item:first-of-type { border-top: none; }
+
+.history-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.history-when {
+  flex: none;
+  color: var(--fog);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding-top: 3px;
+}
+.history-remove {
+  flex: none;
+  color: var(--fog);
+  font-size: 15px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 7px;
+  cursor: pointer;
+  opacity: 0;
+}
+.history-item:hover .history-remove { opacity: 1; }
+.history-remove:hover { color: var(--danger); }
+
+/* --- имена говорящих ----------------------------------------------------- */
+
+.speakers-panel { margin-top: 22px; }
+
+.speaker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.speaker-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.speaker-row .search { flex: 1; margin-top: 0; }
+.speaker-share { color: var(--fog); font-size: 12px; white-space: nowrap; }
+
+.meet-select.wide { min-width: 220px; max-width: 280px; }
+
+/* Точки палитры говорящих в панели имён. */
+.speaker-bg-0 { background: var(--accent); }
+.speaker-bg-1 { background: #6aa9e0; }
+.speaker-bg-2 { background: #d99a4e; }
+.speaker-bg-3 { background: #b98ad6; }
+.speaker-bg-4 { background: #4fbfa8; }
+.speaker-bg-5 { background: #d97ea0; }
+
+/* Первая строка панели — без разделителя: над ней уже край панели. */
+.panel .perm:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* --- переключатели и активное состояние ---------------------------------- */
+
+/* Тумблер: зелёный — включено, серый — выключено. Цвет заметнее слова. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fog);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.toggle-track {
+  width: 38px;
+  height: 22px;
+  border-radius: 100px;
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  position: relative;
+  transition: background var(--tap) var(--ease-out), border-color var(--tap) var(--ease-out);
+}
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fog);
+  transition: transform var(--tap) var(--ease-out), background var(--tap) var(--ease-out);
+}
+.toggle.on { color: var(--accent); }
+.toggle.on .toggle-track {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.toggle.on .toggle-knob {
+  transform: translateX(16px);
+  background: var(--on-accent);
+}
+
+/* Выбранная модель — зелёной кнопкой, чтобы не искать точку глазами. */
+.pill-inset.active-mark {
+  color: var(--on-accent);
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  opacity: 1;
+}
+.pill-inset.active-mark:disabled { opacity: 1; cursor: default; }
+
+/* --- иконки строк -------------------------------------------------------- */
+
+.row-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--fog);
+}
+.perm-title-row { display: flex; align-items: center; gap: 10px; }
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.icon-button svg { width: 15px; height: 15px; }
+
+/* --- проекты в сайдбаре --------------------------------------------------- */
+
+.nav-item.drop-here {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent-solid) 22%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent-solid);
+}
+.nav-add { color: var(--fog); }
+
+.nav-input {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--accent-solid);
+  border-radius: 8px;
+  padding: 6px 10px 6px 22px;
+  margin: 0 0 2px;
+  outline: none;
+  width: 100%;
+}
+
+.meeting.dragging { opacity: 0.45; }
+
+/* Поле ссылки под кнопкой импорта. */
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.url-row .search { margin-top: 0; }
+
+/* Прервать долгую работу можно прямо из строки списка. */
+.row-cancel {
+  flex: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--fog);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 100px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.row-cancel:hover { color: var(--danger); border-color: var(--danger); }
+
+/* --- проекты как папки ---------------------------------------------------- */
+
+.nav-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-count { color: var(--fog); font-size: 11px; }
+
+.twisty {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--fog);
+  transition: transform var(--tap) var(--ease-out);
+}
+.twisty.open { transform: rotate(90deg); }
+
+.nav-meetings { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 4px; }
+.nav-meeting {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--fog);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px 5px 38px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-meeting:hover { color: var(--ink); background: var(--graphite-2); }
+.nav-meeting.on { color: var(--ink); background: var(--graphite-2); }
+.nav-empty { color: var(--fog); font-size: 11px; padding: 4px 10px 4px 38px; }
+
+.project-menu {
+  top: calc(100% + 2px);
+  left: 8px;
+  width: 190px;
+}
+
+/* Призрак перетаскиваемой записи следует за курсором. */
+.drag-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--graphite-2);
+  border: 1px solid var(--accent-solid);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+body.dragging-meeting { cursor: grabbing; }
+body.dragging-meeting * { cursor: grabbing !important; user-select: none; }
+
+/* --- о проекте ------------------------------------------------------------ */
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* --- вводный экран -------------------------------------------------------- */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--canvas) 82%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.intro-card {
+  width: min(560px, calc(100vw - 48px));
+  background: var(--graphite);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 28px 28px 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+
+.intro-body { min-height: 292px; }
+.intro-title { font-size: 21px; font-weight: 500; margin-top: 14px; }
+.intro-text { color: var(--fog); font-size: 14px; margin-top: 8px; }
+
+.intro-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.intro-dots { display: flex; gap: 6px; }
+.intro-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hairline);
+}
+.intro-dots span.on { background: var(--accent-solid); }
+
+/* Мини-макет вместо картинки: рисуется теми же токенами, что интерфейс,
+   поэтому не устаревает и живёт в обеих темах. */
+.shot {
+  height: 168px;
+  display: flex;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.shot-side {
+  width: 84px;
+  flex: none;
+  background: var(--graphite-2);
+  border-right: 1px solid var(--hairline);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shot-line {
+  height: 7px;
+  border-radius: 3px;
+  background: var(--hairline);
+}
+.shot-line.on { background: var(--accent-solid); }
+.shot-line.short { width: 60%; }
+.shot-main {
+  flex: 1;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shot-title { height: 11px; width: 46%; border-radius: 4px; background: var(--fog); }
+.shot-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+  align-self: center;
+  margin: 6px 0;
+}
+.shot-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 26px;
+  align-self: center;
+}
+.shot-wave i {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent-solid);
+  display: block;
+}
+.shot-row {
+  height: 9px;
+  border-radius: 3px;
+  background: var(--hairline);
+}
+.shot-row.wide { width: 88%; }
+.shot-row.mid { width: 64%; }
+.shot-pill {
+  height: 16px;
+  width: 74px;
+  border-radius: 100px;
+  border: 1px solid var(--hairline);
+}
+.shot-pill.filled { background: var(--accent-solid); border-color: var(--accent-solid); }
+.shot-tags { display: flex; gap: 6px; }
+
+
+/* Выбор темы: три состояния подряд, как сегменты. */
+.segments {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 100px;
+}
+.segment {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 100px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color var(--press) var(--ease-out), background var(--press) var(--ease-out);
+}
+.segment:hover { color: var(--ink); }
+.segment.on {
+  color: var(--on-accent);
+  background: var(--accent-solid);
+}
+
+/* Запись в сайдбаре ведёт себя как строка списка, а не как кнопка. */
+.nav-meeting { position: relative; }
+.nav-meetings .nav-input { padding-left: 38px; }
+
+/* Отчёт о проблеме. */
+.bug-text {
+  width: 100%;
+  margin-top: 14px;
+  resize: vertical;
+  font-size: 14px;
+  line-height: 1.45;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.bug-preview {
+  margin-top: 14px;
+  max-height: 260px;
+  overflow: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fog);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* --- находки поиска ------------------------------------------------------- */
+
+.hits { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.hit {
+  font-size: 12px;
+  color: var(--fog);
+  display: flex;
+  gap: 8px;
+  line-height: 1.45;
+}
+.hit-clock { flex: none; font-variant-numeric: tabular-nums; }
+.hit-more { font-size: 12px; color: var(--fog); opacity: 0.7; }
+
+mark {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent-solid) 34%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.find-box { margin-top: 14px; position: relative; }
+.find-count {
+  position: absolute;
+  right: 38px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--fog);
+  pointer-events: none;
+}
+.segment.current {
+  background: color-mix(in srgb, var(--accent-solid) 12%, transparent);
+  border-radius: 8px;
+  margin: 0 -10px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+
+/* --- то, что рисует браузер ----------------------------------------------- */
+/* Выделение, каретка, полосы прокрутки и кольцо фокуса по умолчанию не
+   принадлежат никакому дизайну. Красим их своими токенами. */
+
+::selection {
+  background: color-mix(in srgb, var(--accent-solid) 30%, transparent);
+  color: var(--ink);
+}
+
+input,
+textarea {
+  caret-color: var(--accent-solid);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.content::-webkit-scrollbar,
+.lang-list::-webkit-scrollbar,
+.bug-preview::-webkit-scrollbar {
+  width: 10px;
+}
+.content::-webkit-scrollbar-thumb,
+.lang-list::-webkit-scrollbar-thumb,
+.bug-preview::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 100px;
+}
+.content::-webkit-scrollbar-thumb:hover,
+.lang-list::-webkit-scrollbar-thumb:hover,
+.bug-preview::-webkit-scrollbar-thumb:hover {
+  background: var(--fog);
+  background-clip: padding-box;
+}
+.content::-webkit-scrollbar-track { background: transparent; }
+
+/* Кому движение мешает — тому его нет: правило действует на весь интерфейс,
+   а не только на пульс кнопки записи. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Иконки вместо глифов: один стиль обводки, размер по строке. */
+.row-menu svg { width: 16px; height: 16px; display: block; margin: auto; }
+.twisty svg { width: 12px; height: 12px; display: block; }
+.twisty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-remove svg { width: 15px; height: 15px; display: block; }
+.to-top svg { width: 17px; height: 17px; display: block; margin: auto; }
+.search-clear svg { width: 13px; height: 13px; display: block; margin: auto; }
+
+/* --- история: плеер и действия -------------------------------------------- */
+
+.history-body { flex: 1; min-width: 0; }
+.history-text {
+  font-size: 15px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.player-play {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: var(--ink);
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.player-play svg { width: 13px; height: 13px; display: block; margin: auto; }
+.player-play:hover { background: var(--graphite); }
+
+.player-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--hairline);
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.player-bar > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent-solid);
+}
+.player-time {
+  flex: none;
+  color: var(--fog);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Иконки видны всегда: появление по наведению залипало, когда список
+   перерисовывался под курсором. Приглушены, пока на строку не навели. */
+.history-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  opacity: 0.45;
+  transition: opacity var(--press) var(--ease-out);
+}
+.history-item:hover .history-actions { opacity: 1; }
+
+.icon-only {
+  width: 28px;
+  height: 28px;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+.icon-only svg { width: 15px; height: 15px; display: block; margin: auto; }
+.icon-only:hover { color: var(--ink); background: var(--graphite-2); }
+.icon-only.danger:hover { color: var(--danger); }
+.icon-only.armed {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+/* --- быстрый выбор модели в сайдбаре -------------------------------------- */
+
+.sidebar-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+.foot-status {
+  color: var(--fog);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 10px 0;
+}
+
+.model-switch { width: 100%; }
+
+.model-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--graphite-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: background var(--press) var(--ease-out);
+}
+.model-pick:hover { background: var(--graphite); }
+.model-pick .bullet { flex: none; }
+.model-pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.model-pick svg { flex: none; width: 12px; height: 12px; }
+
+/* Меню выбора раскрывается вверх — оно у самого низа окна. */
+.lang-panel.up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: 240px;
+}

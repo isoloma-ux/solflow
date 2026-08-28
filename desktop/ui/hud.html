@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    /* Пилюля внизу экрана: тёмная капсула с зелёной волной — в обеих темах
+       одинаковая, как элемент поверх чужих окон. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: transparent; overflow: hidden; }
+    body {
+      font-family: "Inter", -apple-system, sans-serif;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      height: 100vh;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    /* Пилюля раскрывается из центра: обрезка по бокам сходится к нулю,
+       поэтому содержимое не растягивается, как было бы при scaleX. */
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(28, 29, 32, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 100px;
+      padding: 8px 16px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      clip-path: inset(0 50% 0 50% round 100px);
+      opacity: 0;
+      transform: translateY(10px);
+      transition:
+        clip-path 280ms cubic-bezier(0.16, 0.9, 0.25, 1),
+        transform 280ms cubic-bezier(0.16, 0.9, 0.25, 1),
+        opacity 160ms ease;
+    }
+    body.open .pill {
+      clip-path: inset(0 0 0 0 round 100px);
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .pill:active { transform: translateY(0) scale(0.97); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pill { transition: opacity 120ms ease; transform: none; clip-path: none; }
+      body.open .pill { transform: none; }
+    }
+    #dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #7bc72e;
+      flex: none;
+    }
+    .rec #dot { animation: blink 1.2s ease-in-out infinite; }
+    @keyframes blink { 50% { opacity: 0.3; } }
+    #wave { display: block; width: 96px; height: 22px; }
+    #timer {
+      color: #ffffff;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      min-width: 40px;
+    }
+    #note { color: #999d9e; font-size: 13px; white-space: nowrap; }
+
+    /* Минимальный вид: пилюля сжимается до точки с пульсом. */
+    body.minimal #wave,
+    body.minimal #timer { display: none; }
+    body.minimal .pill { padding: 10px; gap: 0; }
+    body.minimal #dot { width: 10px; height: 10px; }
+  </style>
+</head>
+<body>
+  <div class="pill" id="pill" title="Нажмите, чтобы остановить">
+    <span id="dot"></span>
+    <canvas id="wave" width="192" height="44"></canvas>
+    <span id="timer">0:00</span>
+    <span id="note" hidden></span>
+  </div>
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    const { listen } = window.__TAURI__.event;
+
+    const BARS = 24;
+    const levels = new Array(BARS).fill(0);
+    const wave = document.getElementById("wave");
+    const ctx = wave.getContext("2d");
+    const timer = document.getElementById("timer");
+    const note = document.getElementById("note");
+    const pill = document.getElementById("pill");
+
+    let startedAt = null;
+
+    function draw() {
+      const w = wave.width, h = wave.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#7bc72e";
+      const bar = w / (BARS * 2 - 1);
+      const minH = h * 0.12;
+      for (let i = 0; i < BARS; i++) {
+        const bh = Math.max(minH, minH + (h - minH) * levels[i]);
+        ctx.beginPath();
+        ctx.roundRect(i * bar * 2, (h - bh) / 2, bar, bh, bar / 2);
+        ctx.fill();
+      }
+    }
+
+    setInterval(() => {
+      if (startedAt !== null) {
+        const s = Math.floor((Date.now() - startedAt) / 1000);
+        timer.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      }
+    }, 250);
+
+    listen("solflow-level", (e) => {
+      levels.shift();
+      levels.push(e.payload);
+      draw();
+    });
+
+    // Панель уже на экране, когда приходит первое состояние: раскрываем
+    // пилюлю на следующем кадре, иначе переход не с чего начинать.
+    function openPill() {
+      // Класс ставится не в этом кадре, иначе переходу не с чего начинать.
+      // Таймер дублирует кадр: пока панель скрыта, кадры могут не идти.
+      requestAnimationFrame(() => document.body.classList.add("open"));
+      setTimeout(() => document.body.classList.add("open"), 30);
+    }
+
+    // «Минимальный» вид — только точка: волна и таймер прячутся.
+    listen("solflow-hud-style", (e) => {
+      document.body.classList.toggle("minimal", e.payload === "minimal");
+    });
+
+    listen("solflow-hud-open", openPill);
+    listen("solflow-hud-close", () => document.body.classList.remove("open"));
+
+    listen("solflow-state", (e) => {
+      const phase = e.payload.phase;
+      if (phase === "recording") {
+        openPill();
+        startedAt = startedAt ?? Date.now();
+        document.body.classList.add("rec");
+        wave.hidden = false;
+        timer.hidden = false;
+        note.hidden = true;
+      } else if (phase === "transcribing") {
+        startedAt = null;
+        document.body.classList.remove("rec");
+        wave.hidden = true;
+        timer.hidden = true;
+        note.textContent = "Распознаю";
+        note.hidden = false;
+      } else {
+        startedAt = null;
+        document.body.classList.remove("rec");
+      }
+    });
+
+    // Тап по пилюле — то же, что второе нажатие хоткея.
+    pill.addEventListener("click", () => invoke("hud_stop"));
+    draw();
+  </script>
+</body>
+</html>

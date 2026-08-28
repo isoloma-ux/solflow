@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Редполитика проекта: sentence case везде, буква «е» вместо «ё»,
+  без эмодзи и восклицательных заголовков.
+-->
+<resources>
+    <string name="app_name">Sol Flow</string>
+
+    <!-- Экран диктовки -->
+    <string name="eyebrow_dictation">Диктовка</string>
+    <string name="starting">Запуск</string>
+    <string name="no_model">Модель не выбрана — откройте каталог</string>
+    <string name="loading_model">Загружаю модель в память</string>
+    <string name="model_failed">Модель не загрузилась</string>
+    <string name="ready">Готово. Нажмите и говорите</string>
+    <string name="record">Записать</string>
+    <string name="stop">Остановить</string>
+    <string name="recording">Идет запись</string>
+    <string name="transcribing">Распознаю</string>
+    <string name="mic_failed">Не удалось открыть микрофон</string>
+    <string name="need_mic">Нужен доступ к микрофону</string>
+    <string name="too_short">Слишком коротко</string>
+    <string name="nothing_heard">Ничего не распознано</string>
+    <string name="stats">%1$.1f с речи · %2$.1f с на распознавание · %3$.1fx realtime</string>
+    <string name="long_warning">%1$.0f с — длиннее окна модели в 25 с, точность могла упасть</string>
+    <string name="copy">Скопировать</string>
+    <string name="copied">Скопировано в буфер обмена</string>
+    <string name="models">Модели</string>
+
+    <!-- Каталог моделей -->
+    <string name="eyebrow_catalog">Каталог</string>
+    <string name="catalog_title">Модели распознавания</string>
+    <string name="catalog_hint">Зеленым помечено то, что уже на телефоне. Нажмите на модель, чтобы выбрать версию, скачать или удалить.</string>
+    <string name="filter_all_languages">Все языки</string>
+    <string name="filter_language">%1$s</string>
+    <string name="filter_downloaded">Скачанные</string>
+    <string name="choose_language">Язык</string>
+    <string name="language_search">Начните вводить язык</string>
+    <string name="language_any">Все языки</string>
+    <string name="language_row">%1$s · %2$d</string>
+    <string name="language_nothing">Ничего не нашлось</string>
+    <string name="model_meta_multi">%1$d языков · %2$s</string>
+    <string name="model_meta_one">%1$s · %2$s</string>
+    <string name="active">Активна</string>
+    <string name="downloaded">Скачана</string>
+    <string name="choose_quant">Выберите версию</string>
+    <string name="quant_download">Скачать</string>
+    <string name="quant_delete">Удалить</string>
+    <string name="quant_use">Выбрать</string>
+    <string name="versions_here">Версии на телефоне</string>
+    <string name="version_chip">%1$s · %2$s</string>
+    <string name="quant_active_note">Используется сейчас</string>
+    <string name="quant_downloaded_note">На телефоне. Нажмите, чтобы использовать</string>
+    <string name="quant_progress_note">Скачиваю: %1$d%%</string>
+    <string name="quant_light">Занимает меньше места</string>
+    <string name="quant_middle">Промежуточный вариант</string>
+    <string name="quant_fastest">Самая быстрая на этом телефоне, но тяжелее</string>
+    <string name="close">Закрыть</string>
+    <string name="quant_row">%1$s · %2$s</string>
+    <string name="downloading">Скачиваю %1$s — %2$d%%</string>
+    <string name="download_failed">Не удалось скачать: %1$s</string>
+    <string name="download_done">%1$s готова к работе</string>
+    <string name="use_model">Сделать активной</string>
+    <string name="delete_model">Удалить</string>
+    <string name="cancel">Отмена</string>
+    <string name="deleted">Модель удалена</string>
+    <string name="empty_list">Здесь пока пусто</string>
+
+    <!-- Плавающая кнопка -->
+    <string name="accessibility_description">Позволяет вставлять надиктованный текст прямо в поле ввода того приложения, где вы сейчас находитесь. Ничего не читает и не сохраняет.</string>
+    <string name="channel_name">Плавающая кнопка</string>
+    <string name="bubble_running">Диктовка наготове</string>
+    <string name="bubble_running_hint">Нажмите на кнопку у поля ввода и говорите</string>
+    <string name="turn_off">Выключить</string>
+    <string name="snooze_hint">Отпустите, чтобы убрать на 10 минут</string>
+    <string name="snoozed">Кнопка вернется через %1$d минут</string>
+    <string name="copied_no_field">Поля ввода нет — текст в буфере обмена</string>
+    <string name="copied_no_accessibility">Специальные возможности выключены — текст в буфере обмена</string>
+    <string name="bubble_running_degraded">Текст пойдет в буфер обмена, а не в поле</string>
+    <string name="degraded_warning">Специальные возможности выключены, поэтому текст попадает в буфер обмена, а не в поле ввода. Android отключает их при каждом обновлении приложения — включите заново.</string>
+
+    <!-- Экран настройки -->
+    <string name="eyebrow_setup">Подготовка</string>
+    <string name="bubble_title">Плавающая кнопка</string>
+    <string name="bubble_subtitle">Появляется у поля ввода в любом приложении. Надиктованный текст вставляется прямо туда.</string>
+    <string name="bubble_enable">Включить</string>
+    <string name="bubble_disable">Выключить</string>
+    <string name="perm_mic">Микрофон</string>
+    <string name="perm_mic_hint">Нужен, чтобы записывать речь</string>
+    <string name="perm_overlay">Показ поверх других приложений</string>
+    <string name="perm_overlay_hint">Нужен, чтобы кнопка была видна везде</string>
+    <string name="perm_accessibility">Специальные возможности</string>
+    <string name="perm_accessibility_hint">Нужны, чтобы вставлять текст в поле ввода. Без них текст попадет в буфер обмена</string>
+    <string name="perm_notifications">Уведомления</string>
+    <string name="perm_notifications_hint">Android требует показывать уведомление, пока кнопка работает</string>
+    <string name="perm_battery">Работа без ограничений</string>
+    <string name="perm_battery_hint">Без этого система через какое-то время выгружает приложение, и кнопка пропадает</string>
+    <string name="perm_autostart">Автозапуск</string>
+    <string name="perm_autostart_hint">%1$s запускает приложение после перезагрузки только с этим разрешением. Состояние система не сообщает — проверьте вручную</string>
+    <string name="this_phone">Ваш смартфон</string>
+    <string name="perm_open">Открыть</string>
+    <string name="accessibility_lost">Специальные возможности выключились</string>
+    <string name="accessibility_lost_hint">Текст пойдет в буфер обмена. Нажмите, чтобы включить заново</string>
+    <string name="perm_grant">Выдать</string>
+    <string name="perm_done">Выдано</string>
+    <string name="setting_snap">Притягивать кнопку к краю экрана</string>
+    <string name="setting_room">Режим комнаты</string>
+    <string name="setting_room_hint">Микрофон перестанет давить дальние голоса. Нужен, чтобы записать разговор, а не только себя</string>
+    <string name="model_search">Поиск по названию модели</string>
+    <string name="download_cancel">Отмена</string>
+    <string name="channel_downloads">Загрузка моделей</string>
+    <string name="download_ready">Готова к работе</string>
+    <string name="downloading_many">Скачиваю моделей: %1$d</string>
+    <string name="download_cancelled">Загрузка отменена</string>
+    <string name="download_blocked">Не удалось скачать. Похоже, Hugging Face недоступен у вашего провайдера. Версия %1$s есть на запасном источнике — попробуйте ее или включите VPN</string>
+    <string name="mirror_note">Есть на запасном источнике, качается без VPN</string>
+    <string name="perm_all_done">Все разрешения выданы. Нажмите, чтобы проверить</string>
+
+    <!-- Встречи -->
+    <string name="tab_meetings">Встречи</string>
+    <string name="meeting_idle">Запись идет в файл, длинные встречи не страшны. Расшифровка начнется после остановки</string>
+    <string name="meeting_record">Записать встречу</string>
+    <string name="meeting_stop">Остановить запись</string>
+    <string name="meeting_import">Загрузить аудио или видео</string>
+    <string name="meeting_link">Расшифровать по ссылке</string>
+    <string name="link_dialog_title">Ссылка на запись</string>
+    <string name="link_dialog_message">Прямая ссылка на файл или публичная ссылка Яндекс.Диска</string>
+    <string name="link_hint">https://</string>
+    <string name="link_go">Расшифровать</string>
+    <string name="link_not_url">Это не похоже на ссылку</string>
+    <string name="link_unsupported_host">YouTube, VK и Rutube отдают видео только через свои протоколы — на телефоне так не выйдет. Скачайте файл и поделитесь им в Sol Flow</string>
+    <string name="link_started">Качаю по ссылке</string>
+    <string name="meetings_empty">Тут появятся записи встреч</string>
+    <string name="meetings_empty_hint">Нажмите на кнопку с микрофоном\nили загрузите готовый файл</string>
+    <string name="meeting_default_title">Встреча %1$s</string>
+    <string name="meeting_imported_title">Импорт %1$s</string>
+    <string name="duration_hours">%1$d ч %2$d мин</string>
+    <string name="duration_minutes">%1$d мин</string>
+    <string name="duration_seconds">%1$d с</string>
+    <string name="meeting_state_recording">Идет запись</string>
+    <string name="meeting_state_fetching">Качаю по ссылке — %1$d%%</string>
+    <string name="meeting_state_importing">Читаю файл — %1$d%%</string>
+    <string name="meeting_state_transcribing">Расшифровываю — %1$d%%</string>
+    <string name="meeting_state_downloading">Скачиваю модель разделения — %1$d%%</string>
+    <string name="meeting_state_diarizing">Разделяю говорящих — %1$d%%</string>
+    <string name="meeting_state_done">Расшифрована</string>
+    <string name="meeting_state_done_speakers">Расшифрована · говорящих: %1$d</string>
+    <string name="meeting_state_recorded">Записана, ждет расшифровки</string>
+    <string name="meeting_state_failed">Расшифровка не удалась</string>
+    <string name="meeting_back">← Назад</string>
+    <string name="meeting_meta">%1$s · %2$s</string>
+    <string name="meeting_transcribe">Расшифровать</string>
+    <string name="meeting_delete">Удалить</string>
+    <string name="meeting_delete_confirm">Удалить встречу вместе с записью и расшифровкой?</string>
+    <string name="meeting_rename_title">Название встречи</string>
+    <string name="save">Сохранить</string>
+    <string name="export_txt">txt</string>
+    <string name="export_md">md</string>
+    <string name="export_pdf">PDF</string>
+    <string name="export_doc">doc</string>
+    <string name="export_done">Сохранено в Загрузки: %1$s</string>
+    <string name="export_failed">Не удалось сохранить файл</string>
+    <string name="channel_meetings">Запись встреч</string>
+    <string name="meeting_recording_notif">Идет запись встречи</string>
+    <string name="meeting_transcribing_notif">Расшифровываю встречу</string>
+    <string name="meeting_done_notif">Расшифровка готова</string>
+    <string name="meeting_import_failed">Не удалось прочитать аудиофайл</string>
+    <string name="meeting_diarize">Разделить говорящих</string>
+    <string name="diarize_dialog_title">Сколько человек говорило?</string>
+    <string name="diarize_download_hint">При первом запуске скачается модель, 27 МБ</string>
+    <string name="export_open">Открыть</string>
+    <string name="diarize_auto">Определить автоматически</string>
+    <string name="diarize_two">Двое</string>
+    <string name="diarize_three">Трое</string>
+    <string name="diarize_four">Четверо</string>
+    <string name="diarize_five">Пятеро</string>
+    <string name="speaker_label">Говорящий %1$d</string>
+    <string name="speaker_rename_title">Имя говорящего</string>
+    <string name="speaker_rename_hint">Как зовут этого человека</string>
+    <string name="meeting_delete_cd">Удалить встречу</string>
+    <string name="search_clear_cd">Очистить поиск</string>
+    <string name="diarize_failed">Не удалось разделить говорящих</string>
+    <plurals name="diarize_done_notif">
+        <item quantity="one">Найден %d говорящий</item>
+        <item quantity="few">Найдено %d говорящих</item>
+        <item quantity="many">Найдено %d говорящих</item>
+        <item quantity="other">Найдено %d говорящих</item>
+    </plurals>
+
+    <!-- История -->
+    <string name="tab_dictation">Диктовка</string>
+    <string name="tab_history">История</string>
+    <string name="tab_models">Модели</string>
+    <string name="today">Сегодня</string>
+    <string name="yesterday">Вчера</string>
+    <string name="history_empty">Тут появятся ваши расшифровки</string>
+    <string name="history_empty_hint">Все, что вы надиктуете,\nсохраняется сюда по дням</string>
+    <string name="history_clear">Очистить историю</string>
+    <string name="back">Назад</string>
+
+    <!-- ===== Настройки ================================================= -->
+
+    <string name="tab_settings">Настройки</string>
+    <string name="menu_open">Меню</string>
+    <string name="drawer_projects">Проекты</string>
+    <string name="drawer_app">Приложение</string>
+    <string name="settings_title">Как приложение себя ведет</string>
+    <string name="setting_snap_hint">Кнопка сама липнет к ближайшему боку, а не остается там, где отпустили</string>
+
+    <string name="group_look">Оформление</string>
+    <string name="set_theme">Тема</string>
+    <string name="set_theme_hint">Обычно как в системе, но можно закрепить</string>
+    <string name="theme_system">Как в системе</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Темная</string>
+
+    <string name="group_sound">Звук и микрофон</string>
+    <string name="set_mic">Микрофон</string>
+    <string name="set_mic_hint">С наушниками система выбирает их микрофон — здесь можно закрепить нужный</string>
+    <string name="mic_system">Системный</string>
+    <string name="mic_missing">Отключен</string>
+    <string name="mic_builtin">Встроенный</string>
+    <string name="mic_bluetooth">Bluetooth</string>
+    <string name="mic_wired">Проводная гарнитура</string>
+    <string name="mic_usb">USB</string>
+    <string name="mic_other">Другой</string>
+    <string name="set_start_sound">Звук в начале записи</string>
+    <string name="set_start_sound_hint">Короткий сигнал, чтобы не гадать, слышит ли</string>
+    <string name="set_mute">Глушить звук на время записи</string>
+    <string name="set_mute_hint">Музыка из динамика не попадет в микрофон</string>
+
+    <string name="group_dictation">Диктовка</string>
+    <string name="set_clipboard">Буфер обмена</string>
+    <string name="set_clipboard_hint">Вставка идет через буфер — что с ним делать после</string>
+    <string name="set_clipboard_restore">Вернуть прежний</string>
+    <string name="set_clipboard_keep">Оставить текст</string>
+    <string name="set_submit">Отправлять после вставки</string>
+    <string name="set_submit_hint">Нажать ввод — сообщение уйдет само. Работает с Android 11</string>
+    <string name="set_fillers">Убирать слова-паразиты</string>
+    <string name="set_fillers_hint">«Типа», «как бы», «короче» — мычание убирается всегда</string>
+
+    <string name="model_pick">Модель распознавания</string>
+    <string name="model_pick_empty">Модель не выбрана ▾</string>
+    <string name="model_pick_empty_hint">Ни одна модель еще не скачана</string>
+    <string name="model_pick_hint">Другие модели — на вкладке «Модели»</string>
+
+    <string name="group_model">Модель и память</string>
+    <string name="set_unload">Держать модель в памяти</string>
+    <string name="set_unload_hint">Загруженная отвечает мгновенно, но занимает память</string>
+    <string name="unload_never">Всегда</string>
+    <string name="unload_hour">Час</string>
+    <string name="unload_min15">15 минут</string>
+    <string name="unload_min10">10 минут</string>
+    <string name="unload_min5">5 минут</string>
+    <string name="unload_min2">2 минуты</string>
+    <string name="unload_now">Выгружать сразу</string>
+
+    <string name="group_history">История диктовок</string>
+    <string name="set_history_limit">Сколько диктовок хранить</string>
+    <string name="set_history_limit_hint">Старые уходят по мере появления новых</string>
+    <string name="set_history_retention">Срок хранения</string>
+    <string name="set_history_retention_hint">Когда чистить историю, даже если места хватает</string>
+    <string name="retention_forever">Без срока</string>
+    <string name="retention_days3">Три дня</string>
+    <string name="retention_weeks2">Две недели</string>
+    <string name="retention_months3">Три месяца</string>
+    <string name="retention_never">Не хранить</string>
+    <string name="set_keep_audio">Хранить звук диктовок</string>
+    <string name="set_keep_audio_hint">Без него история останется только текстом. Минута — около двух мегабайт</string>
+
+    <string name="group_about">О приложении</string>
+
+    <!-- ===== История со звуком ========================================= -->
+
+    <string name="history_play">Прослушать</string>
+    <string name="history_pause">Пауза</string>
+    <string name="history_retry">Расшифровать заново</string>
+    <string name="history_delete">Удалить запись</string>
+    <string name="history_retrying">Расшифровываю заново…</string>
+    <string name="history_retried">Готово: %1$s</string>
+    <string name="history_no_audio">Звук этой диктовки не сохранен</string>
+    <string name="history_copied">Текст скопирован</string>
+    <string name="history_seconds">%1$.0f с</string>
+
+    <!-- ===== Встречи: проекты, поиск, пачки ============================ -->
+
+    <string name="project_all">Все встречи</string>
+    <string name="project_none">Без проекта</string>
+    <string name="project_new">Новый проект…</string>
+    <string name="project_new_title">Новый проект</string>
+    <string name="project_pick">Проект</string>
+    <string name="project_name_hint">Название проекта</string>
+    <string name="project_rename">Переименовать проект</string>
+    <string name="project_delete">Удалить проект</string>
+    <string name="project_delete_message">Встречи останутся, они просто выйдут из проекта</string>
+    <string name="meeting_search_hint">Поиск по расшифровкам</string>
+    <string name="search_nothing">Ничего не нашлось</string>
+    <string name="search_hits">Нашлось: %1$d</string>
+    <string name="search_more">и еще %1$d</string>
+    <string name="meeting_find_hint">Найти в расшифровке</string>
+    <string name="find_next">Следующее совпадение</string>
+    <string name="find_count">Совпадений: %1$d</string>
+    <string name="find_position">%1$d из %2$d</string>
+    <string name="selected_count">Выбрано: %1$d</string>
+    <string name="select_cancel">Отменить выбор</string>
+    <string name="selection_delete">Удалить выбранные</string>
+    <string name="selection_delete_message">Встречи уйдут вместе с записями и расшифровками. Выбрано: %1$d</string>
+    <string name="selection_transcribe">Расшифровать выбранные</string>
+    <string name="selection_project">В проект…</string>
+    <string name="selection_hint">Долгое нажатие — выбрать несколько</string>
+
+    <!-- ===== О проекте и вводный экран ================================= -->
+
+    <string name="about_title">О проекте</string>
+    <string name="about_hint">Кто это делает, из чего собрано, где новая версия</string>
+    <string name="about_pitch">Голос превращается в текст прямо на телефоне. Ничего не уходит в интернет: ни записи встреч, ни диктовки, ни имена людей.</string>
+    <string name="about_author_kicker">Кто это делает</string>
+    <string name="about_author">Иван Соломин</string>
+    <string name="about_author_text">Директор по маркетингу, не разработчик. Пишу эти приложения, потому что хочу, чтобы людям вокруг было удобнее: расшифровка встреч не должна стоить денег, требовать облака и отдавать чужим серверам голоса коллег.</string>
+    <string name="link_site">Сайт</string>
+    <string name="link_telegram">Телеграм</string>
+    <string name="link_youtube">YouTube</string>
+    <string name="link_mail">Почта</string>
+    <string name="link_engine">Движок распознавания</string>
+    <string name="link_failed">Не нашлось, чем открыть ссылку</string>
+    <string name="about_version_kicker">Версия</string>
+    <string name="about_version">Sol Flow %1$s</string>
+    <string name="update_hint">Проверить, вышла ли новая</string>
+    <string name="update_check">Проверить</string>
+    <string name="update_checking">Смотрю…</string>
+    <string name="update_failed">Не удалось спросить — нет сети или выпусков еще нет</string>
+    <string name="update_current">У вас последняя версия</string>
+    <string name="update_available">Вышла %1$s — открываю страницу загрузки</string>
+    <string name="about_stack_kicker">Как это устроено</string>
+    <string name="about_stack">Распознавание — transcribe.cpp с моделями GigaAM и Whisper, разделение голосов — sherpa-onnx. Открытые проекты, за которые спасибо их авторам.</string>
+    <string name="about_bug_kicker">Если что-то сломалось</string>
+    <string name="report_title">Сообщить о проблеме</string>
+    <string name="report_hint">Опишите, что случилось. К письму приложатся версия и сведения о телефоне — без них починить трудно. Никуда само ничего не уходит: письмо откроется в вашей почте, и вы решите, отправлять ли.</string>
+    <string name="report_placeholder">Что вы делали и что пошло не так</string>
+    <string name="report_send">Написать письмо</string>
+    <string name="report_copy">Скопировать отчет</string>
+    <string name="report_copied">Отчет в буфере обмена</string>
+    <string name="report_subject">Sol Flow для Android — проблема</string>
+    <string name="report_header">Что случилось:</string>
+    <string name="report_no_description">(описание не заполнено)</string>
+    <string name="yes">да</string>
+    <string name="no">нет</string>
+
+    <string name="intro_step">Шаг %1$d из %2$d</string>
+    <string name="intro_next">Дальше</string>
+    <string name="intro_skip">Пропустить</string>
+    <string name="intro_start">Начать</string>
+    <string name="intro_again">Показать вводный экран заново</string>
+    <string name="intro1_title">Голос становится текстом на вашем телефоне</string>
+    <string name="intro1_text">Ничего не уходит в интернет: ни диктовки, ни записи встреч. Модель распознавания лежит на телефоне и работает без сети.</string>
+    <string name="intro2_title">Диктуйте в любое приложение</string>
+    <string name="intro2_text">Плавающая кнопка приходит вместе с клавиатурой. Тап — запись пошла, второй — текст встал в поле. Или зажмите, скажите и отпустите.</string>
+    <string name="intro3_title">Встречи: запись, расшифровка, говорящие</string>
+    <string name="intro3_text">Пишите встречу часами или принесите готовый файл. Приложение разложит речь по времени и разделит голоса, а имена подставит в текст.</string>
+    <string name="intro4_title">Проекты, поиск и экспорт</string>
+    <string name="intro4_text">Встречи раскладываются по проектам, поиск ищет по всем расшифровкам. Готовое отдается в txt, Markdown, Word и PDF.</string>
+
+</resources>

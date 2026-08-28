@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Токены движения. Три длительности на всё приложение — разнобой длительностей
+  выглядит неряшливо, а один общий темп читается как характер.
+-->
+<resources>
+    <integer name="anim_fast">120</integer>
+    <integer name="anim_base">200</integer>
+    <integer name="anim_slow">300</integer>
+</resources>

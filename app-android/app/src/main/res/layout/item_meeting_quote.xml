@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Одно найденное место: время реплики и текст вокруг совпадения. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/quoteTime"
+        style="@style/Text.Muted"
+        android:layout_width="52dp"
+        android:layout_height="wrap_content"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/quoteText"
+        style="@style/Text.Body"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:maxLines="3"
+        android:ellipsize="end"
+        android:textSize="14sp" />
+</LinearLayout>

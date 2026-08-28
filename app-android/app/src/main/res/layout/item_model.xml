@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_card"
+    android:padding="18dp"
+    android:layout_marginBottom="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:stateListAnimator="@animator/press_scale_card">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <View
+            android:id="@+id/bullet"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_bullet"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/name"
+            style="@style/Text.Body"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/inter_medium" />
+
+        <TextView
+            android:id="@+id/state"
+            style="@style/Text.Eyebrow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/description"
+        style="@style/Text.Muted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/meta"
+        style="@style/Text.Muted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="13sp" />
+
+    <!--
+      Скачанные версии этой модели, переключаются тапом. Раньше карточка
+      никак не показывала, что версий несколько и между ними можно выбирать —
+      это было видно только внутри окна загрузки.
+    -->
+    <TextView
+        android:id="@+id/versionsLabel"
+        style="@style/Text.Eyebrow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:visibility="gone"
+        android:text="@string/versions_here" />
+
+    <LinearLayout
+        android:id="@+id/versions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:orientation="horizontal"
+        android:visibility="gone" />
+
+</LinearLayout>

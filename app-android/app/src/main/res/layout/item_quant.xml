@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Строка версии модели: слева пометка и название, справа действие.
+  Кнопка меняется со «Скачать» на «Удалить», когда файл уже на телефоне.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:stateListAnimator="@animator/press_scale_card">
+
+    <View
+        android:id="@+id/bullet"
+        android:layout_width="6dp"
+        android:layout_height="6dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/bg_bullet"
+        android:visibility="invisible" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/quant"
+            style="@style/Text.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/note"
+            style="@style/Text.Muted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="13sp" />
+
+        <!-- Полоса загрузки: процентов в подписи мало, нужен видимый прогресс. -->
+        <ProgressBar
+            android:id="@+id/quantProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginTop="8dp"
+            android:max="100"
+            android:progressTint="@color/accent_solid"
+            android:progressBackgroundTint="@color/hairline"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/action"
+        style="@style/Pill.Inset"
+        android:layout_width="wrap_content"
+        android:layout_height="38dp"
+        android:layout_marginStart="12dp"
+        android:minWidth="0dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:textSize="14sp" />
+
+</LinearLayout>

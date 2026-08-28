@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Строка таймлайна: метка времени слева, реплика справа. Без карточек —
+     сплошной текст читается как документ, а не как чат. Заголовок
+     говорящего появляется после диаризации при смене голоса, тонкая
+     полоска слева держит цвет говорящего на всей его реплике. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/segmentSpeaker"
+        style="@style/Text.Body"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minHeight="40dp"
+        android:gravity="center_vertical"
+        android:fontFamily="@font/inter_medium"
+        android:textSize="14sp"
+        android:paddingEnd="16dp"
+        android:foreground="?attr/selectableItemBackground"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="14dp">
+
+        <View
+            android:id="@+id/segmentStripe"
+            android:layout_width="3dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:background="@color/hairline"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/segmentTime"
+            style="@style/Text.Muted"
+            android:layout_width="52dp"
+            android:layout_height="wrap_content"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/segmentText"
+            style="@style/Text.Body"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textIsSelectable="true" />
+    </LinearLayout>
+
+</LinearLayout>

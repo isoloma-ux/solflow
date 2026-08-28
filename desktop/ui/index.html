@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sol Flow</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <p class="brand">Sol Flow</p>
+
+      <nav class="nav">
+        <button class="nav-item on" data-page="dictation">Диктовка</button>
+        <button class="nav-item" data-page="history">История</button>
+
+        <button class="nav-item" data-page="meetings">Встречи</button>
+        <div class="nav-sub" id="navProjects"></div>
+
+        <button class="nav-item" data-page="models">Модели</button>
+        <button class="nav-item" data-page="settings">Настройки</button>
+        <button class="nav-item" data-page="about">О проекте</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="filter-anchor model-switch">
+          <button class="model-pick" id="modelPick" title="Сменить модель">
+            <span class="bullet"></span>
+            <span class="model-pick-name" id="modelPickName">Модель</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 15l5-5 5 5"/>
+            </svg>
+          </button>
+          <div id="modelPickMenu" class="lang-panel menu up" hidden></div>
+        </div>
+        <p class="foot-status" id="sidebarStatus">Запуск</p>
+      </div>
+    </aside>
+
+    <div class="content" id="content">
+      <!-- Диктовка -->
+      <main class="page" id="pageDictation">
+        <p class="kicker">Диктовка</p>
+        <h1 id="modelName">Sol Flow</h1>
+        <p class="muted" id="status">Запуск</p>
+
+        <div class="record-zone">
+          <div class="pulse" id="pulse"></div>
+          <button class="record" id="record" aria-label="Записать" disabled>
+            <svg id="iconMic" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+              <path fill="currentColor" d="M12,14c1.66,0 3,-1.34 3,-3V5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17,11c0,2.76 -2.24,5 -5,5s-5,-2.24 -5,-5H5c0,3.53 2.61,6.43 6,6.92V21h2v-3.08c3.39,-0.49 6,-3.39 6,-6.92h-2z"/>
+            </svg>
+            <svg id="iconStop" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" hidden>
+              <rect x="8" y="8" width="8" height="8" rx="1.5" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <canvas id="wave" width="640" height="72" hidden></canvas>
+
+        <p id="result" class="result" hidden></p>
+        <button id="copy" class="pill-inset" hidden>Скопировать</button>
+
+        <section class="panel">
+          <p class="kicker">Как это работает</p>
+          <h2>Диктовка в любое приложение</h2>
+          <p class="muted small">
+            Нажмите <span class="hotkey" id="hotkeyLabel">⌥ Пробел</span> в любом
+            приложении: быстрое нажатие — запись пошла, второе — текст вставился
+            в активное поле. Или зажмите, говорите и отпустите.
+          </p>
+        </section>
+      </main>
+
+      <!-- История -->
+      <main class="page" id="pageHistory" hidden>
+        <p class="kicker">История</p>
+        <h1>Что вы надиктовали</h1>
+        <p class="muted" id="historyHint">
+          Хранятся последние триста расшифровок. Нажмите на текст, чтобы
+          скопировать
+        </p>
+
+        <div class="filter-row">
+          <div class="search-box grow">
+            <input id="historySearch" class="search" type="text"
+                   placeholder="Поиск по тексту" />
+            <button id="historySearchClear" class="search-clear"
+                    aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+          </div>
+          <button class="danger-text icon-button" id="historyClear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/>
+            </svg>
+            <span id="historyClearLabel">Очистить историю</span>
+          </button>
+        </div>
+
+        <div id="historyList"></div>
+        <p class="muted small" id="historyEmpty" hidden>
+          Пока пусто. Продиктуйте что-нибудь — текст появится здесь
+        </p>
+      </main>
+
+      <!-- Встречи -->
+      <main class="page" id="pageMeetings" hidden>
+        <div id="meetHome">
+          <p class="kicker">Встречи</p>
+          <h1 id="meetingsTitle">Записи и расшифровки</h1>
+          <p class="muted" id="meetStatus">
+            Запись уходит в файл на диске, расшифровка — на этом Mac.
+            Файл можно перетащить в окно
+          </p>
+
+          <div class="meet-controls">
+            <button class="record small" id="meetRecord" aria-label="Записать встречу">
+              <svg id="meetIconMic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                <path fill="currentColor" d="M12,14c1.66,0 3,-1.34 3,-3V5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17,11c0,2.76 -2.24,5 -5,5s-5,-2.24 -5,-5H5c0,3.53 2.61,6.43 6,6.92V21h2v-3.08c3.39,-0.49 6,-3.39 6,-6.92h-2z"/>
+              </svg>
+              <svg id="meetIconStop" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" hidden>
+                <rect x="8" y="8" width="8" height="8" rx="1.5" fill="currentColor"/>
+              </svg>
+            </button>
+            <div class="meet-rec-live" id="meetRecLive" hidden>
+              <span class="meet-timer" id="meetTimer">00:00</span>
+              <canvas id="meetWave" width="240" height="28"></canvas>
+            </div>
+            <span class="meet-rec-hint" id="meetRecHint">Записать встречу</span>
+            <span class="spacer"></span>
+            <button class="pill-inset compact drop-target" id="meetImport">
+              <span id="meetImportLabel">Импортировать файл</span>
+            </button>
+          </div>
+          <p class="muted small formats">
+            Аудио и видео: mp3, m4a, wav, aac, aiff, caf, mp4, mov, m4v.
+            Название файла станет названием встречи
+          </p>
+
+          <div class="url-row">
+            <div class="search-box grow">
+              <input id="meetUrl" class="search" type="text"
+                     placeholder="Или вставьте ссылку: YouTube, VK, Яндекс.Диск, прямая ссылка" />
+              <button id="meetUrlClear" class="search-clear"
+                      aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+            </div>
+            <button class="pill-inset compact" id="meetUrlGo">Расшифровать</button>
+          </div>
+          <p class="muted small" id="urlHint" hidden></p>
+
+          <button class="danger-text icon-button" id="deleteProject" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/>
+            </svg>
+            <span id="deleteProjectLabel">Удалить проект</span>
+          </button>
+
+          <div class="search-box">
+            <input id="meetSearch" class="search" type="text"
+                   placeholder="Поиск по названию и тексту" />
+            <button id="meetSearchClear" class="search-clear"
+                    aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="bulk-bar" id="bulkBar" hidden>
+            <span class="bulk-count" id="bulkCount">Выбрано 0</span>
+            <div class="filter-anchor">
+              <button class="pill-inset compact" id="bulkExport">Экспорт ▾</button>
+              <div id="bulkMenu" class="lang-panel menu" hidden>
+                <button class="lang-row" data-bulk-format="txt">
+                  <span class="lang-name">Текст</span><span class="lang-count">.txt</span>
+                </button>
+                <button class="lang-row" data-bulk-format="md">
+                  <span class="lang-name">Markdown</span><span class="lang-count">.md</span>
+                </button>
+                <button class="lang-row" data-bulk-format="docx">
+                  <span class="lang-name">Word</span><span class="lang-count">.docx</span>
+                </button>
+                <button class="lang-row" data-bulk-format="pdf">
+                  <span class="lang-name">PDF</span><span class="lang-count">.pdf</span>
+                </button>
+              </div>
+            </div>
+            <div class="filter-anchor">
+              <button class="pill-inset compact" id="bulkProject">В проект ▾</button>
+              <div id="bulkProjectMenu" class="lang-panel menu" hidden></div>
+            </div>
+            <button class="pill-inset compact" id="bulkAgain">Расшифровать</button>
+            <button class="danger-text icon-button" id="bulkDelete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/>
+              </svg>
+              <span id="bulkDeleteLabel">Удалить</span>
+            </button>
+            <button class="model-remove push-right" id="bulkCancel">Снять выбор</button>
+          </div>
+
+          <div id="meetingList"></div>
+          <p class="muted small" id="meetEmpty" hidden>
+            Пока пусто. Нажмите кнопку записи или перетащите сюда файл —
+            подойдет аудио и видео
+          </p>
+        </div>
+
+        <div id="meetDetail" hidden>
+          <button class="back" id="meetBack">&larr; Все встречи</button>
+          <h1 class="meet-title" id="meetTitle" title="Нажмите, чтобы переименовать"></h1>
+          <input id="meetTitleInput" class="search title-input" type="text" hidden />
+          <p class="muted small" id="meetInfo"></p>
+
+          <div class="meet-actions">
+            <select id="meetProjectSelect" class="meet-select"></select>
+            <button class="pill-inset compact" id="meetCopy">Скопировать</button>
+            <div class="filter-anchor">
+              <button class="pill-inset compact" id="meetExport">Экспорт ▾</button>
+              <div id="exportMenu" class="lang-panel menu" hidden>
+                <button class="lang-row" data-format="txt">
+                  <span class="lang-name">Текст</span><span class="lang-count">.txt</span>
+                </button>
+                <button class="lang-row" data-format="md">
+                  <span class="lang-name">Markdown</span><span class="lang-count">.md</span>
+                </button>
+                <button class="lang-row" data-format="docx">
+                  <span class="lang-name">Word</span><span class="lang-count">.docx</span>
+                </button>
+                <button class="lang-row" data-format="pdf">
+                  <span class="lang-name">PDF</span><span class="lang-count">.pdf</span>
+                </button>
+              </div>
+            </div>
+            <div class="filter-anchor">
+              <button class="pill-inset compact" id="meetSpeakers">Говорящие ▾</button>
+              <div id="speakersMenu" class="lang-panel menu" hidden>
+                <button class="lang-row" data-speakers="0">
+                  <span class="lang-name">Определить самой</span>
+                </button>
+                <button class="lang-row" data-speakers="2">
+                  <span class="lang-name">Двое</span>
+                </button>
+                <button class="lang-row" data-speakers="3">
+                  <span class="lang-name">Трое</span>
+                </button>
+                <button class="lang-row" data-speakers="4">
+                  <span class="lang-name">Четверо</span>
+                </button>
+                <button class="lang-row" data-speakers="5">
+                  <span class="lang-name">Пятеро</span>
+                </button>
+                <p class="lang-empty" id="speakersHint"></p>
+              </div>
+            </div>
+            <button class="pill-inset compact" id="meetAgain">Расшифровать заново</button>
+            <button class="danger-text push-right icon-button" id="meetDelete"
+                    title="Удалить встречу">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/>
+              </svg>
+              <span id="meetDeleteLabel">Удалить</span>
+            </button>
+          </div>
+          <p class="muted small" id="meetDetailStatus" hidden></p>
+
+          <div class="search-box find-box">
+            <input id="meetFind" class="search" type="text"
+                   placeholder="Найти в этой расшифровке" />
+            <button id="meetFindClear" class="search-clear"
+                    aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+            <span class="find-count" id="meetFindCount" hidden></span>
+          </div>
+
+          <!-- Имена говорящих: правятся все разом, подставляются в текст -->
+          <section class="panel speakers-panel" id="speakersPanel" hidden>
+            <p class="kicker">Кто говорит</p>
+            <p class="muted small">
+              Дайте людям имена — они подставятся в текст и уйдут в экспорт
+            </p>
+            <div id="speakersList"></div>
+          </section>
+
+          <div id="meetSegments"></div>
+        </div>
+      </main>
+
+      <!-- Модели -->
+      <main class="page" id="pageModels" hidden>
+        <p class="kicker">Каталог</p>
+        <h1>Модели распознавания</h1>
+        <p class="muted small" id="chipHint">
+          Зеленым помечена активная. Скачивание идет в фоне, размер — вес на
+          диске.
+        </p>
+
+        <div class="filter-row">
+          <div class="filter-anchor">
+            <button id="filterLanguage" class="filter-chip">Все языки ▾</button>
+            <div id="languagePanel" class="lang-panel" hidden>
+              <div class="search-box">
+                <input id="languageSearch" class="search" type="text"
+                       placeholder="Найти язык" />
+                <button id="languageClear" class="search-clear"
+                        aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+              </div>
+              <div id="languageList" class="lang-list"></div>
+            </div>
+          </div>
+          <button id="filterDownloaded" class="filter-chip">Скачанные</button>
+          <button id="filterStreaming" class="filter-chip"
+                  title="Показывают текст по ходу речи">Потоковые</button>
+          <button id="filterTranslate" class="filter-chip"
+                  title="Умеют переводить речь на английский">С переводом</button>
+          <span class="spacer"></span>
+          <button id="rescanModels" class="filter-chip"
+                  title="Проверить, не появилось ли новых моделей">Обновить список</button>
+        </div>
+        <div class="search-box">
+          <input id="modelSearch" class="search" type="text"
+                 placeholder="Поиск по названию или языку" />
+          <button id="modelSearchClear" class="search-clear"
+                  aria-label="Очистить" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+        </div>
+
+        <p class="kicker list-head" id="topHead">Что взять</p>
+        <div id="modelTop"></div>
+
+        <button class="show-all" id="showAll">Показать все модели</button>
+        <div id="modelList" hidden></div>
+      </main>
+
+      <!-- Настройки -->
+      <main class="page" id="pageSettings" hidden>
+        <p class="kicker">Настройки</p>
+        <h1>Как приложение себя ведет</h1>
+
+        <section class="panel">
+          <p class="kicker group-head">Приложение</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M12 3.5v8"/>
+              <path d="M7.5 6.2a7 7 0 1 0 9 0"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Запускать со стартом системы</p>
+              <p class="muted small" id="autostartHint">
+                Приложение появится в меню-баре после входа
+              </p>
+            </div>
+            <button class="toggle" id="autostart">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="autostartLabel">Выключен</span>
+            </button>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="3" y="4.5" width="18" height="13" rx="2"/>
+              <path d="M8 20.5h8"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Окно при запуске</p>
+              <p class="muted small">Можно сразу уходить в меню-бар</p>
+            </div>
+            <div class="segments" id="startHiddenSegments">
+              <button class="segment" data-start="show">Показывать</button>
+              <button class="segment" data-start="hide">Скрывать</button>
+            </div>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M3 8.5h18M6.5 5.5v6M11 5.5v6M15.5 5.5v6"/>
+              <path d="M4 12.5v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Иконка в меню-баре</p>
+              <p class="muted small" id="trayHint">
+                Через нее открывается окно и выход
+              </p>
+            </div>
+            <button class="toggle" id="trayIcon">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="trayIconLabel">Показана</span>
+            </button>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Тема</p>
+              <p class="muted small">Обычно как в системе, но можно закрепить</p>
+            </div>
+            <div class="segments" id="themeSegments">
+              <button class="segment" data-theme="system">Как в системе</button>
+              <button class="segment" data-theme="light">Светлая</button>
+              <button class="segment" data-theme="dark">Темная</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker group-head">Звук и микрофон</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="9" y="2.5" width="6" height="11" rx="3"/>
+              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Микрофон</p>
+              <p class="muted small">
+                С наушниками система выбирает их микрофон — здесь можно
+                закрепить нужный
+              </p>
+            </div>
+            <select id="inputDevice" class="meet-select wide"></select>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/>
+              <path d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Звук в начале записи</p>
+              <p class="muted small">Короткий сигнал, чтобы не гадать, слышит ли</p>
+            </div>
+            <button class="toggle" id="startSound">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="startSoundLabel">Включен</span>
+            </button>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/>
+              <path d="M16.5 9.5l4 5M20.5 9.5l-4 5"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Глушить звук на время записи</p>
+              <p class="muted small">Музыка из колонок не попадет в микрофон</p>
+            </div>
+            <button class="toggle" id="muteRecording">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="muteRecordingLabel">Выключено</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker group-head">Диктовка</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" aria-hidden="true">
+              <rect x="2.5" y="6" width="19" height="12" rx="2.5"/>
+              <path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Сочетание клавиш</p>
+              <p class="muted small" id="hotkeyHint">Можно назначить свое</p>
+            </div>
+            <span class="hotkey" id="hotkeyLabel2">⌥ Пробел</span>
+            <button class="pill-inset compact" id="changeHotkey">Изменить</button>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="4" y="9" width="16" height="6" rx="3"/>
+              <path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Пилюля во время записи</p>
+              <p class="muted small">Полоска внизу экрана с волной и таймером</p>
+            </div>
+            <div class="segments" id="overlayStyleSegments">
+              <button class="segment" data-overlay="live">Полная</button>
+              <button class="segment" data-overlay="minimal">Точка</button>
+              <button class="segment" data-overlay="none">Нет</button>
+            </div>
+          </div>
+          <div class="perm" id="overlayPositionRow">
+            <span class="row-icon"></span>
+            <div class="perm-text">
+              <p class="perm-title">Где показывать пилюлю</p>
+              <p class="muted small">Внизу не мешает, вверху заметнее</p>
+            </div>
+            <div class="segments" id="overlayPositionSegments">
+              <button class="segment" data-position="bottom">Внизу</button>
+              <button class="segment" data-position="top">Вверху</button>
+            </div>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="8" y="3.5" width="8" height="4" rx="1.5"/>
+              <path d="M8 5.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2h-2"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Буфер обмена</p>
+              <p class="muted small">
+                Вставка идет через буфер — что с ним делать после
+              </p>
+            </div>
+            <div class="segments" id="clipboardSegments">
+              <button class="segment" data-clipboard="restore">Вернуть прежний</button>
+              <button class="segment" data-clipboard="keep">Оставить текст</button>
+            </div>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M20 5.5v6.5a2 2 0 0 1-2 2H5"/>
+              <path d="M8.5 10.5 5 14l3.5 3.5"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Отправлять после вставки</p>
+              <p class="muted small">Нажать ввод — сообщение уйдет само</p>
+            </div>
+            <div class="segments" id="submitSegments">
+              <button class="segment" data-submit="off">Нет</button>
+              <button class="segment" data-submit="enter">Enter</button>
+              <button class="segment" data-submit="ctrl_enter">⌃Enter</button>
+              <button class="segment" data-submit="cmd_enter">⌘Enter</button>
+            </div>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h10M4 17h13"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Убирать слова-паразиты</p>
+              <p class="muted small">
+                «Типа», «как бы», «короче» — мычание убирается всегда
+              </p>
+            </div>
+            <button class="toggle" id="removeFillers">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="removeFillersLabel">Выключено</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker group-head">Модель и память</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="3.5" y="6" width="17" height="12" rx="2"/>
+              <path d="M7 10h4M7 14h10"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Держать модель в памяти</p>
+              <p class="muted small">
+                Загруженная отвечает мгновенно, но занимает память
+              </p>
+            </div>
+            <select id="modelUnload" class="meet-select wide">
+              <option value="never">Всегда</option>
+              <option value="hour1">Час</option>
+              <option value="min15">15 минут</option>
+              <option value="min10">10 минут</option>
+              <option value="min5">5 минут</option>
+              <option value="min2">2 минуты</option>
+              <option value="immediately">Выгружать сразу</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker group-head">История диктовок</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M12 7v5l3 2"/>
+              <circle cx="12" cy="12" r="8.5"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Сколько диктовок хранить</p>
+              <p class="muted small" id="historyLimitHint">
+                Со звуком, чтобы можно было переслушать
+              </p>
+            </div>
+            <select id="historyLimit" class="meet-select">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="300">300</option>
+            </select>
+            <select id="historyRetention" class="meet-select wide">
+              <option value="keep_limit">Без срока</option>
+              <option value="days3">Три дня</option>
+              <option value="weeks2">Две недели</option>
+              <option value="months3">Три месяца</option>
+              <option value="never">Не хранить</option>
+            </select>
+          </div>
+          <div class="perm">
+            <span class="row-icon"></span>
+            <div class="perm-text">
+              <p class="perm-title">Хранить звук диктовок</p>
+              <p class="muted small">Без него история останется только текстом</p>
+            </div>
+            <button class="toggle" id="keepAudio">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="keepAudioLabel">Включено</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker group-head">Файлы и доступ</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6l1.7 2.2h7.7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Скачанное по ссылке</p>
+              <p class="muted small" id="downloadsHint">
+                Файл удаляется после расшифровки — приложению нужен только звук
+              </p>
+            </div>
+            <button class="model-remove" id="clearDownloadsDir" hidden>Не хранить</button>
+            <button class="pill-inset compact" id="pickDownloadsDir">Выбрать папку</button>
+          </div>
+          <div class="perm" id="permDownloader">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 19.5h15"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Загрузчик ссылок</p>
+              <p class="muted small" id="downloaderHint">
+                Нужен для YouTube и VK. Прямые ссылки и Яндекс.Диск работают без него
+              </p>
+            </div>
+            <span class="perm-done" id="downloaderDone" hidden>
+              <span class="bullet"></span>Стоит
+            </span>
+            <button class="pill-inset compact" id="installDownloader">Установить</button>
+          </div>
+          <div class="perm" id="permAccessibility">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/>
+              <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Универсальный доступ</p>
+              <p class="muted small">Нужен, чтобы вставлять текст в другие приложения</p>
+            </div>
+            <span class="perm-done" hidden>
+              <span class="bullet"></span>Выдано
+            </span>
+            <button class="pill-inset compact" id="grantAccessibility">Открыть</button>
+          </div>
+        </section>
+
+      </main>
+      <!-- О проекте -->
+      <main class="page" id="pageAbout" hidden>
+        <p class="kicker">О проекте</p>
+        <h1>Sol Flow</h1>
+        <p class="muted">
+          Голос превращается в текст прямо на вашем компьютере. Ничего не
+          уходит в интернет: ни записи встреч, ни диктовки, ни имена людей
+        </p>
+
+        <section class="panel">
+          <p class="kicker">Кто это делает</p>
+          <h2>Иван Соломин</h2>
+          <p class="muted small">
+            Директор по маркетингу, не разработчик. Пишу эти приложения,
+            потому что хочу, чтобы людям вокруг было удобнее: расшифровка
+            встреч не должна стоить денег, требовать облака и отдавать чужим
+            серверам голоса коллег.
+          </p>
+          <p class="muted small">
+            Sol Flow есть для Mac и для Android — и там, и там распознавание
+            идет офлайн, на самом устройстве.
+          </p>
+
+          <div class="links">
+            <button class="pill-inset compact link" data-url="https://ivansolomin.ru">
+              Сайт
+            </button>
+            <button class="pill-inset compact link" data-url="https://t.me/russian_cmo">
+              Телеграм
+            </button>
+            <button class="pill-inset compact link" data-url="https://www.youtube.com/@IvanSPro">
+              YouTube
+            </button>
+            <button class="pill-inset compact link"
+                    data-url="https://www.linkedin.com/in/ivansolomin">
+              LinkedIn
+            </button>
+            <button class="pill-inset compact link" data-url="mailto:me@isoloma.ru">
+              Почта
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="perm">
+            <div class="perm-text">
+              <p class="perm-title">Версия <span id="appVersion">—</span></p>
+              <p class="muted small" id="updateHint">Проверить, вышла ли новая</p>
+            </div>
+            <button class="pill-inset compact" id="checkUpdate">Проверить</button>
+          </div>
+          <div class="perm">
+            <div class="perm-text">
+              <p class="perm-title">Как это устроено</p>
+              <p class="muted small">
+                Распознавание — transcribe.cpp с моделями GigaAM и Whisper,
+                разделение голосов — sherpa-onnx, интерфейс — Tauri.
+                Открытые проекты, за которые спасибо их авторам
+              </p>
+            </div>
+            <button class="pill-inset compact link"
+                    data-url="https://github.com/handy-computer/transcribe.cpp">
+              Движок
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker">Если что-то сломалось</p>
+          <h2>Сообщить о проблеме</h2>
+          <p class="muted small">
+            Опишите, что случилось. К письму приложатся версия, сведения о
+            компьютере и последние сообщения приложения — без них починить
+            трудно. Никуда само ничего не уходит: письмо откроется в вашей
+            почте, и вы решите, отправлять ли
+          </p>
+          <textarea id="bugText" class="search bug-text" rows="4"
+                    placeholder="Что вы делали и что пошло не так"></textarea>
+          <div class="links">
+            <button class="pill-inset compact" id="bugSend">Написать письмо</button>
+            <button class="pill-inset compact" id="bugCopy">Скопировать отчет</button>
+            <button class="model-remove" id="bugPreview">Посмотреть, что уйдет</button>
+          </div>
+          <pre id="bugPreviewText" class="bug-preview" hidden></pre>
+        </section>
+
+        <button class="show-all" id="showIntro">Показать вводный экран заново</button>
+      </main>
+    </div>
+
+    <button class="to-top" id="toTop" aria-label="Наверх" title="Наверх" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19V5M6 11l6-6 6 6"/>
+      </svg>
+    </button>
+
+    <!-- Вводный экран: показывается один раз при первом запуске -->
+    <div class="intro" id="intro" hidden>
+      <div class="intro-card">
+        <div class="intro-body" id="introBody"></div>
+        <div class="intro-foot">
+          <span class="intro-dots" id="introDots"></span>
+          <span class="spacer"></span>
+          <button class="model-remove" id="introSkip">Пропустить</button>
+          <button class="pill-inset compact" id="introNext">Дальше</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

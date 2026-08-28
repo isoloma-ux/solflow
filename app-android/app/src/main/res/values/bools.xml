@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Узкий экран: разделы внизу, контент держится в колонке по центру. -->
+    <bool name="wide_layout">false</bool>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Волна из пяти полосок — тот же знак, что рисует плавающая кнопка во время
+  записи. Шаг между центрами 13 при ширине 10, иначе полоски перекрываются
+  и сливаются в сплошное пятно. Всё внутри безопасной зоны 72×72.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#7bc72e"
+        android:pathData="M23,49 a5,5 0 0 1 10,0 v10 a5,5 0 0 1 -10,0 z" />
+    <path
+        android:fillColor="#7bc72e"
+        android:pathData="M36,41 a5,5 0 0 1 10,0 v26 a5,5 0 0 1 -10,0 z" />
+    <path
+        android:fillColor="#7bc72e"
+        android:pathData="M49,33 a5,5 0 0 1 10,0 v42 a5,5 0 0 1 -10,0 z" />
+    <path
+        android:fillColor="#7bc72e"
+        android:pathData="M62,41 a5,5 0 0 1 10,0 v26 a5,5 0 0 1 -10,0 z" />
+    <path
+        android:fillColor="#7bc72e"
+        android:pathData="M75,49 a5,5 0 0 1 10,0 v10 a5,5 0 0 1 -10,0 z" />
+</vector>

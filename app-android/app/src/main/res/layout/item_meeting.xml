@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/meetingItemCard"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@drawable/bg_card"
+    android:padding="16dp"
+    android:layout_marginBottom="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:stateListAnimator="@animator/press_scale_card">
+
+    <!-- Глиф источника: живая запись или импортированный файл. -->
+    <ImageView
+        android:id="@+id/meetingItemGlyph"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="14dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_mic_small" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/meetingItemTitle"
+            style="@style/Text.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/inter_medium" />
+
+        <TextView
+            android:id="@+id/meetingItemState"
+            style="@style/Text.Muted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp" />
+
+        <!--
+          Цитаты из расшифровки — видны только в результатах поиска. Их до
+          трёх: по одной непонятно, то ли это место, а тап по каждой ведёт
+          прямо к своей реплике.
+        -->
+        <LinearLayout
+            android:id="@+id/meetingItemQuotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
+        <!-- Полоса хода работы — видна, пока встреча читается или разбирается. -->
+        <ProgressBar
+            android:id="@+id/meetingItemProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginTop="8dp"
+            android:max="100"
+            android:progressTint="@color/accent_solid"
+            android:progressBackgroundTint="@color/hairline"
+            android:visibility="gone" />
+    </LinearLayout>
+
+</LinearLayout>

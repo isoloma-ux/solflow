@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- В тёмной теме иконки системных панелей должны быть светлыми. -->
+    <style name="Theme.HandyVoice" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:fontFamily">@font/inter_regular</item>
+        <item name="fontFamily">@font/inter_regular</item>
+
+        <item name="android:colorBackground">@color/canvas</item>
+        <item name="colorSurface">@color/canvas</item>
+        <item name="colorSurfaceContainer">@color/graphite</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorOnSurfaceVariant">@color/fog</item>
+        <item name="colorPrimary">@color/accent_solid</item>
+        <item name="colorOnPrimary">@color/on_accent</item>
+        <item name="colorOutline">@color/hairline</item>
+
+        <item name="android:textColorPrimary">@color/ink</item>
+        <item name="android:textColorSecondary">@color/fog</item>
+
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+    </style>
+
+</resources>

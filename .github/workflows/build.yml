@@ -1,0 +1,63 @@
+# Проверка сборки Sol Flow. Windows-версия правится с Mac вслепую, поэтому
+# единственный честный ответ «скомпилировалось или нет» даёт этот прогон.
+name: build
+
+on:
+  push:
+    branches: [main, windows]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версии инструментов
+        run: |
+          rustc -V
+          cargo -V
+          cmake --version
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: win-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: win-cargo-
+
+      # Диаризация тянет статический sherpa-onnx, которого под MSVC ещё нет, —
+      # она за фичей и в этом прогоне выключена.
+      - name: cargo check
+        run: cargo check --locked --no-default-features
+
+  macos:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: mac-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: mac-cargo-
+
+      # Библиотеки sherpa в репозиторий не кладутся (150 МБ), поэтому на CI
+      # мак-сборка тоже проверяется без диаризации.
+      - name: cargo check
+        run: cargo check --locked --no-default-features

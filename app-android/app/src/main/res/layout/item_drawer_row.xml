@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Строка боковой шторки: проект или раздел приложения. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawerRow"
+    style="@style/Text.Body"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:gravity="center_vertical"
+    android:maxLines="1"
+    android:ellipsize="end"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground" />

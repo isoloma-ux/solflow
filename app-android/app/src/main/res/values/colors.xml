@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Токены светлой темы из дизайн-системы ivansolomin.ru.
+  Тёмные значения лежат в values-night/colors.xml.
+  Хардкодить цвета в разметке нельзя — только через эти имена.
+-->
+<resources>
+    <color name="canvas">#f4f3f1</color>
+    <color name="ink">#16171a</color>
+    <color name="fog">#6b6e70</color>
+    <color name="graphite">#eceae6</color>
+    <color name="graphite_2">#e3e1db</color>
+    <!-- rgba(20,22,26,.12) -->
+    <color name="hairline">#1F16171A</color>
+    <!-- В светлой теме зелёный затемнён до контраста не ниже 4.5:1 -->
+    <color name="accent">#437414</color>
+    <color name="accent_solid">#7bc72e</color>
+    <color name="accent_deep">#2f5708</color>
+    <color name="on_accent">#16171a</color>
+
+    <!--
+      Цвета говорящих во встречах. Приглушённые, чтобы не спорить с зелёным
+      акцентом; в светлой теме затемнены до контраста с фоном не ниже 4.5:1.
+      Больше шести человек цвета идут по кругу.
+    -->
+    <color name="speaker_1">#437414</color>
+    <color name="speaker_2">#2f6390</color>
+    <color name="speaker_3">#a04b2e</color>
+    <color name="speaker_4">#71499c</color>
+    <color name="speaker_5">#0f7c74</color>
+    <color name="speaker_6">#7d621a</color>
+</resources>

@@ -1,0 +1,37 @@
+# Сборка Rust и Tauri
+desktop/src-tauri/target/
+desktop/src-tauri/gen/schemas/
+desktop/Sol Flow.app/
+desktop/*.zip
+
+# Статические библиотеки sherpa-onnx: 150+ МБ на платформу, собираются
+# отдельно (build-macos) и подкладываются в sherpa/lib перед сборкой.
+desktop/src-tauri/sherpa/lib/
+
+# Сборка Android
+app-android/app/build/
+app-android/app/.cxx/
+app-android/build/
+app-android/.gradle/
+app-android/local.properties
+*.apk
+*.aab
+*.so
+*.a
+*.jar
+
+# Чужие исходники, которые лежат рядом рабочими копиями
+upstream/
+sherpa-onnx/
+tcpp/
+
+# Модели и тестовый звук — гигабайты, качаются каталогом
+/models/
+*.gguf
+*.bin
+*.wav
+
+# Система
+.DS_Store
+# Локальные настройки и скиллы Claude Code — инструмент, а не продукт
+.claude/

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Карточка диктовки: время, текст и — если звук сохранён — строка действий
+  внизу. Кнопки в подвале, а не в строке с текстом: там они отъедали бы
+  ширину у самого текста, ради которого карточка и существует.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_card"
+    android:padding="16dp"
+    android:layout_marginBottom="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:stateListAnimator="@animator/press_scale_card">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/time"
+            style="@style/Text.Muted"
+            android:layout_width="56dp"
+            android:layout_height="wrap_content"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/text"
+            style="@style/Text.Body"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:layout_marginStart="64dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/play"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="-14dp"
+            android:padding="14dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/history_play"
+            android:src="@drawable/ic_play" />
+
+        <TextView
+            android:id="@+id/duration"
+            style="@style/Text.Muted"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:textSize="13sp" />
+
+        <ImageView
+            android:id="@+id/retry"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="14dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/history_retry"
+            android:src="@drawable/ic_redo" />
+
+        <ImageView
+            android:id="@+id/remove"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="-14dp"
+            android:padding="14dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/history_delete"
+            android:src="@drawable/ic_trash" />
+    </LinearLayout>
+
+</LinearLayout>

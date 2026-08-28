@@ -1,0 +1,45 @@
+[package]
+name = "solflow"
+version = "0.1.0"
+description = "Sol Flow — офлайновый голосовой ввод"
+edition = "2021"
+
+[features]
+# Диаризация линкует статический sherpa-onnx: библиотеки лежат вне
+# репозитория и собраны пока только под macOS, поэтому она за фичей.
+default = ["diarize"]
+diarize = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-clipboard-manager = "2"
+cpal = "0.16"
+enigo = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+# Сжатие потоков в своём генераторе PDF — шрифт весит 400 КБ на файл.
+flate2 = "1"
+log = "0.4"
+env_logger = "0.11"
+
+# Тот же движок, что на Android (transcribe.cpp), — официальные Rust-биндинги
+# от авторов Handy. Metal: GigaAM на M-чипах считается на GPU; на Windows
+# целевые машины — Intel и AMD, там считает процессор.
+[target.'cfg(target_os = "macos")'.dependencies]
+transcribe-cpp = { version = "0.2.0", default-features = false, features = ["metal"] }
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+transcribe-cpp = { version = "0.2.0", default-features = false }
+
+[lib]
+name = "solflow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[profile.release]
+lto = true

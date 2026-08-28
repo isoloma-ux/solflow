@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/menuModels"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="-13dp"
+            android:padding="13dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/menu_open"
+            android:src="@drawable/ic_menu" />
+        <TextView
+            style="@style/Text.Eyebrow"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/eyebrow_catalog" />
+    </LinearLayout>
+
+    <TextView
+        style="@style/Text.Heading"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="@string/catalog_title" />
+
+    <TextView
+        style="@style/Text.Muted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="14sp"
+        android:text="@string/catalog_hint" />
+
+    <EditText
+        android:id="@+id/modelSearch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:hint="@string/model_search"
+        android:inputType="text"
+        android:maxLines="1"
+        android:textColor="@color/ink"
+        android:textColorHint="@color/fog"
+        android:textSize="16sp"
+        android:fontFamily="@font/inter_regular"
+        android:importantForAutofill="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:orientation="horizontal">
+
+        <!--
+          Вместо трёх вкладок: слева выбор языка списком с поиском, справа
+          отдельный фильтр по скачанным. Языков в каталоге сто три, вкладкой
+          их не перебрать.
+        -->
+        <TextView
+            android:id="@+id/filterLanguage"
+            style="@style/Text.Body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:text="@string/filter_all_languages" />
+
+        <TextView
+            android:id="@+id/filterDownloaded"
+            style="@style/Text.Body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="22dp"
+            android:paddingBottom="8dp"
+            android:text="@string/filter_downloaded" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/progressLabel"
+        style="@style/Text.Muted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_marginTop="8dp"
+        android:max="100"
+        android:progressTint="@color/accent_solid"
+        android:progressBackgroundTint="@color/hairline"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/modelList"
+        android:layoutAnimation="@anim/layout_stagger"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="20dp"
+        android:clipToPadding="false"
+        android:scrollbars="none" />
+
+</LinearLayout>

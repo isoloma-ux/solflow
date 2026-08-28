@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Тот же отклик, что у кнопок, но мягче: карточка занимает всю ширину, и
+  сжатие на четыре процента выглядело бы на ней балаганно.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <set>
+            <objectAnimator
+                android:propertyName="scaleX"
+                android:valueTo="0.98"
+                android:duration="90"
+                android:interpolator="@android:interpolator/fast_out_slow_in"
+                android:valueType="floatType" />
+            <objectAnimator
+                android:propertyName="scaleY"
+                android:valueTo="0.98"
+                android:duration="90"
+                android:interpolator="@android:interpolator/fast_out_slow_in"
+                android:valueType="floatType" />
+        </set>
+    </item>
+    <item>
+        <set>
+            <objectAnimator
+                android:propertyName="scaleX"
+                android:valueTo="1"
+                android:duration="160"
+                android:interpolator="@android:interpolator/overshoot"
+                android:valueType="floatType" />
+            <objectAnimator
+                android:propertyName="scaleY"
+                android:valueTo="1"
+                android:duration="160"
+                android:interpolator="@android:interpolator/overshoot"
+                android:valueType="floatType" />
+        </set>
+    </item>
+</selector>

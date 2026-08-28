@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Каскад: каждая следующая строка чуть позже предыдущей. 20% от базовой
+  длительности — это 40 мс между строками: меньше 30 мс каскад не читается,
+  больше 80 мс — список начинает заставлять себя ждать.
+-->
+<layoutAnimation xmlns:android="http://schemas.android.com/apk/res/android"
+    android:animation="@anim/list_item_appear"
+    android:animationOrder="normal"
+    android:delay="20%" />
