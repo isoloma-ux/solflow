@@ -1110,7 +1110,20 @@ fn models_dir(app: AppHandle) -> String {
 pub fn run() {
     report::init();
 
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Плагин просят ставить первым: он перехватывает запуск ещё до окон.
+    // Вторая копия отдаёт своё окно первой и завершается.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+
+    let builder = builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
