@@ -30,11 +30,16 @@ pub fn reveal_file(path: &Path) {
 
 #[cfg(windows)]
 pub fn reveal_file(path: &Path) {
-    // У explorer особый разбор: запятая — часть ключа, пробела после неё
-    // быть не должно, поэтому путь клеится к ключу одним аргументом.
-    let mut arg = std::ffi::OsString::from("/select,");
-    arg.push(path);
-    let _ = Command::new("explorer").arg(arg).spawn();
+    use std::os::windows::process::CommandExt;
+
+    // У explorer особый разбор командной строки: ключ и путь — один
+    // аргумент, а кавычки нужны только вокруг пути. Обычный .arg() взял бы
+    // всё в кавычки целиком (там пробел в «Sol Flow»), explorer такого не
+    // понимает и молча открывает «Документы» — из-за этого «показать файл»
+    // и выглядело как будто ничего не делает.
+    let _ = Command::new("explorer")
+        .raw_arg(format!("/select,\"{}\"", path.display()))
+        .spawn();
 }
 
 /// Приглушить или вернуть системный звук на время записи.

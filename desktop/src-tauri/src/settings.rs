@@ -28,6 +28,11 @@ pub struct Settings {
     #[serde(default)]
     pub downloads_dir: Option<String>,
 
+    /// Куда складывать экспорт встреч. None — папка «Загрузки», как было
+    /// раньше.
+    #[serde(default)]
+    pub export_dir: Option<String>,
+
     // --- запуск и оформление ---
     /// Запускаться без окна: приложение сразу уходит в меню-бар.
     #[serde(default)]
@@ -159,6 +164,7 @@ impl Default for Settings {
             start_sound: true,
             theme: default_theme(),
             downloads_dir: None,
+            export_dir: None,
             start_hidden: false,
             show_tray_icon: true,
             overlay_style: default_overlay_style(),

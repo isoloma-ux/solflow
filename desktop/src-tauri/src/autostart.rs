@@ -122,8 +122,20 @@ const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 #[cfg(windows)]
 const RUN_NAME: &str = "Sol Flow";
 
+/// Ответ реестра держим в памяти: окно перечитывает настройки после каждого
+/// переключателя, а каждый запуск `reg` — это отдельный процесс, и на них
+/// заметно подтормаживал весь экран настроек.
 #[cfg(windows)]
-pub fn enabled() -> bool {
+fn cached() -> &'static std::sync::atomic::AtomicBool {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::OnceLock;
+
+    static CACHE: OnceLock<AtomicBool> = OnceLock::new();
+    CACHE.get_or_init(|| AtomicBool::new(ask_registry()))
+}
+
+#[cfg(windows)]
+fn ask_registry() -> bool {
     Command::new("reg")
         .args(["query", RUN_KEY, "/v", RUN_NAME])
         .output()
@@ -132,11 +144,17 @@ pub fn enabled() -> bool {
 }
 
 #[cfg(windows)]
+pub fn enabled() -> bool {
+    cached().load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(windows)]
 pub fn set(enabled: bool) -> Result<()> {
     if !enabled {
         let _ = Command::new("reg")
             .args(["delete", RUN_KEY, "/v", RUN_NAME, "/f"])
             .output();
+        cached().store(false, std::sync::atomic::Ordering::Relaxed);
         return Ok(());
     }
 
@@ -153,5 +171,6 @@ pub fn set(enabled: bool) -> Result<()> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
+    cached().store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }

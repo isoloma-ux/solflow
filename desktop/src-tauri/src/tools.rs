@@ -40,6 +40,12 @@ fn bin_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
 }
 
+/// Есть ли чем привести файл к нужному звуку. На macOS это делают
+/// встроенные утилиты, ставить нечего.
+pub fn converter_ready() -> bool {
+    cfg!(target_os = "macos") || ffmpeg().is_some()
+}
+
 /// Всё ли на месте, чтобы качать встречи по ссылке.
 pub fn ready() -> bool {
     ytdlp().is_some() && (cfg!(target_os = "macos") || ffmpeg().is_some())
@@ -194,3 +200,15 @@ fn find_file(dir: &std::path::Path, name: &str) -> Option<PathBuf> {
     }
     None
 }
+
+/// Докачивает ffmpeg, если его ещё нет: импорт файла не должен упираться в
+/// поход в настройки — на macOS он просто работает, и на Windows должен
+/// вести себя так же.
+#[cfg(windows)]
+pub fn ensure_ffmpeg(on_progress: &dyn Fn(u8)) -> Result<()> {
+    if ffmpeg().is_some() {
+        return Ok(());
+    }
+    install(on_progress)
+}
+

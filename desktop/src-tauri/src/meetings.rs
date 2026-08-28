@@ -1238,10 +1238,34 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
 /// приложение качает себе в настройках. Одной командой: он и видео берёт,
 /// и в нужный формат кладёт сразу.
 #[cfg(windows)]
-fn to_wav_16k(_app: &AppHandle, _id: i64, source: &Path, target: &Path) -> Result<()> {
-    let ffmpeg = crate::tools::ffmpeg().ok_or_else(|| {
-        anyhow!("для импорта нужен ffmpeg — поставьте его в настройках")
-    })?;
+fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<()> {
+    // Первый импорт докачивает ffmpeg — как первая диаризация докачивает
+    // модель голосов. Проценты идут в строку встречи: молчащая строка на
+    // восьмидесяти мегабайтах выглядит как зависшая.
+    if !crate::tools::converter_ready() {
+        let state = app.state::<MeetingState>();
+        state.phase.lock().unwrap().insert(id, "helper");
+        state.progress.lock().unwrap().insert(id, 0);
+        notify(app);
+
+        let report = |pct: u8| {
+            let state = app.state::<MeetingState>();
+            let changed = state.progress.lock().unwrap().insert(id, pct) != Some(pct);
+            if changed {
+                notify(app);
+            }
+        };
+        let result = crate::tools::ensure_ffmpeg(&report);
+
+        let state = app.state::<MeetingState>();
+        state.progress.lock().unwrap().remove(&id);
+        state.phase.lock().unwrap().insert(id, "importing");
+        notify(app);
+        result?;
+    }
+
+    let ffmpeg = crate::tools::ffmpeg()
+        .ok_or_else(|| anyhow!("ffmpeg не нашёлся — поставьте его в настройках"))?;
     let ok = convert_ok(
         &ffmpeg.to_string_lossy(),
         &[
@@ -1421,7 +1445,15 @@ pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap
 ///
 /// txt и md пишутся напрямую, docx собирает системный textutil из HTML,
 /// pdf — свой генератор.
-pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<String> {
+/// `reveal` — показать ли файл в проводнике. При выгрузке пачкой его
+/// выключают: иначе на каждую встречу открылось бы своё окно.
+pub fn export(
+    app: &AppHandle,
+    id: i64,
+    format: &str,
+    title: &str,
+    reveal: bool,
+) -> Result<String> {
     let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let segments = load_transcript(app, id);
     if segments.is_empty() {
@@ -1429,10 +1461,25 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
     }
     let duration = duration_label(meta.seconds);
 
-    let downloads = app
-        .path()
-        .download_dir()
-        .map_err(|_| anyhow!("папка Загрузки не нашлась"))?;
+    // Папка из настроек, а если её не выбирали — «Загрузки», как было
+    // раньше. Пропавшую папку (флешку вынули) молча заменяем «Загрузками»,
+    // иначе экспорт упал бы вместо того, чтобы сохраниться.
+    let chosen = app
+        .state::<crate::AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .export_dir
+        .clone()
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_dir());
+    let downloads = match chosen {
+        Some(dir) => dir,
+        None => app
+            .path()
+            .download_dir()
+            .map_err(|_| anyhow!("папка Загрузки не нашлась"))?,
+    };
     let safe: String = title
         .chars()
         .map(|c| match c {
@@ -1463,6 +1510,8 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
 
     // Показать файл в Finder или проводнике — та же роль, что «Открыть» в
     // снекбаре Android.
-    crate::sys::reveal_file(&path);
+    if reveal {
+        crate::sys::reveal_file(&path);
+    }
     Ok(path.to_string_lossy().to_string())
 }

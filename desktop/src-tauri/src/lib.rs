@@ -950,6 +950,25 @@ fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
 
 /// Выбор папки системным диалогом. Команда синхронная, а значит идёт не с
 /// главного потока — ждать ответа пользователя тут можно.
+/// Куда складывать экспорт встреч; пустая строка — вернуть «Загрузки».
+#[tauri::command]
+fn set_export_dir(app: AppHandle, dir: Option<String>) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    s.export_dir = dir.filter(|d| !d.is_empty());
+    settings::save(&app, &s);
+}
+
+#[tauri::command]
+fn pick_export_dir(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Куда складывать экспорт встреч")
+        .blocking_pick_folder()
+        .and_then(|dir| dir.into_path().ok())
+        .map(|dir| dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn pick_downloads_dir(app: AppHandle) -> Option<String> {
     app.dialog()
@@ -1018,7 +1037,7 @@ fn meeting_export(
     format: String,
     title: String,
 ) -> Result<String, String> {
-    meetings::export(&app, id, &format, &title).map_err(|e| e.to_string())
+    meetings::export(&app, id, &format, &title, true).map_err(|e| e.to_string())
 }
 
 /// Групповые действия из списка. Заголовки приходят из окна — там же, где
@@ -1032,12 +1051,20 @@ fn meetings_export(
 ) -> Result<usize, String> {
     let mut done = 0;
     let mut last_error = None;
+    let mut last_path = None;
     for (index, id) in ids.iter().enumerate() {
         let title = titles.get(index).cloned().unwrap_or_default();
-        match meetings::export(&app, *id, &format, &title) {
-            Ok(_) => done += 1,
+        match meetings::export(&app, *id, &format, &title, false) {
+            Ok(path) => {
+                done += 1;
+                last_path = Some(path);
+            }
             Err(e) => last_error = Some(e.to_string()),
         }
+    }
+    // Папку показываем один раз на всю пачку — по последнему сохранённому.
+    if let Some(path) = last_path {
+        sys::reveal_file(std::path::Path::new(&path));
     }
     match last_error {
         // Часть могла быть без расшифровки — сообщаем, но что вышло, то вышло.
@@ -1180,6 +1207,8 @@ pub fn run() {
             meeting_cancel,
             set_downloads_dir,
             pick_downloads_dir,
+            set_export_dir,
+            pick_export_dir,
             downloader_ready,
             install_downloader,
             meeting_transcribe,
@@ -1240,9 +1269,12 @@ pub fn run() {
             spawn_unload_watch(app.handle().clone());
 
             // Запуск без окна: приложение уходит в меню-бар молча.
-            if loaded_settings.start_hidden {
+            // Окно создаётся скрытым (см. tauri.conf.json) и показывается
+            // здесь: раньше оно при запуске со стартом системы успевало
+            // мигнуть на экране и только потом пряталось.
+            if !loaded_settings.start_hidden {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
+                    let _ = window.show();
                 }
             }
 

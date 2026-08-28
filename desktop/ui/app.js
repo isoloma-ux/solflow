@@ -525,7 +525,7 @@ function showPage(name, fromHistory = false) {
   });
   el("content").scrollTop = 0;
   if (name === "history") refreshHistory();
-  if (name === "settings") refreshSettings();
+  if (name === "settings") refreshSettings(true);
   if (name === "about") checkUpdate(false);
 }
 
@@ -672,6 +672,7 @@ function stateLabel(m) {
   const pct = m.progress != null ? ` ${m.progress}%` : "";
   if (m.phase === "fetching") return fetchLabel(m);
   if (m.phase === "importing") return "Импортирую";
+  if (m.phase === "helper") return `Ставлю ffmpeg${pct}`;
   if (m.phase === "downloading") return `Качаю модель голосов${pct}`;
   if (m.phase === "diarizing") return `Разделяю говорящих${pct}`;
   if (m.phase === "transcribing") return `Расшифровываю${pct}`;
@@ -2088,11 +2089,16 @@ el("historyClear").addEventListener("click", () => {
 
 // --- настройки -------------------------------------------------------------
 
-async function refreshSettings() {
-  const [settings, devices] = await Promise.all([
-    invoke("get_settings"),
-    invoke("list_input_devices"),
-  ]);
+// Перечисление микрофонов на Windows идёт через WASAPI и занимает заметное
+// время, а настройки перечитываются после каждого переключателя — поэтому
+// список берётся один раз и обновляется только при открытии экрана.
+let knownDevices = null;
+
+async function refreshSettings(reloadDevices = false) {
+  if (reloadDevices || !knownDevices) {
+    knownDevices = await invoke("list_input_devices");
+  }
+  const [settings, devices] = [await invoke("get_settings"), knownDevices];
 
   const select = el("inputDevice");
   select.textContent = "";
@@ -2161,6 +2167,13 @@ async function refreshSettings() {
     : "Файл удаляется после расшифровки — приложению нужен только звук";
   el("clearDownloadsDir").hidden = !keep;
   el("pickDownloadsDir").textContent = keep ? "Другая папка" : "Выбрать папку";
+
+  const exportDir = settings.export_dir;
+  el("exportHint").textContent = exportDir
+    ? `Сохраняю в ${exportDir} — папка открывается после сохранения`
+    : "Сейчас в «Загрузки» — после сохранения папка открывается сама";
+  el("clearExportDir").hidden = !exportDir;
+  el("pickExportDir").textContent = exportDir ? "Другая папка" : "Выбрать папку";
 
   const hasDownloader = await invoke("downloader_ready");
   el("downloaderDone").hidden = !hasDownloader;
@@ -2290,6 +2303,18 @@ el("pickDownloadsDir").addEventListener("click", async () => {
   const dir = await invoke("pick_downloads_dir");
   if (!dir) return;
   await invoke("set_downloads_dir", { dir });
+  refreshSettings();
+});
+
+el("pickExportDir").addEventListener("click", async () => {
+  const dir = await invoke("pick_export_dir");
+  if (!dir) return;
+  await invoke("set_export_dir", { dir });
+  refreshSettings();
+});
+
+el("clearExportDir").addEventListener("click", async () => {
+  await invoke("set_export_dir", { dir: null });
   refreshSettings();
 });
 
