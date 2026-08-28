@@ -781,6 +781,9 @@ pub fn transcribe(app: &AppHandle, id: i64) {
             if !cancelled {
                 if let Some(mut m) = load_meta(&app, id) {
                     m.state = STATE_FAILED.to_string();
+                    // Причину храним рядом: «не удалось расшифровать» без
+                    // объяснения — это тупик и для человека, и для разбора.
+                    m.error = Some(e.to_string());
                     save_meta(&app, id, &m);
                 }
             }
@@ -801,6 +804,11 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     if !engine.is_loaded() {
         return Err(anyhow!("модель не загружена"));
     }
+
+    // Флаг отмены снимаем на входе: если прошлую встречу отменили ровно на
+    // границе куска, поднятый флаг достался бы этой — и она упала бы на
+    // первом же куске «сама собой».
+    engine.clear_cancel();
 
     let mut meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let mut wav = WavReader::open(&audio_file(app, id))?;
@@ -903,6 +911,7 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     }
 
     meta.state = STATE_DONE.to_string();
+    meta.error = None;
     save_meta(app, id, &meta);
     Ok(())
 }
@@ -1057,7 +1066,7 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
 
         let result = crate::fetch::fetch(&url, &dir(&app, id), &progress).and_then(
             |(file, title)| {
-                meta.title = title;
+                meta.title = clean_title(&title, &meta.title);
                 save_meta(&app, id, &meta);
                 let state = app.state::<MeetingState>();
                 state.phase.lock().unwrap().insert(id, "importing");
@@ -1156,7 +1165,7 @@ pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
     // Имя файла становится названием встречи: по нему её и ищут потом,
     // «Импорт 26 августа» ни о чём не говорит.
     if let Some(name) = source.file_stem().map(|s| s.to_string_lossy().to_string()) {
-        meta.title = name.trim().to_string();
+        meta.title = clean_title(&name, &meta.title);
         save_meta(app, id, &meta);
     }
     let state = app.state::<MeetingState>();
@@ -1316,6 +1325,19 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
         return Err(anyhow!("файл не читается как аудио или видео"));
     }
     Ok(())
+}
+
+/// Чистит название от следов чужой кодировки. Ромбик U+FFFD появляется,
+/// когда чей-то вывод пришёл не в UTF-8; лучше короткое название без него,
+/// чем строка из ромбиков.
+fn clean_title(title: &str, fallback: &str) -> String {
+    let cleaned = title.replace('\u{FFFD}', "").trim().to_string();
+    let letters = cleaned.chars().filter(|c| c.is_alphanumeric()).count();
+    if letters == 0 {
+        fallback.to_string()
+    } else {
+        cleaned
+    }
 }
 
 /// Помечает встречу неудавшейся и запоминает причину.

@@ -173,6 +173,9 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
     for extra in clients {
         if title.is_empty() {
             title = crate::sys::command(&tool)
+                // Питон отдаёт вывод в кодировке консоли, а на русской
+                // Windows это не UTF-8: названия приезжали ромбиками.
+                .env("PYTHONIOENCODING", "utf-8")
                 .args(["--no-warnings", "--skip-download", "--print", "%(title)s"])
                 .args(extra)
                 .arg(url)
