@@ -83,6 +83,19 @@ jobs:
           key: win-release-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
           restore-keys: win-release-
 
+      # ggml-vulkan просит у CMake сам Vulkan и компилятор шейдеров glslc —
+      # ни того, ни другого на стоковом раннере нет. Ставим официальный SDK
+      # от LunarG молча.
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          $url = "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\\vulkan_sdk.exe"
+          & "$env:RUNNER_TEMP\\vulkan_sdk.exe" --root C:\\VulkanSDK --accept-licenses `
+            --default-answer --confirm-command install | Out-Null
+          "VULKAN_SDK=C:\\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "C:\\VulkanSDK\\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
@@ -90,49 +103,10 @@ jobs:
       # свои аргументы (проверено падением прогона).
       - name: Сборка
         shell: bash
-        run: tauri build --bundles nsis -- --no-default-features
+        run: tauri build --bundles nsis -- --no-default-features --features gpu
 
       - uses: actions/upload-artifact@v4
         with:
           name: SolFlow-Windows
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
-
-  # Разведка: собирается ли Vulkan-бэкенд движка на стоковой машине без
-  # отдельно поставленного Vulkan SDK. От ответа зависит, появится ли в
-  # настройках переключатель «считать на видеокарте». Задача временная.
-  vulkan-probe:
-    runs-on: windows-latest
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: desktop/src-tauri
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            desktop/src-tauri/target
-          key: win-vulkan-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
-          restore-keys: win-vulkan-
-
-      # ggml-vulkan просит у CMake сам Vulkan и компилятор шейдеров glslc —
-      # ни того, ни другого на стоковом раннере нет (проверено прогоном).
-      # Ставим официальный SDK от LunarG молча, только ядро.
-      - name: Vulkan SDK
-        shell: pwsh
-        run: |
-          $url = "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\vulkan_sdk.exe"
-          & "$env:RUNNER_TEMP\vulkan_sdk.exe" --root C:\VulkanSDK --accept-licenses `
-            --default-answer --confirm-command install | Out-Null
-          "VULKAN_SDK=C:\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "C:\VulkanSDK\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      - name: cargo check с vulkan
-        shell: bash
-        run: cargo check --no-default-features --features gpu
-
