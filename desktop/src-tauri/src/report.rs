@@ -72,15 +72,6 @@ pub fn init() {
     }
 }
 
-fn sysctl(key: &str) -> String {
-    std::process::Command::new("/usr/sbin/sysctl")
-        .args(["-n", key])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default()
-}
-
 /// Текст отчёта: версия, машина, настройки, последние жалобы в логе.
 pub fn build(app: &tauri::AppHandle, description: &str) -> String {
     use tauri::Manager;
@@ -95,12 +86,7 @@ pub fn build(app: &tauri::AppHandle, description: &str) -> String {
         .clone()
         .unwrap_or_else(|| "не загружена".to_string());
 
-    let os = std::process::Command::new("/usr/bin/sw_vers")
-        .arg("-productVersion")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
+    let os = crate::sys::os_version();
 
     let recent = RECENT
         .lock()
@@ -114,10 +100,14 @@ pub fn build(app: &tauri::AppHandle, description: &str) -> String {
     }
     out.push_str("— — —\n");
     out.push_str(&format!("Sol Flow {}\n", env!("CARGO_PKG_VERSION")));
-    out.push_str(&format!("macOS {os}, {}\n", sysctl("machdep.cpu.brand_string")));
+    out.push_str(&format!(
+        "{} {os}, {}\n",
+        crate::sys::OS_NAME,
+        crate::sys::cpu_name()
+    ));
     out.push_str(&format!(
         "Память {} ГБ\n",
-        sysctl("hw.memsize").parse::<u64>().unwrap_or(0) / 1_073_741_824
+        crate::sys::memory_bytes() / 1_073_741_824
     ));
     out.push_str(&format!("Модель: {model}\n"));
     out.push_str(&format!(

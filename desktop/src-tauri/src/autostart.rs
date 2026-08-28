@@ -1,9 +1,14 @@
-//! Запуск вместе с системой. Делается через LaunchAgent — plist в
-//! ~/Library/LaunchAgents: это работает для приложения, лежащего где
-//! угодно, и не требует ни установки в /Applications, ни разрешений.
+//! Запуск вместе с системой.
 //!
-//! Запускаем сам бандл через `open -a`, а не бинарь напрямую: иначе macOS
-//! считает процесс безымянным и не отдаёт ему права, выданные приложению.
+//! На macOS — LaunchAgent, plist в ~/Library/LaunchAgents: это работает для
+//! приложения, лежащего где угодно, и не требует ни установки в
+//! /Applications, ни разрешений. Запускаем сам бандл через `open -a`, а не
+//! бинарь напрямую: иначе macOS считает процесс безымянным и не отдаёт ему
+//! права, выданные приложению.
+//!
+//! На Windows — ключ в HKCU\...\CurrentVersion\Run: ярлык в папке
+//! «Автозагрузка» пришлось бы собирать через COM, а реестр правится обычной
+//! командой и живёт в профиле пользователя, без прав администратора.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -12,12 +17,14 @@ use anyhow::{anyhow, Result};
 
 const LABEL: &str = "ru.ivansolomin.solflow";
 
+#[cfg(target_os = "macos")]
 fn plist_path() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
     Some(PathBuf::from(home).join(format!("Library/LaunchAgents/{LABEL}.plist")))
 }
 
 /// Путь к .app, внутри которого лежит текущий бинарь.
+#[cfg(target_os = "macos")]
 fn bundle_path() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     // .../Sol Flow.app/Contents/MacOS/solflow → .../Sol Flow.app
@@ -29,10 +36,12 @@ fn bundle_path() -> Option<PathBuf> {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn enabled() -> bool {
     plist_path().map(|p| p.exists()).unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 pub fn set(enabled: bool) -> Result<()> {
     let path = plist_path().ok_or_else(|| anyhow!("нет домашней папки"))?;
 
@@ -93,6 +102,7 @@ pub fn set(enabled: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn uid() -> String {
     Command::new("/usr/bin/id")
         .arg("-u")
@@ -100,4 +110,48 @@ fn uid() -> String {
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|| "501".to_string())
+}
+
+// --- Windows ---------------------------------------------------------------
+
+/// Ветка реестра, откуда Windows запускает программы при входе в систему.
+#[cfg(windows)]
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// Под каким именем мы там записаны.
+#[cfg(windows)]
+const RUN_NAME: &str = "Sol Flow";
+
+#[cfg(windows)]
+pub fn enabled() -> bool {
+    Command::new("reg")
+        .args(["query", RUN_KEY, "/v", RUN_NAME])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+pub fn set(enabled: bool) -> Result<()> {
+    if !enabled {
+        let _ = Command::new("reg")
+            .args(["delete", RUN_KEY, "/v", RUN_NAME, "/f"])
+            .output();
+        return Ok(());
+    }
+
+    let exe = std::env::current_exe()?;
+    // Кавычки — часть значения: без них Windows спотыкается о пробел в
+    // «Sol Flow.exe» и ищет программу «Sol».
+    let value = format!("\"{}\"", exe.display());
+    let out = Command::new("reg")
+        .args(["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ", "/d", &value, "/f"])
+        .output()?;
+    if !out.status.success() {
+        return Err(anyhow!(
+            "система не приняла автозапуск: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
 }

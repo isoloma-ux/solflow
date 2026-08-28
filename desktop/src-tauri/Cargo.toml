@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
 cpal = "0.16"
 enigo = "0.6"
 serde = { version = "1", features = ["derive"] }
@@ -41,6 +42,11 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 transcribe-cpp = { version = "0.2.0", default-features = false }
+
+# Звук начала записи проигрывает сама система (PlaySound), громоздкий
+# аудиостек ради полусекундного «поп» не нужен.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation"] }
 
 [lib]
 name = "solflow_lib"

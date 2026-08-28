@@ -19,6 +19,7 @@ use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::wav::{WavReader, WavWriter, SAMPLE_RATE};
 use crate::{cleanup, segmenter};
@@ -992,29 +993,15 @@ fn diarize_job(app: &AppHandle, id: i64, num_speakers: i32) -> Result<usize> {
 
 // --- импорт ----------------------------------------------------------------
 
-/// Диалог выбора файла через osascript: свой HTTP- и GUI-стек ради одного
-/// диалога не нужен, а plugin-dialog — это лишняя сетевая сборка.
-pub fn pick_import_file() -> Option<PathBuf> {
-    // activate — иначе диалог всплывает под окном: приложение живёт в
-    // меню-баре и своего места в доке не имеет.
-    let out = Command::new("/usr/bin/osascript")
-        .args([
-            "-e",
-            "tell me to activate",
-            "-e",
-            "POSIX path of (choose file with prompt \"Аудио или видео встречи\")",
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None; // пользователь передумал
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if path.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(path))
-    }
+/// Диалог выбора файла — системный, через plugin-dialog: osascript есть
+/// только на Mac. Вызывать с отдельного потока: blocking_* ждёт ответа
+/// пользователя и на главном потоке заблокировал бы окно.
+pub fn pick_import_file(app: &AppHandle) -> Option<PathBuf> {
+    app.dialog()
+        .file()
+        .set_title("Аудио или видео встречи")
+        .blocking_pick_file()
+        .and_then(|file| file.into_path().ok())
 }
 
 /// Импорт по ссылке. Скачивание идёт в каталоге встречи, чтобы файл не
@@ -1431,7 +1418,8 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
         _ => std::fs::write(&path, as_text(title, &duration, &segments, &meta.names))?,
     }
 
-    // Показать файл в Finder — та же роль, что «Открыть» в снекбаре Android.
-    let _ = Command::new("/usr/bin/open").arg("-R").arg(&path).spawn();
+    // Показать файл в Finder или проводнике — та же роль, что «Открыть» в
+    // снекбаре Android.
+    crate::sys::reveal_file(&path);
     Ok(path.to_string_lossy().to_string())
 }

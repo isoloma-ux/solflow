@@ -1,5 +1,5 @@
 //! Разбор сочетания из строки настроек в Shortcut и обратно в подпись
-//! для интерфейса («⌥ Пробел»).
+//! для интерфейса («⌥ Пробел» на Mac, «Ctrl + Пробел» на Windows).
 
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
@@ -59,14 +59,18 @@ fn key_code(key: &str) -> Option<Code> {
     Some(code)
 }
 
-/// Подпись сочетания для интерфейса: «⌥ Пробел».
+/// Подпись сочетания для интерфейса. На Mac это значки клавиш, на Windows
+/// значков нет — там их пишут словами.
 pub fn label(text: &str) -> String {
+    let mac = cfg!(target_os = "macos");
     text.split('+')
         .map(|p| match p.trim().to_lowercase().as_str() {
-            "cmd" | "meta" | "command" | "super" => "⌘".to_string(),
-            "alt" | "option" | "opt" => "⌥".to_string(),
-            "shift" => "⇧".to_string(),
-            "ctrl" | "control" => "⌃".to_string(),
+            "cmd" | "meta" | "command" | "super" => {
+                if mac { "⌘" } else { "Win" }.to_string()
+            }
+            "alt" | "option" | "opt" => if mac { "⌥" } else { "Alt" }.to_string(),
+            "shift" => if mac { "⇧" } else { "Shift" }.to_string(),
+            "ctrl" | "control" => if mac { "⌃" } else { "Ctrl" }.to_string(),
             "space" => "Пробел".to_string(),
             other => {
                 let mut chars = other.chars();
@@ -77,5 +81,5 @@ pub fn label(text: &str) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(if mac { " " } else { " + " })
 }

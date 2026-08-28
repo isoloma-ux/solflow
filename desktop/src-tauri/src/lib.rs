@@ -26,6 +26,7 @@ mod report;
 mod segmenter;
 mod ttf;
 mod settings;
+mod sys;
 /// pub — им пользуется проверочный пример wav_check.
 pub mod wav;
 
@@ -37,6 +38,7 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use audio::Recorder;
@@ -317,9 +319,7 @@ fn mute_system(app: &AppHandle) {
     if !muted {
         return;
     }
-    let _ = std::process::Command::new("/usr/bin/osascript")
-        .args(["-e", "set volume with output muted"])
-        .spawn();
+    sys::set_muted(true);
 }
 
 fn unmute_system(app: &AppHandle) {
@@ -332,9 +332,7 @@ fn unmute_system(app: &AppHandle) {
     if !muted {
         return;
     }
-    let _ = std::process::Command::new("/usr/bin/osascript")
-        .args(["-e", "set volume without output muted"])
-        .spawn();
+    sys::set_muted(false);
 }
 
 fn start_recording(app: &AppHandle, from_hotkey: bool) {
@@ -526,7 +524,7 @@ fn set_hotkey(app: AppHandle, combo: String) -> Result<String, String> {
 fn open_link(url: String) {
     // Только http(s) и почта: открывать произвольные схемы из окна незачем.
     if url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:") {
-        let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
+        sys::open_url(&url);
     }
 }
 
@@ -588,7 +586,7 @@ fn send_bug_report(app: AppHandle, description: String) {
         encode("Sol Flow: проблема"),
         encode(&body)
     );
-    let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
+    sys::open_url(&url);
 }
 
 #[tauri::command]
@@ -611,9 +609,7 @@ fn check_update() -> UpdateInfo {
 
 #[tauri::command]
 fn open_accessibility(app: AppHandle) {
-    let _ = std::process::Command::new("open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        .spawn();
+    sys::open_accessibility_settings();
     let _ = app;
 }
 
@@ -767,16 +763,16 @@ fn list_models(app: AppHandle) -> Vec<models::ModelRow> {
     app.state::<models::ModelStore>().rows(&app, &active)
 }
 
-/// Чип этого Mac — по нему в каталоге показывается ориентир по скорости.
+/// Процессор этой машины — по нему в каталоге показывается ориентир по
+/// скорости.
 #[tauri::command]
 fn machine_chip() -> String {
-    std::process::Command::new("/usr/sbin/sysctl")
-        .args(["-n", "machdep.cpu.brand_string"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "этом Mac".to_string())
+    let name = sys::cpu_name();
+    if name.is_empty() {
+        "этом компьютере".to_string()
+    } else {
+        name
+    }
 }
 
 /// Есть ли в каталоге Handy модели, которых нет у нас. Сам каталог зашит в
@@ -901,7 +897,7 @@ fn meeting_record_stop(app: AppHandle) {
 #[tauri::command]
 fn meeting_import(app: AppHandle) {
     std::thread::spawn(move || {
-        if let Some(path) = meetings::pick_import_file() {
+        if let Some(path) = meetings::pick_import_file(&app) {
             if let Err(e) = meetings::import(&app, path) {
                 log::error!("импорт: {e}");
             }
@@ -945,27 +941,16 @@ fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
     settings::save(&app, &s);
 }
 
-/// Выбор папки системным диалогом — тем же osascript, что и выбор файла.
+/// Выбор папки системным диалогом. Команда синхронная, а значит идёт не с
+/// главного потока — ждать ответа пользователя тут можно.
 #[tauri::command]
-fn pick_downloads_dir() -> Option<String> {
-    let out = std::process::Command::new("/usr/bin/osascript")
-        .args([
-            "-e",
-            "tell me to activate",
-            "-e",
-            "POSIX path of (choose folder with prompt \"Куда складывать скачанное\")",
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if path.is_empty() {
-        None
-    } else {
-        Some(path)
-    }
+fn pick_downloads_dir(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Куда складывать скачанное")
+        .blocking_pick_folder()
+        .and_then(|dir| dir.into_path().ok())
+        .map(|dir| dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1116,6 +1101,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| match event.state() {

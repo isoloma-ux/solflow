@@ -104,8 +104,14 @@ impl Settings {
     }
 }
 
+/// На Windows Alt+Space занят системой — им открывается меню окна, —
+/// поэтому там по умолчанию Ctrl+Space.
 fn default_hotkey() -> String {
-    "alt+space".to_string()
+    if cfg!(target_os = "macos") {
+        "alt+space".to_string()
+    } else {
+        "ctrl+space".to_string()
+    }
 }
 
 fn yes() -> bool {

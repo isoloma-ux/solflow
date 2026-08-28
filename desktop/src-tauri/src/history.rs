@@ -170,9 +170,8 @@ pub fn update_text(app: &AppHandle, at: i64, text: &str) {
     save(app, &entries);
 }
 
-/// Сигнал начала записи — тот же pop, что в десктопном Handy. Играем
-/// системным afplay: свой аудиовыход ради полсекундного звука занимать
-/// незачем, а микрофон в это время уже слушает другой поток.
+/// Сигнал начала записи — тот же pop, что в десктопном Handy. Играет его
+/// система (см. sys::play_wav), поэтому файл сначала кладётся на диск.
 pub fn play_start_sound(app: &AppHandle) {
     const SOUND: &[u8] = include_bytes!("../sounds/start.wav");
     let Ok(dir) = app.path().app_data_dir() else {
@@ -185,5 +184,5 @@ pub fn play_start_sound(app: &AppHandle) {
             return;
         }
     }
-    let _ = std::process::Command::new("/usr/bin/afplay").arg(file).spawn();
+    crate::sys::play_wav(&file);
 }
