@@ -33,6 +33,10 @@ pub struct Settings {
     #[serde(default)]
     pub export_dir: Option<String>,
 
+    /// Спрашивать папку при каждом экспорте. Перевешивает export_dir.
+    #[serde(default)]
+    pub export_ask: bool,
+
     /// Считать на видеокарте, если она подходит. Выключенное — строго
     /// процессор: на редких драйверах видеокарта считает неверно, и человеку
     /// нужен способ это обойти.
@@ -175,6 +179,7 @@ impl Default for Settings {
             theme: default_theme(),
             downloads_dir: None,
             export_dir: None,
+            export_ask: false,
             use_gpu: default_use_gpu(),
             start_hidden: false,
             show_tray_icon: true,

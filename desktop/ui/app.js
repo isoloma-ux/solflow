@@ -2188,11 +2188,15 @@ async function refreshSettings(reloadDevices = false) {
   el("pickDownloadsDir").textContent = keep ? "Другая папка" : "Выбрать папку";
 
   const exportDir = settings.export_dir;
-  el("exportHint").textContent = exportDir
-    ? `Сохраняю в ${exportDir} — папка открывается после сохранения`
-    : "Сейчас в «Загрузки» — после сохранения папка открывается сама";
-  el("clearExportDir").hidden = !exportDir;
-  el("pickExportDir").textContent = exportDir ? "Другая папка" : "Выбрать папку";
+  const exportMode = settings.export_ask ? "ask" : exportDir ? "folder" : "downloads";
+  markSegments("exportSegments", "export", exportMode);
+  el("pickExportDir").hidden = exportMode !== "folder";
+  el("exportHint").textContent =
+    exportMode === "ask"
+      ? "Спрошу папку и имя при каждом экспорте"
+      : exportMode === "folder"
+        ? `Сохраняю в ${exportDir} — папка открывается после сохранения`
+        : "Сейчас в «Загрузки» — после сохранения папка открывается сама";
 
   const hasDownloader = await invoke("downloader_ready");
   el("downloaderDone").hidden = !hasDownloader;
@@ -2341,15 +2345,21 @@ el("useGpu").addEventListener("click", async () => {
   await invoke("set_use_gpu", { enabled });
 });
 
+bindSegments("exportSegments", "export", async (mode) => {
+  await invoke("set_export_mode", { mode });
+  // «Папка» без выбранной папки — сразу диалог: иначе непонятно, куда
+  // приложение собралось сохранять.
+  if (mode === "folder") {
+    const dir = await invoke("pick_export_dir");
+    if (dir) await invoke("set_export_dir", { dir });
+  }
+  refreshSettings();
+});
+
 el("pickExportDir").addEventListener("click", async () => {
   const dir = await invoke("pick_export_dir");
   if (!dir) return;
   await invoke("set_export_dir", { dir });
-  refreshSettings();
-});
-
-el("clearExportDir").addEventListener("click", async () => {
-  await invoke("set_export_dir", { dir: null });
   refreshSettings();
 });
 

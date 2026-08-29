@@ -1518,6 +1518,29 @@ pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap
 ///
 /// txt и md пишутся напрямую, docx собирает системный textutil из HTML,
 /// pdf — свой генератор.
+/// Название встречи, пригодное для имени файла: двоеточия и слэши в именах
+/// не живут ни на одной из систем.
+pub fn safe_file_name(title: &str) -> String {
+    title
+        .chars()
+        .map(|c| match c {
+            ':' => '.',
+            '\\' | '/' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
+            c => c,
+        })
+        .collect()
+}
+
+/// Куда сохранять экспорт.
+pub enum Target {
+    /// Как выбрано в настройках: папка оттуда или «Загрузки».
+    AsSettings,
+    /// Конкретная папка — её выбрали в диалоге на эту выгрузку.
+    Dir(PathBuf),
+    /// Конкретный файл — его выбрали в диалоге вместе с именем.
+    File(PathBuf),
+}
+
 /// `reveal` — показать ли файл в проводнике. При выгрузке пачкой его
 /// выключают: иначе на каждую встречу открылось бы своё окно.
 pub fn export(
@@ -1526,6 +1549,7 @@ pub fn export(
     format: &str,
     title: &str,
     reveal: bool,
+    target: Target,
 ) -> Result<String> {
     let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let segments = load_transcript(app, id);
@@ -1537,15 +1561,18 @@ pub fn export(
     // Папка из настроек, а если её не выбирали — «Загрузки», как было
     // раньше. Пропавшую папку (флешку вынули) молча заменяем «Загрузками»,
     // иначе экспорт упал бы вместо того, чтобы сохраниться.
-    let chosen = app
-        .state::<crate::AppState>()
-        .settings
-        .lock()
-        .unwrap()
-        .export_dir
-        .clone()
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_dir());
+    let chosen = match &target {
+        Target::Dir(dir) => Some(dir.clone()),
+        _ => app
+            .state::<crate::AppState>()
+            .settings
+            .lock()
+            .unwrap()
+            .export_dir
+            .clone()
+            .map(PathBuf::from),
+    }
+    .filter(|dir| dir.is_dir());
     let downloads = match chosen {
         Some(dir) => dir,
         None => app
@@ -1553,25 +1580,29 @@ pub fn export(
             .download_dir()
             .map_err(|_| anyhow!("папка Загрузки не нашлась"))?,
     };
-    let safe: String = title
-        .chars()
-        .map(|c| match c {
-            ':' => '.',
-            '\\' | '/' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
-            c => c,
-        })
-        .collect();
+    let safe = safe_file_name(title);
     let ext = match format {
         "md" | "docx" | "pdf" => format,
         _ => "txt",
     };
 
-    // Не перезаписываем чужое: «имя 2», «имя 3»...
-    let mut path = downloads.join(format!("{safe}.{ext}"));
-    let mut counter = 2;
-    while path.exists() {
-        path = downloads.join(format!("{safe} {counter}.{ext}"));
-        counter += 1;
+    // Выбранный в диалоге файл берём как есть: человек уже решил и про имя,
+    // и про перезапись. В остальных случаях не перезаписываем чужое:
+    // «имя 2», «имя 3»...
+    let chosen_file = matches!(target, Target::File(_));
+    let mut path = match target {
+        Target::File(path) => path,
+        _ => downloads.join(format!("{safe}.{ext}")),
+    };
+    if path.extension().is_none() {
+        path.set_extension(ext);
+    }
+    if !chosen_file {
+        let mut counter = 2;
+        while path.exists() {
+            path = downloads.join(format!("{safe} {counter}.{ext}"));
+            counter += 1;
+        }
     }
 
     match format {

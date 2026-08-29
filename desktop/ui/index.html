@@ -699,8 +699,12 @@
                 Сейчас в «Загрузки» — после сохранения папка открывается сама
               </p>
             </div>
-            <button class="model-remove" id="clearExportDir" hidden>В «Загрузки»</button>
-            <button class="pill-inset compact" id="pickExportDir">Выбрать папку</button>
+            <div class="segments" id="exportSegments">
+              <button class="segment" data-export="downloads">Загрузки</button>
+              <button class="segment" data-export="folder">Папка</button>
+              <button class="segment" data-export="ask">Спрашивать</button>
+            </div>
+            <button class="pill-inset compact" id="pickExportDir" hidden>Выбрать</button>
           </div>
           <div class="perm" id="permDownloader">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"

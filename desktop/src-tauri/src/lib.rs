@@ -957,6 +957,19 @@ fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
 
 /// Выбор папки системным диалогом. Команда синхронная, а значит идёт не с
 /// главного потока — ждать ответа пользователя тут можно.
+/// Режим экспорта: "downloads" — в «Загрузки», "folder" — в выбранную
+/// папку, "ask" — спрашивать каждый раз.
+#[tauri::command]
+fn set_export_mode(app: AppHandle, mode: String) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    s.export_ask = mode == "ask";
+    if mode == "downloads" {
+        s.export_dir = None;
+    }
+    settings::save(&app, &s);
+}
+
 /// Куда складывать экспорт встреч; пустая строка — вернуть «Загрузки».
 #[tauri::command]
 fn set_export_dir(app: AppHandle, dir: Option<String>) {
@@ -1062,7 +1075,28 @@ fn meeting_export(
     format: String,
     title: String,
 ) -> Result<String, String> {
-    meetings::export(&app, id, &format, &title, true).map_err(|e| e.to_string())
+    // «Спрашивать каждый раз» — это диалог сохранения: человек сам выбирает
+    // и папку, и имя. Команда синхронная, то есть идёт не с главного потока,
+    // и ждать ответа тут можно.
+    let ask = app.state::<AppState>().settings.lock().unwrap().export_ask;
+    let target = if ask {
+        let name = format!("{}.{}", meetings::safe_file_name(&title), format);
+        match app
+            .dialog()
+            .file()
+            .set_title("Куда сохранить")
+            .set_file_name(&name)
+            .blocking_save_file()
+            .and_then(|path| path.into_path().ok())
+        {
+            Some(path) => meetings::Target::File(path),
+            // Передумал — это не ошибка.
+            None => return Ok(String::new()),
+        }
+    } else {
+        meetings::Target::AsSettings
+    };
+    meetings::export(&app, id, &format, &title, true, target).map_err(|e| e.to_string())
 }
 
 /// Групповые действия из списка. Заголовки приходят из окна — там же, где
@@ -1077,9 +1111,32 @@ fn meetings_export(
     let mut done = 0;
     let mut last_error = None;
     let mut last_path = None;
+
+    // Пачкой спрашиваем один раз и про папку целиком: диалог на каждую
+    // встречу превратил бы выгрузку десятка записей в пытку.
+    let ask = app.state::<AppState>().settings.lock().unwrap().export_ask;
+    let folder = if ask {
+        match app
+            .dialog()
+            .file()
+            .set_title("Куда сохранить выгрузку")
+            .blocking_pick_folder()
+            .and_then(|dir| dir.into_path().ok())
+        {
+            Some(dir) => Some(dir),
+            None => return Ok(0),
+        }
+    } else {
+        None
+    };
+
     for (index, id) in ids.iter().enumerate() {
         let title = titles.get(index).cloned().unwrap_or_default();
-        match meetings::export(&app, *id, &format, &title, false) {
+        let target = match &folder {
+            Some(dir) => meetings::Target::Dir(dir.clone()),
+            None => meetings::Target::AsSettings,
+        };
+        match meetings::export(&app, *id, &format, &title, false, target) {
             Ok(path) => {
                 done += 1;
                 last_path = Some(path);
@@ -1234,6 +1291,7 @@ pub fn run() {
             pick_downloads_dir,
             set_export_dir,
             pick_export_dir,
+            set_export_mode,
             set_use_gpu,
             downloader_ready,
             install_downloader,
