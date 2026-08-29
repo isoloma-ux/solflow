@@ -142,16 +142,50 @@ jobs:
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
+      # Свой сертификат подписи. Он не меняется от версии к версии, и это
+      # главное: разрешения (микрофон, универсальный доступ) macOS помнит по
+      # удостоверению приложения. С подписью «на месте» удостоверением был
+      # отпечаток файла — каждая сборка выглядела новым приложением, и права
+      # приходилось выдавать заново.
+      - name: Сертификат подписи
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          echo "$CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p build build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p build build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import cert.p12 -k build.keychain -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k build build.keychain > /dev/null
+          # Своему сертификату нужно доверие, иначе codesign не считает его
+          # пригодным для подписи.
+          openssl pkcs12 -in cert.p12 -passin pass:"$CERT_PASSWORD" \
+            -clcerts -nokeys -out cert.pem -legacy
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain cert.pem
+          security find-identity -v -p codesigning
+          rm -f cert.p12 cert.pem
+
       - name: Сборка
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          APPLE_SIGNING_IDENTITY: "Sol Flow Signing"
         run: |
           rm -rf target/release/bundle/macos
           tauri build --bundles app
           # Проверяем, что подпись «на месте» действительно легла: без неё
           # система объявляет скачанный бандл повреждённым (проверено).
           codesign --verify --verbose=1 "target/release/bundle/macos/Sol Flow.app"
+          # Подпись должна быть нашим сертификатом: с «на месте» разрешения
+          # слетали при каждом обновлении.
+          codesign -dvv "target/release/bundle/macos/Sol Flow.app" 2>&1 \
+            | grep -q "Authority=Sol Flow Signing" \
+            || { echo "подписано не нашим сертификатом"; exit 1; }
           # Права должны быть на месте: в усиленном режиме без них система
           # молча отказывает в микрофоне, не задавая вопроса (проверено).
           codesign -d --entitlements - "target/release/bundle/macos/Sol Flow.app" 2>&1 \
