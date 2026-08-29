@@ -125,6 +125,9 @@ jobs:
       - name: Сборка
         shell: bash
         run: |
+          # Прошлые сборки лежат в кеше вместе со своими установщиками —
+          # чистим, иначе в артефакт уезжает и старая версия.
+          rm -rf target/release/bundle/nsis
           cargo build --release --locked --features gpu
           cp target/release/*.dll .
           cp sherpa/win/lib/*.dll .
