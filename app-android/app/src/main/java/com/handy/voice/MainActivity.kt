@@ -556,7 +556,67 @@ class MainActivity : AppCompatActivity() {
      * разделы. В шторку уходит то, что вкладкой быть не должно: список
      * проектов, настройки и «О проекте».
      */
+    /**
+     * Подвал бокового меню: активная модель и версия — как в боковой панели
+     * на компьютере. Обе строки нажимаются: модель меняется на месте,
+     * версия проверяет обновление и предлагает его поставить.
+     */
+    private fun renderDrawerFoot() {
+        val active = ModelStore.activeFilename(this)
+        val name = active?.let { Catalog.findByFilename(this, it)?.first?.name }
+        ui.drawerModel.text = name ?: getString(R.string.model_pick_empty)
+        ui.drawerModel.setOnClickListener {
+            ui.drawer.closeDrawers()
+            chooseModel()
+        }
+
+        ui.drawerVersion.text = getString(R.string.about_version, BuildConfig.VERSION_NAME)
+        ui.drawerVersion.setOnClickListener { checkUpdateFromDrawer() }
+    }
+
+    /**
+     * Проверка обновления из меню. Нашлось — предлагаем поставить прямо
+     * отсюда: заходить ради этого в «О проекте» незачем.
+     */
+    private fun checkUpdateFromDrawer() {
+        val version = ui.drawerVersion
+        version.setText(R.string.update_checking)
+        lifecycleScope.launch {
+            val release = withContext(Dispatchers.IO) { AppUpdate.latest() }
+            if (release == null || !newerVersion(release.version, BuildConfig.VERSION_NAME)) {
+                version.setText(
+                    if (release == null) R.string.update_failed else R.string.update_current
+                )
+                // Через несколько секунд возвращаем обычную подпись: подвал
+                // не место для отчётов.
+                version.postDelayed({
+                    version.text = getString(R.string.about_version, BuildConfig.VERSION_NAME)
+                }, 4_000)
+                return@launch
+            }
+            version.text = getString(R.string.update_available, release.version)
+            version.setOnClickListener {
+                startActivity(Intent(this@MainActivity, AboutActivity::class.java))
+            }
+        }
+    }
+
+    /** Сравнение версий по числам: «0.3.1» новее «0.3.0». */
+    private fun newerVersion(latest: String, current: String): Boolean {
+        fun parts(v: String) = v.trimStart('v', 'V').split('.')
+            .map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
+        val a = parts(latest)
+        val b = parts(current)
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val l = a.getOrElse(i) { 0 }
+            val c = b.getOrElse(i) { 0 }
+            if (l != c) return l > c
+        }
+        return false
+    }
+
     private fun renderDrawer() {
+        renderDrawerFoot()
         val box = ui.drawerList
         box.removeAllViews()
 

@@ -166,6 +166,34 @@
                 android:paddingBottom="24dp"
                 android:orientation="vertical" />
         </ScrollView>
+
+        <!-- Подвал меню, как в боковой панели на компьютере: активная модель
+             и версия. Обе строки — кнопки: модель меняется на месте, версия
+             проверяет обновление и предлагает поставить. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/hairline" />
+
+        <TextView
+            android:id="@+id/drawerModel"
+            style="@style/Text.Muted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:textSize="14sp"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/drawerVersion"
+            style="@style/Text.Muted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="6dp"
+            android:paddingBottom="20dp"
+            android:textSize="13sp"
+            android:background="?attr/selectableItemBackground" />
     </LinearLayout>
 
 </androidx.drawerlayout.widget.DrawerLayout>

@@ -92,16 +92,60 @@ class HandyAccessibilityService : AccessibilityService() {
      * находилось — текст уходил в буфер обмена вместо поля.
      */
     private fun focusedEditable(): AccessibilityNodeInfo? = runCatching {
-        windows
+        val roots = windows
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .asSequence()
-            .mapNotNull { it.root }
+            .mapNotNull { it.root } + listOfNotNull(rootInActiveWindow)
+
+        roots.asSequence()
             .mapNotNull { it.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }
-            .firstOrNull { it.isEditable }
-            ?: rootInActiveWindow
-                ?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                ?.takeIf { it.isEditable }
+            .firstOrNull { it.acceptsText() }
+        // Поле в фокусе нашлось не везде: приложения на Compose (ChatGPT и
+        // подобные) не объявляют его через findFocus. Тогда обходим дерево
+        // сами и берём то, что помечено как в фокусе и принимает текст.
+            ?: roots.asSequence().mapNotNull { findTypingTarget(it) }.firstOrNull()
     }.getOrNull()
+
+    /**
+     * Принимает ли узел набранный текст.
+     *
+     * Признака «редактируемое» мало: поля на Compose его не выставляют, хотя
+     * вставку выполняют. Поэтому смотрим ещё и на список действий — если узел
+     * умеет вставлять или задавать текст, он нам подходит.
+     */
+    private fun AccessibilityNodeInfo.acceptsText(): Boolean =
+        isEditable ||
+            className?.contains("EditText") == true ||
+            actionList.any {
+                it.id == AccessibilityNodeInfo.ACTION_PASTE ||
+                    it.id == AccessibilityNodeInfo.ACTION_SET_TEXT
+            }
+
+    /**
+     * Ищет поле ввода обходом дерева: сначала то, что в фокусе, иначе
+     * единственное подходящее. Глубина ограничена — деревья бывают
+     * огромными, а служба не должна подвешивать ввод.
+     */
+    private fun findTypingTarget(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        queue.add(root to 0)
+        var fallback: AccessibilityNodeInfo? = null
+        var seen = 0
+
+        while (queue.isNotEmpty() && seen < MAX_NODES) {
+            val (node, depth) = queue.removeFirst()
+            seen++
+            if (node.acceptsText()) {
+                if (node.isFocused) return node
+                if (fallback == null) fallback = node
+            }
+            if (depth < MAX_DEPTH) {
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { queue.add(it to depth + 1) }
+                }
+            }
+        }
+        return fallback
+    }
 
     /**
      * Вставляет текст в позицию курсора. Возвращает false, если поля в фокусе
@@ -205,6 +249,11 @@ class HandyAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        /** Сколько узлов и уровней смотреть при поиске поля ввода: дерево
+         *  экрана бывает огромным, а вставка должна оставаться мгновенной. */
+        private const val MAX_NODES = 600
+        private const val MAX_DEPTH = 40
+
         private const val CLIPBOARD_RESTORE_MS = 1200L
 
         /** Вставка успевает дойти до поля раньше, чем мы жмём ввод. */
@@ -256,4 +305,5 @@ class HandyAccessibilityService : AccessibilityService() {
             return enabled.split(':').any { it.equals(name, true) || it.equals(short, true) }
         }
     }
+
 }
