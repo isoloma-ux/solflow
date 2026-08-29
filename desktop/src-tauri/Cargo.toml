@@ -1,0 +1,67 @@
+[package]
+name = "solflow"
+version = "0.2.2"
+description = "Sol Flow — офлайновый голосовой ввод"
+edition = "2021"
+
+[features]
+# Диаризация линкует статический sherpa-onnx: библиотеки лежат вне
+# репозитория и собраны пока только под macOS, поэтому она за фичей.
+default = ["diarize"]
+diarize = []
+# Считать на видеокарте: Vulkan-бэкенд движка отдельными модулями рядом с
+# приложением. Статикой не выходит — манифест крейта просит у линкера
+# `vulkan.lib`, а в Windows SDK библиотека называется `vulkan-1.lib`
+# (LNK1181, проверено прогоном). В модульном режиме Vulkan линкует CMake
+# внутри своей DLL, и заодно получается то, что нужно: на машине без
+# подходящего драйвера модуль просто не загрузится, а процессор продолжит
+# считать.
+gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+cpal = "0.16"
+enigo = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+# Сжатие потоков в своём генераторе PDF — шрифт весит 400 КБ на файл.
+flate2 = "1"
+# HTTP без внешнего curl: системный TLS, чтобы сборка не тянула ни nasm
+# (rustls/ring под MSVC), ни OpenSSL.
+ureq = { version = "3", default-features = false, features = ["native-tls"] }
+# Контрольные суммы моделей: раньше их считал /usr/bin/shasum.
+sha2 = "0.10"
+log = "0.4"
+env_logger = "0.11"
+
+# Тот же движок, что на Android (transcribe.cpp), — официальные Rust-биндинги
+# от авторов Handy. Metal: GigaAM на M-чипах считается на GPU; на Windows
+# целевые машины — Intel и AMD, там считает процессор.
+[target.'cfg(target_os = "macos")'.dependencies]
+transcribe-cpp = { version = "0.2.0", default-features = false, features = ["metal"] }
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+transcribe-cpp = { version = "0.2.0", default-features = false }
+
+# Звук начала записи проигрывает сама система (PlaySound), громоздкий
+# аудиостек ради полусекундного «поп» не нужен.
+[target.'cfg(windows)'.dependencies]
+# Второй запуск .exe не должен поднимать вторую копию: на macOS система
+# сама возвращает уже открытое приложение, на Windows об этом просят плагин.
+tauri-plugin-single-instance = "2"
+windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
+
+[lib]
+name = "solflow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[profile.release]
+lto = true
