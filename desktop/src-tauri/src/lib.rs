@@ -164,7 +164,7 @@ struct AppState {
     settings: Mutex<settings::Settings>,
     /// Когда моделью пользовались в последний раз — по этому сторож
     /// решает, пора ли выгружать её из памяти.
-    last_used: Mutex<Instant>,
+    pub last_used: Mutex<Instant>,
 }
 
 /// Путь к активной модели по настройкам; None — файла нет.
@@ -264,9 +264,11 @@ fn spawn_unload_watch(app: AppHandle) {
         std::thread::sleep(std::time::Duration::from_secs(20));
         let state = app.state::<AppState>();
 
-        // Во время записи и распознавания не трогаем.
+        // Во время записи и распознавания не трогаем — как и во время
+        // работы над встречей: она идёт своим чередом и о фазе диктовки
+        // ничего не знает.
         let phase = state.phase.load(Ordering::SeqCst);
-        if phase != PHASE_READY || !state.engine.is_loaded() {
+        if phase != PHASE_READY || !state.engine.is_loaded() || meetings::busy(&app) {
             continue;
         }
         let Some(after) = state.settings.lock().unwrap().unload_after() else {

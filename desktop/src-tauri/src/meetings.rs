@@ -748,6 +748,14 @@ mod tests {
 
 // --- расшифровка -----------------------------------------------------------
 
+/// Идёт ли сейчас работа хоть над одной встречей. Сторож, выгружающий
+/// модель по простою, обязан это знать: расшифровка встречи для него
+/// выглядела бездействием, и он вынимал модель прямо из-под неё — отсюда
+/// «модель не загружена» посреди двухчасовой записи.
+pub fn busy(app: &AppHandle) -> bool {
+    !app.state::<MeetingState>().phase.lock().unwrap().is_empty()
+}
+
 pub fn transcribe(app: &AppHandle, id: i64) {
     let state = app.state::<MeetingState>();
     {
@@ -902,6 +910,9 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
             });
             save_transcript(app, id, &segments);
         }
+
+        // Модель только что работала — сдвигаем счётчик простоя.
+        *app.state::<crate::AppState>().last_used.lock().unwrap() = std::time::Instant::now();
 
         let pct = (((index + 1) * 100) / ranges.len().max(1)).min(100) as u8;
         let changed = state.progress.lock().unwrap().insert(id, pct) != Some(pct);
