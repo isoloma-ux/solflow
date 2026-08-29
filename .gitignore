@@ -4,9 +4,13 @@ desktop/src-tauri/gen/schemas/
 desktop/Sol Flow.app/
 desktop/*.zip
 
+# DLL движка, которые CI кладёт рядом с конфигом перед упаковкой
+desktop/src-tauri/*.dll
+
 # Статические библиотеки sherpa-onnx: 150+ МБ на платформу, собираются
 # отдельно (build-macos) и подкладываются в sherpa/lib перед сборкой.
 desktop/src-tauri/sherpa/lib/
+desktop/src-tauri/sherpa/win/
 
 # Сборка Android
 app-android/app/build/

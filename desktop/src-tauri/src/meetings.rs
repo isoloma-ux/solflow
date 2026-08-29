@@ -10,7 +10,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
@@ -52,6 +51,10 @@ pub struct Meta {
     /// Имена, которые пользователь дал говорящим, по их номерам.
     #[serde(default)]
     pub names: HashMap<String, String>,
+    /// Почему не вышло, если не вышло: строку показывает список встреч.
+    /// Молчаливая неудача — худшее, что может случиться с импортом.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// Одна реплика таймлайна: границы в секундах от начала записи.
@@ -83,6 +86,8 @@ pub struct MeetingRow {
     pub speakers: u32,
     /// Имена говорящих по номерам — их показывает и экспортирует окно.
     pub names: HashMap<String, String>,
+    /// Почему не вышло, если не вышло.
+    pub error: Option<String>,
     /// Проценты идущей работы; None — работа не идёт или без процентов.
     pub progress: Option<u8>,
     /// Скачано и всего байт, пока идёт загрузка по ссылке.
@@ -181,6 +186,7 @@ fn create(app: &AppHandle, imported: bool) -> Result<(i64, Meta)> {
         project: None,
         speakers: 0,
         names: HashMap::new(),
+        error: None,
     };
     std::fs::create_dir_all(dir(app, now))?;
     save_meta(app, now, &meta);
@@ -223,6 +229,7 @@ pub fn rows(app: &AppHandle) -> Vec<MeetingRow> {
                 project: m.project,
                 speakers: m.speakers,
                 names: m.names,
+                error: m.error,
                 progress: progress.get(&id).copied(),
                 fetched: fetched.get(&id).copied(),
                 phase: phase.get(&id).map(|p| p.to_string()),
@@ -741,6 +748,14 @@ mod tests {
 
 // --- расшифровка -----------------------------------------------------------
 
+/// Идёт ли сейчас работа хоть над одной встречей. Сторож, выгружающий
+/// модель по простою, обязан это знать: расшифровка встречи для него
+/// выглядела бездействием, и он вынимал модель прямо из-под неё — отсюда
+/// «модель не загружена» посреди двухчасовой записи.
+pub fn busy(app: &AppHandle) -> bool {
+    !app.state::<MeetingState>().phase.lock().unwrap().is_empty()
+}
+
 pub fn transcribe(app: &AppHandle, id: i64) {
     let state = app.state::<MeetingState>();
     {
@@ -774,6 +789,9 @@ pub fn transcribe(app: &AppHandle, id: i64) {
             if !cancelled {
                 if let Some(mut m) = load_meta(&app, id) {
                     m.state = STATE_FAILED.to_string();
+                    // Причину храним рядом: «не удалось расшифровать» без
+                    // объяснения — это тупик и для человека, и для разбора.
+                    m.error = Some(e.to_string());
                     save_meta(&app, id, &m);
                 }
             }
@@ -794,6 +812,11 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     if !engine.is_loaded() {
         return Err(anyhow!("модель не загружена"));
     }
+
+    // Флаг отмены снимаем на входе: если прошлую встречу отменили ровно на
+    // границе куска, поднятый флаг достался бы этой — и она упала бы на
+    // первом же куске «сама собой».
+    engine.clear_cancel();
 
     let mut meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let mut wav = WavReader::open(&audio_file(app, id))?;
@@ -862,10 +885,22 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     let mut segments: Vec<Segment> = Vec::new();
     for (index, (from, to)) in ranges.iter().enumerate() {
         if cancelled() {
+            engine.clear_cancel();
             return Ok(());
         }
         let pcm = wav.read(*from, (*to - *from) as usize)?;
-        let text = cleanup::clean(&engine.transcribe_segment(&pcm)?);
+        // Брошенный по отмене кусок возвращает ошибку — это не поломка, а
+        // ровно то, чего просил человек.
+        let text = match engine.transcribe_segment(&pcm) {
+            Ok(text) => cleanup::clean(&text),
+            Err(e) => {
+                engine.clear_cancel();
+                if cancelled() {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        };
         if !text.is_empty() {
             segments.push(Segment {
                 s: *from as f32 / sr as f32,
@@ -876,6 +911,9 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
             save_transcript(app, id, &segments);
         }
 
+        // Модель только что работала — сдвигаем счётчик простоя.
+        *app.state::<crate::AppState>().last_used.lock().unwrap() = std::time::Instant::now();
+
         let pct = (((index + 1) * 100) / ranges.len().max(1)).min(100) as u8;
         let changed = state.progress.lock().unwrap().insert(id, pct) != Some(pct);
         if changed {
@@ -884,6 +922,7 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     }
 
     meta.state = STATE_DONE.to_string();
+    meta.error = None;
     save_meta(app, id, &meta);
     Ok(())
 }
@@ -1038,7 +1077,7 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
 
         let result = crate::fetch::fetch(&url, &dir(&app, id), &progress).and_then(
             |(file, title)| {
-                meta.title = title;
+                meta.title = clean_title(&title, &meta.title);
                 save_meta(&app, id, &meta);
                 let state = app.state::<MeetingState>();
                 state.phase.lock().unwrap().insert(id, "importing");
@@ -1061,7 +1100,10 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
             Ok(()) => transcribe(&app, id),
             Err(e) => {
                 log::error!("ссылка не пошла: {e}");
-                let _ = std::fs::remove_dir_all(dir(&app, id));
+                // Встречу не удаляем: строка с причиной — единственный
+                // способ узнать, что пошло не так, не открывая логи.
+                let _ = std::fs::remove_file(audio_file(&app, id));
+                mark_failed(&app, id, &e.to_string());
                 let _ = app.emit("solflow-import-failed", format!("{e}"));
             }
         }
@@ -1116,8 +1158,15 @@ fn keep_or_drop_source(app: &AppHandle, file: &Path, title: &str) {
 /// Остановить работу над встречей: загрузку, импорт, расшифровку.
 pub fn cancel(app: &AppHandle, id: i64) {
     let state = app.state::<MeetingState>();
+    let phase = state.phase.lock().unwrap().get(&id).copied();
     if let Some(flag) = state.cancel.lock().unwrap().get(&id) {
         flag.store(true, Ordering::Relaxed);
+    }
+    // Кусок в двадцать четыре секунды на медленной машине считается минуту, и
+    // всё это время флага никто не видит. Движку говорим отдельно — он
+    // бросает работу между шагами декодера.
+    if phase == Some("transcribing") {
+        app.state::<crate::AppState>().engine.request_cancel();
     }
     notify(app);
 }
@@ -1127,7 +1176,7 @@ pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
     // Имя файла становится названием встречи: по нему её и ищут потом,
     // «Импорт 26 августа» ни о чём не говорит.
     if let Some(name) = source.file_stem().map(|s| s.to_string_lossy().to_string()) {
-        meta.title = name.trim().to_string();
+        meta.title = clean_title(&name, &meta.title);
         save_meta(app, id, &meta);
     }
     let state = app.state::<MeetingState>();
@@ -1148,6 +1197,7 @@ pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
             Ok(()) => transcribe(&app, id),
             Err(e) => {
                 log::error!("импорт не удался: {e}");
+                mark_failed(&app, id, &e.to_string());
                 // Встреча без звука в списке бессмысленна — убираем след.
                 let _ = std::fs::remove_dir_all(dir(&app, id));
                 let _ = app.emit("solflow-import-failed", format!("{e}"));
@@ -1238,10 +1288,34 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
 /// приложение качает себе в настройках. Одной командой: он и видео берёт,
 /// и в нужный формат кладёт сразу.
 #[cfg(windows)]
-fn to_wav_16k(_app: &AppHandle, _id: i64, source: &Path, target: &Path) -> Result<()> {
-    let ffmpeg = crate::tools::ffmpeg().ok_or_else(|| {
-        anyhow!("для импорта нужен ffmpeg — поставьте его в настройках")
-    })?;
+fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<()> {
+    // Первый импорт докачивает ffmpeg — как первая диаризация докачивает
+    // модель голосов. Проценты идут в строку встречи: молчащая строка на
+    // восьмидесяти мегабайтах выглядит как зависшая.
+    if !crate::tools::converter_ready() {
+        let state = app.state::<MeetingState>();
+        state.phase.lock().unwrap().insert(id, "helper");
+        state.progress.lock().unwrap().insert(id, 0);
+        notify(app);
+
+        let report = |pct: u8| {
+            let state = app.state::<MeetingState>();
+            let changed = state.progress.lock().unwrap().insert(id, pct) != Some(pct);
+            if changed {
+                notify(app);
+            }
+        };
+        let result = crate::tools::ensure_ffmpeg(&report);
+
+        let state = app.state::<MeetingState>();
+        state.progress.lock().unwrap().remove(&id);
+        state.phase.lock().unwrap().insert(id, "importing");
+        notify(app);
+        result?;
+    }
+
+    let ffmpeg = crate::tools::ffmpeg()
+        .ok_or_else(|| anyhow!("ffmpeg не нашёлся — поставьте его в настройках"))?;
     let ok = convert_ok(
         &ffmpeg.to_string_lossy(),
         &[
@@ -1264,8 +1338,31 @@ fn to_wav_16k(_app: &AppHandle, _id: i64, source: &Path, target: &Path) -> Resul
     Ok(())
 }
 
+/// Чистит название от следов чужой кодировки. Ромбик U+FFFD появляется,
+/// когда чей-то вывод пришёл не в UTF-8; лучше короткое название без него,
+/// чем строка из ромбиков.
+fn clean_title(title: &str, fallback: &str) -> String {
+    let cleaned = title.replace('\u{FFFD}', "").trim().to_string();
+    let letters = cleaned.chars().filter(|c| c.is_alphanumeric()).count();
+    if letters == 0 {
+        fallback.to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Помечает встречу неудавшейся и запоминает причину.
+fn mark_failed(app: &AppHandle, id: i64, reason: &str) {
+    if let Some(mut meta) = load_meta(app, id) {
+        meta.state = "failed".to_string();
+        meta.error = Some(reason.to_string());
+        save_meta(app, id, &meta);
+    }
+    notify(app);
+}
+
 fn convert_ok(bin: &str, args: &[&str]) -> bool {
-    Command::new(bin)
+    crate::sys::command(bin)
         .args(args)
         .output()
         .map(|o| o.status.success())
@@ -1421,7 +1518,39 @@ pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap
 ///
 /// txt и md пишутся напрямую, docx собирает системный textutil из HTML,
 /// pdf — свой генератор.
-pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<String> {
+/// Название встречи, пригодное для имени файла: двоеточия и слэши в именах
+/// не живут ни на одной из систем.
+pub fn safe_file_name(title: &str) -> String {
+    title
+        .chars()
+        .map(|c| match c {
+            ':' => '.',
+            '\\' | '/' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
+            c => c,
+        })
+        .collect()
+}
+
+/// Куда сохранять экспорт.
+pub enum Target {
+    /// Как выбрано в настройках: папка оттуда или «Загрузки».
+    AsSettings,
+    /// Конкретная папка — её выбрали в диалоге на эту выгрузку.
+    Dir(PathBuf),
+    /// Конкретный файл — его выбрали в диалоге вместе с именем.
+    File(PathBuf),
+}
+
+/// `reveal` — показать ли файл в проводнике. При выгрузке пачкой его
+/// выключают: иначе на каждую встречу открылось бы своё окно.
+pub fn export(
+    app: &AppHandle,
+    id: i64,
+    format: &str,
+    title: &str,
+    reveal: bool,
+    target: Target,
+) -> Result<String> {
     let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let segments = load_transcript(app, id);
     if segments.is_empty() {
@@ -1429,29 +1558,51 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
     }
     let duration = duration_label(meta.seconds);
 
-    let downloads = app
-        .path()
-        .download_dir()
-        .map_err(|_| anyhow!("папка Загрузки не нашлась"))?;
-    let safe: String = title
-        .chars()
-        .map(|c| match c {
-            ':' => '.',
-            '\\' | '/' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
-            c => c,
-        })
-        .collect();
+    // Папка из настроек, а если её не выбирали — «Загрузки», как было
+    // раньше. Пропавшую папку (флешку вынули) молча заменяем «Загрузками»,
+    // иначе экспорт упал бы вместо того, чтобы сохраниться.
+    let chosen = match &target {
+        Target::Dir(dir) => Some(dir.clone()),
+        _ => app
+            .state::<crate::AppState>()
+            .settings
+            .lock()
+            .unwrap()
+            .export_dir
+            .clone()
+            .map(PathBuf::from),
+    }
+    .filter(|dir| dir.is_dir());
+    let downloads = match chosen {
+        Some(dir) => dir,
+        None => app
+            .path()
+            .download_dir()
+            .map_err(|_| anyhow!("папка Загрузки не нашлась"))?,
+    };
+    let safe = safe_file_name(title);
     let ext = match format {
         "md" | "docx" | "pdf" => format,
         _ => "txt",
     };
 
-    // Не перезаписываем чужое: «имя 2», «имя 3»...
-    let mut path = downloads.join(format!("{safe}.{ext}"));
-    let mut counter = 2;
-    while path.exists() {
-        path = downloads.join(format!("{safe} {counter}.{ext}"));
-        counter += 1;
+    // Выбранный в диалоге файл берём как есть: человек уже решил и про имя,
+    // и про перезапись. В остальных случаях не перезаписываем чужое:
+    // «имя 2», «имя 3»...
+    let chosen_file = matches!(target, Target::File(_));
+    let mut path = match target {
+        Target::File(path) => path,
+        _ => downloads.join(format!("{safe}.{ext}")),
+    };
+    if path.extension().is_none() {
+        path.set_extension(ext);
+    }
+    if !chosen_file {
+        let mut counter = 2;
+        while path.exists() {
+            path = downloads.join(format!("{safe} {counter}.{ext}"));
+            counter += 1;
+        }
     }
 
     match format {
@@ -1463,6 +1614,8 @@ pub fn export(app: &AppHandle, id: i64, format: &str, title: &str) -> Result<Str
 
     // Показать файл в Finder или проводнике — та же роль, что «Открыть» в
     // снекбаре Android.
-    crate::sys::reveal_file(&path);
+    if reveal {
+        crate::sys::reveal_file(&path);
+    }
     Ok(path.to_string_lossy().to_string())
 }

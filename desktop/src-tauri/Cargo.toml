@@ -1,6 +1,6 @@
 [package]
 name = "solflow"
-version = "0.1.0"
+version = "0.2.2"
 description = "Sol Flow — офлайновый голосовой ввод"
 edition = "2021"
 
@@ -9,6 +9,14 @@ edition = "2021"
 # репозитория и собраны пока только под macOS, поэтому она за фичей.
 default = ["diarize"]
 diarize = []
+# Считать на видеокарте: Vulkan-бэкенд движка отдельными модулями рядом с
+# приложением. Статикой не выходит — манифест крейта просит у линкера
+# `vulkan.lib`, а в Windows SDK библиотека называется `vulkan-1.lib`
+# (LNK1181, проверено прогоном). В модульном режиме Vulkan линкует CMake
+# внутри своей DLL, и заодно получается то, что нужно: на машине без
+# подходящего драйвера модуль просто не загрузится, а процессор продолжит
+# считать.
+gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -18,6 +26,7 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
 cpal = "0.16"
 enigo = "0.6"
 serde = { version = "1", features = ["derive"] }
@@ -46,6 +55,9 @@ transcribe-cpp = { version = "0.2.0", default-features = false }
 # Звук начала записи проигрывает сама система (PlaySound), громоздкий
 # аудиостек ради полусекундного «поп» не нужен.
 [target.'cfg(windows)'.dependencies]
+# Второй запуск .exe не должен поднимать вторую копию: на macOS система
+# сама возвращает уже открытое приложение, на Windows об этом просят плагин.
+tauri-plugin-single-instance = "2"
 windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
 
 [lib]

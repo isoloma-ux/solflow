@@ -140,7 +140,7 @@ pub fn downsampler_for_test(src: usize, dst: usize) -> meetings::Downsampler {
 /// Загруженный движок для примеров — в приложении он живёт в AppState.
 pub fn engine_for_test(path: &std::path::PathBuf) -> Engine {
     let engine = Engine::new();
-    engine.load(path).expect("модель не загрузилась");
+    engine.load(path, true).expect("модель не загрузилась");
     engine
 }
 
@@ -164,7 +164,7 @@ struct AppState {
     settings: Mutex<settings::Settings>,
     /// Когда моделью пользовались в последний раз — по этому сторож
     /// решает, пора ли выгружать её из памяти.
-    last_used: Mutex<Instant>,
+    pub last_used: Mutex<Instant>,
 }
 
 /// Путь к активной модели по настройкам; None — файла нет.
@@ -197,7 +197,8 @@ fn ensure_model_loaded(app: AppHandle) {
         }
         if let Some(path) = model_path(&app) {
             log::info!("модель поднимается обратно в память");
-            if let Err(e) = state.engine.load(&path) {
+            let use_gpu = state.settings.lock().unwrap().use_gpu;
+            if let Err(e) = state.engine.load(&path, use_gpu) {
                 log::error!("модель не поднялась: {e}");
             }
             emit_state(&app, None);
@@ -263,9 +264,11 @@ fn spawn_unload_watch(app: AppHandle) {
         std::thread::sleep(std::time::Duration::from_secs(20));
         let state = app.state::<AppState>();
 
-        // Во время записи и распознавания не трогаем.
+        // Во время записи и распознавания не трогаем — как и во время
+        // работы над встречей: она идёт своим чередом и о фазе диктовки
+        // ничего не знает.
         let phase = state.phase.load(Ordering::SeqCst);
-        if phase != PHASE_READY || !state.engine.is_loaded() {
+        if phase != PHASE_READY || !state.engine.is_loaded() || meetings::busy(&app) {
             continue;
         }
         let Some(after) = state.settings.lock().unwrap().unload_after() else {
@@ -288,6 +291,8 @@ struct StateEvent {
     accessibility: bool,
     hotkey: String,
     hotkey_label: String,
+    /// Чем считается модель: «видеокарта Intel Arc» или «процессор».
+    device: Option<String>,
 }
 
 fn phase_name(phase: u8) -> &'static str {
@@ -310,6 +315,7 @@ fn emit_state(app: &AppHandle, detail: Option<String>) {
         accessibility: paste::accessibility_granted(),
         hotkey_label: hotkey::label(&hotkey_text),
         hotkey: hotkey_text,
+        device: state.engine.device_label(),
     };
     let _ = app.emit("solflow-state", event);
 }
@@ -535,7 +541,7 @@ fn open_link(url: String) {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct UpdateInfo {
     current: String,
     latest: Option<String>,
@@ -598,6 +604,30 @@ fn send_bug_report(app: AppHandle, description: String) {
 
 #[tauri::command]
 fn check_update() -> UpdateInfo {
+    latest_release()
+}
+
+/// Раз в шесть часов смотрим, не вышла ли новая версия, и говорим окну.
+/// Человек не должен узнавать об обновлении, только если сам зайдёт в «О
+/// проекте»; первый раз спрашиваем через минуту после старта — при запуске
+/// со стартом системы сети может ещё не быть.
+fn spawn_update_watch(app: AppHandle) {
+    const FIRST_DELAY: u64 = 60;
+    const EVERY: u64 = 6 * 60 * 60;
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(FIRST_DELAY));
+        loop {
+            let info = latest_release();
+            if info.newer {
+                let _ = app.emit("solflow-update", info);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(EVERY));
+        }
+    });
+}
+
+fn latest_release() -> UpdateInfo {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let latest = net::get_json(RELEASES_API)
         .ok()
@@ -612,6 +642,50 @@ fn check_update() -> UpdateInfo {
         latest,
         url: RELEASES_PAGE.to_string(),
     }
+}
+
+/// Скачивает и ставит новую версию. Файл берётся с GitHub и проверяется по
+/// подписи: приложение само запускает то, что скачало, и без проверки это
+/// была бы дыра — подменят ответ, и оно послушно поставит чужое.
+///
+/// Проценты уходят в окно: установщик весит десятки мегабайт.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| format!("не вышло проверить обновление: {e}"))?;
+
+    let Some(update) = update else {
+        return Err("новой версии нет".to_string());
+    };
+
+    let mut downloaded: u64 = 0;
+    let progress = app.clone();
+    let done = app.clone();
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let pct = total
+                    .map(|t| ((downloaded * 100) / t.max(1)).min(99) as u8)
+                    .unwrap_or(0);
+                let _ = progress.emit("solflow-update-progress", pct);
+            },
+            move || {
+                let _ = done.emit("solflow-update-progress", 100u8);
+            },
+        )
+        .await
+        .map_err(|e| format!("обновление не поставилось: {e}"))?;
+
+    // На Windows установщик просит закрыть приложение сам, но перезапуск
+    // делаем явно: иначе человек остаётся перед пустотой.
+    app.restart();
 }
 
 #[tauri::command]
@@ -864,7 +938,8 @@ fn set_active_model(app: AppHandle, filename: String) {
             .app_data_dir()
             .map(|d| d.join("models").join(&filename))
             .unwrap_or_default();
-        match state.engine.load(&path) {
+        let use_gpu = state.settings.lock().unwrap().use_gpu;
+        match state.engine.load(&path, use_gpu) {
             Ok(()) => state.phase.store(PHASE_READY, Ordering::SeqCst),
             Err(e) => {
                 state.phase.store(PHASE_NO_MODEL, Ordering::SeqCst);
@@ -950,6 +1025,56 @@ fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
 
 /// Выбор папки системным диалогом. Команда синхронная, а значит идёт не с
 /// главного потока — ждать ответа пользователя тут можно.
+/// Режим экспорта: "downloads" — в «Загрузки», "folder" — в выбранную
+/// папку, "ask" — спрашивать каждый раз.
+#[tauri::command]
+fn set_export_mode(app: AppHandle, mode: String) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    s.export_ask = mode == "ask";
+    if mode == "downloads" {
+        s.export_dir = None;
+    }
+    settings::save(&app, &s);
+}
+
+/// Куда складывать экспорт встреч; пустая строка — вернуть «Загрузки».
+#[tauri::command]
+fn set_export_dir(app: AppHandle, dir: Option<String>) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    s.export_dir = dir.filter(|d| !d.is_empty());
+    settings::save(&app, &s);
+}
+
+/// Считать на видеокарте или строго на процессоре. Модель перезагружается:
+/// устройство выбирается при загрузке и на лету не меняется.
+#[tauri::command]
+fn set_use_gpu(app: AppHandle, enabled: bool) {
+    {
+        let state = app.state::<AppState>();
+        let mut s = state.settings.lock().unwrap();
+        if s.use_gpu == enabled {
+            return;
+        }
+        s.use_gpu = enabled;
+        settings::save(&app, &s);
+    }
+    let state = app.state::<AppState>();
+    state.engine.unload();
+    ensure_model_loaded(app);
+}
+
+#[tauri::command]
+fn pick_export_dir(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Куда складывать экспорт встреч")
+        .blocking_pick_folder()
+        .and_then(|dir| dir.into_path().ok())
+        .map(|dir| dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn pick_downloads_dir(app: AppHandle) -> Option<String> {
     app.dialog()
@@ -1018,7 +1143,28 @@ fn meeting_export(
     format: String,
     title: String,
 ) -> Result<String, String> {
-    meetings::export(&app, id, &format, &title).map_err(|e| e.to_string())
+    // «Спрашивать каждый раз» — это диалог сохранения: человек сам выбирает
+    // и папку, и имя. Команда синхронная, то есть идёт не с главного потока,
+    // и ждать ответа тут можно.
+    let ask = app.state::<AppState>().settings.lock().unwrap().export_ask;
+    let target = if ask {
+        let name = format!("{}.{}", meetings::safe_file_name(&title), format);
+        match app
+            .dialog()
+            .file()
+            .set_title("Куда сохранить")
+            .set_file_name(&name)
+            .blocking_save_file()
+            .and_then(|path| path.into_path().ok())
+        {
+            Some(path) => meetings::Target::File(path),
+            // Передумал — это не ошибка.
+            None => return Ok(String::new()),
+        }
+    } else {
+        meetings::Target::AsSettings
+    };
+    meetings::export(&app, id, &format, &title, true, target).map_err(|e| e.to_string())
 }
 
 /// Групповые действия из списка. Заголовки приходят из окна — там же, где
@@ -1032,12 +1178,43 @@ fn meetings_export(
 ) -> Result<usize, String> {
     let mut done = 0;
     let mut last_error = None;
+    let mut last_path = None;
+
+    // Пачкой спрашиваем один раз и про папку целиком: диалог на каждую
+    // встречу превратил бы выгрузку десятка записей в пытку.
+    let ask = app.state::<AppState>().settings.lock().unwrap().export_ask;
+    let folder = if ask {
+        match app
+            .dialog()
+            .file()
+            .set_title("Куда сохранить выгрузку")
+            .blocking_pick_folder()
+            .and_then(|dir| dir.into_path().ok())
+        {
+            Some(dir) => Some(dir),
+            None => return Ok(0),
+        }
+    } else {
+        None
+    };
+
     for (index, id) in ids.iter().enumerate() {
         let title = titles.get(index).cloned().unwrap_or_default();
-        match meetings::export(&app, *id, &format, &title) {
-            Ok(_) => done += 1,
+        let target = match &folder {
+            Some(dir) => meetings::Target::Dir(dir.clone()),
+            None => meetings::Target::AsSettings,
+        };
+        match meetings::export(&app, *id, &format, &title, false, target) {
+            Ok(path) => {
+                done += 1;
+                last_path = Some(path);
+            }
             Err(e) => last_error = Some(e.to_string()),
         }
+    }
+    // Папку показываем один раз на всю пачку — по последнему сохранённому.
+    if let Some(path) = last_path {
+        sys::reveal_file(std::path::Path::new(&path));
     }
     match last_error {
         // Часть могла быть без расшифровки — сообщаем, но что вышло, то вышло.
@@ -1110,7 +1287,21 @@ fn models_dir(app: AppHandle) -> String {
 pub fn run() {
     report::init();
 
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Плагин просят ставить первым: он перехватывает запуск ещё до окон.
+    // Вторая копия отдаёт своё окно первой и завершается.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -1135,6 +1326,7 @@ pub fn run() {
             open_accessibility,
             open_link,
             check_update,
+            install_update,
             bug_report,
             send_bug_report,
             models_dir,
@@ -1167,6 +1359,10 @@ pub fn run() {
             meeting_cancel,
             set_downloads_dir,
             pick_downloads_dir,
+            set_export_dir,
+            pick_export_dir,
+            set_export_mode,
+            set_use_gpu,
             downloader_ready,
             install_downloader,
             meeting_transcribe,
@@ -1204,6 +1400,13 @@ pub fn run() {
             // Где лежат скачанные yt-dlp и ffmpeg — запоминается один раз.
             tools::init(app.handle());
 
+            // Модули вычислительных бэкендов (процессор, видеокарта) — до
+            // первой загрузки модели. В сборке без отдельных модулей это
+            // ничего не делает.
+            if let Err(e) = transcribe_cpp::init_backends_default() {
+                log::error!("бэкенды не поднялись: {e}");
+            }
+
             let loaded_settings = settings::load(app.handle());
             // Дописываем в файл поля, которых там ещё нет: после обновления
             // приложения настройки должны быть видны целиком, а не появляться
@@ -1227,9 +1430,12 @@ pub fn run() {
             spawn_unload_watch(app.handle().clone());
 
             // Запуск без окна: приложение уходит в меню-бар молча.
-            if loaded_settings.start_hidden {
+            // Окно создаётся скрытым (см. tauri.conf.json) и показывается
+            // здесь: раньше оно при запуске со стартом системы успевало
+            // мигнуть на экране и только потом пряталось.
+            if !loaded_settings.start_hidden {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
+                    let _ = window.show();
                 }
             }
 
@@ -1243,6 +1449,8 @@ pub fn run() {
                     }
                 });
             }
+
+            spawn_update_watch(app.handle().clone());
 
             if let Err(e) = register_hotkey(app.handle(), &loaded_settings.hotkey) {
                 log::error!("хоткей: {e}");
@@ -1279,7 +1487,8 @@ pub fn run() {
                     Some(path) => {
                         state.phase.store(PHASE_LOADING, Ordering::SeqCst);
                         emit_state(&handle, None);
-                        match state.engine.load(&path) {
+                        let use_gpu = state.settings.lock().unwrap().use_gpu;
+                        match state.engine.load(&path, use_gpu) {
                             Ok(()) => state.phase.store(PHASE_READY, Ordering::SeqCst),
                             Err(e) => {
                                 state.phase.store(PHASE_NO_MODEL, Ordering::SeqCst);

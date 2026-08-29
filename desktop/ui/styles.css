@@ -117,6 +117,18 @@ body {
   transition: color var(--press) var(--ease-out), background var(--press) var(--ease-out);
 }
 .nav-item:hover { color: var(--ink); background: var(--graphite-2); }
+
+/* Точка у пункта меню: вышла новая версия. */
+.nav-item.has-news::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+  vertical-align: middle;
+}
 .nav-item.on {
   color: var(--ink);
   background: var(--graphite-2);
@@ -263,6 +275,14 @@ body {
 .pill-inset:hover { background: var(--graphite); }
 .pill-inset:active { transform: scale(0.97); }
 .pill-inset.compact { padding: 7px 16px; font-size: 13px; margin: 0; }
+
+/* Единственная зелёная кнопка вне записи: поддержка — приглашение, а не
+   требование, поэтому контур, а не заливка. */
+.pill-inset.support {
+  border-color: var(--accent-solid);
+  color: var(--accent);
+}
+.pill-inset.support:hover { background: rgba(123, 199, 46, 0.12); }
 
 /* --- панель подготовки -------------------------------------------------- */
 

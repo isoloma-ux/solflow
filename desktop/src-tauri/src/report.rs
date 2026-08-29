@@ -123,6 +123,12 @@ pub fn build(app: &tauri::AppHandle, description: &str) -> String {
         "Загрузчик ссылок: {}\n",
         if crate::tools::ready() { "стоит" } else { "нет" }
     ));
+    if !cfg!(target_os = "macos") {
+        out.push_str(&format!(
+            "ffmpeg: {}\n",
+            if crate::tools::converter_ready() { "стоит" } else { "нет" }
+        ));
+    }
     out.push_str(&format!(
         "Разделение голосов: {}\n",
         if crate::diarize::models_ready(app) { "модели скачаны" } else { "нет" }

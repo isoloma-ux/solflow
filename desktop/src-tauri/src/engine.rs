@@ -5,13 +5,35 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
-use transcribe_cpp::{Model, RunOptions, Session};
+use transcribe_cpp::{
+    Backend, CancelToken, Device, Model, ModelOptions, RunOptions, Session, SessionOptions,
+};
 
 use crate::{cleanup, segmenter};
 
 pub struct Engine {
     session: Mutex<Option<Session>>,
     pub model_name: Mutex<Option<String>>,
+    /// На чём считает загруженная модель — окно показывает это словами.
+    pub device: Mutex<Option<Device>>,
+    /// Флаг «бросай считать»: движок опрашивает его между шагами декодера,
+    /// поэтому отмена срабатывает посреди куска, а не после него.
+    cancel: CancelToken,
+}
+
+/// Сколько потоков отдать движку. Ноль — «как решит библиотека», а решает
+/// она консервативно: на многоядерном процессоре это заметно медленнее, чем
+/// нужно. На Apple тяжёлое считает Metal, и лишние потоки только мешают
+/// ему, — там оставляем выбор библиотеке.
+fn cpu_threads() -> i32 {
+    if cfg!(target_os = "macos") {
+        return 0;
+    }
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    // Одно ядро оставляем интерфейсу, выше восьми ggml почти не ускоряется.
+    cores.saturating_sub(1).clamp(1, 8) as i32
 }
 
 impl Engine {
@@ -19,6 +41,8 @@ impl Engine {
         Self {
             session: Mutex::new(None),
             model_name: Mutex::new(None),
+            device: Mutex::new(None),
+            cancel: CancelToken::new(),
         }
     }
 
@@ -31,15 +55,29 @@ impl Engine {
             .find(|p| p.extension().map(|e| e == "gguf").unwrap_or(false))
     }
 
-    pub fn load(&self, path: &PathBuf) -> Result<()> {
-        let model = Model::load(path).map_err(|e| anyhow!("модель не загрузилась: {e}"))?;
-        let session = model
-            .session()
+    /// [use_gpu] — пробовать ли видеокарту. Auto берёт лучшее из того, что
+    /// собрано и завелось на этой машине, и сам откатывается на процессор;
+    /// Cpu — строго процессор.
+    pub fn load(&self, path: &PathBuf, use_gpu: bool) -> Result<()> {
+        let options = ModelOptions {
+            backend: if use_gpu { Backend::Auto } else { Backend::Cpu },
+            device: None,
+        };
+        let model = Model::load_with(path, &options)
+            .map_err(|e| anyhow!("модель не загрузилась: {e}"))?;
+        let mut session = model
+            .session_with(&SessionOptions {
+                n_threads: cpu_threads(),
+                ..Default::default()
+            })
             .map_err(|e| anyhow!("сессия не создалась: {e}"))?;
+        self.cancel.reset();
+        session.set_cancel_token(&self.cancel);
         *self.session.lock().unwrap() = Some(session);
         *self.model_name.lock().unwrap() = path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string());
+        *self.device.lock().unwrap() = model.device().ok();
         Ok(())
     }
 
@@ -51,6 +89,29 @@ impl Engine {
     /// диктовкой не пользуются. Путь запоминаем — по нему грузим обратно.
     pub fn unload(&self) {
         *self.session.lock().unwrap() = None;
+        *self.device.lock().unwrap() = None;
+    }
+
+    /// Просит движок бросить текущий кусок. Флаг снимается перед следующим
+    /// куском — иначе отменённая встреча утащила бы за собой следующую.
+    pub fn request_cancel(&self) {
+        self.cancel.cancel();
+    }
+
+    pub fn clear_cancel(&self) {
+        self.cancel.reset();
+    }
+
+    /// Чем считается модель, словами для окна: «видеокарта Intel Arc» или
+    /// «процессор».
+    pub fn device_label(&self) -> Option<String> {
+        let device = self.device.lock().unwrap();
+        let device = device.as_ref()?;
+        Some(match device.kind.as_str() {
+            "cpu" | "accel" => "процессор".to_string(),
+            _ if device.description.is_empty() => format!("видеокарта ({})", device.name),
+            _ => format!("видеокарта {}", device.description),
+        })
     }
 
     /// Один кусок расшифровки встречи: куски уже нарезаны по паузам, чистка —

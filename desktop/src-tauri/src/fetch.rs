@@ -10,7 +10,6 @@
 //! расшифровке нужен один моно-канал.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{anyhow, Result};
 
@@ -22,6 +21,29 @@ fn download_to(url: &str, target: &Path, progress: &Progress) -> Result<()> {
         return Err(anyhow!("файл по ссылке не скачался"));
     }
     Ok(())
+}
+
+/// Формат строки прогресса. Своя метка в начале — чтобы не спутать со
+/// всем остальным, что загрузчик печатает.
+const PROGRESS_TEMPLATE: &str =
+    "solflow %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s";
+
+/// «solflow 1048576 NA 734003200» → (скачано, всего). Неизвестные поля
+/// загрузчик печатает как NA — тогда ноль, и окно показывает мегабайты без
+/// процентов.
+fn parse_progress(line: &str) -> Option<(u64, u64)> {
+    let rest = line.trim().strip_prefix("solflow ")?;
+    let mut parts = rest.split_whitespace();
+    let number = |value: Option<&str>| -> u64 {
+        value
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(0.0) as u64
+    };
+    let done = number(parts.next());
+    let exact = number(parts.next());
+    let estimate = number(parts.next());
+    Some((done, if exact > 0 { exact } else { estimate }))
 }
 
 /// Как сообщать о ходе загрузки и как узнать про отмену.
@@ -173,7 +195,12 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
 
     for extra in clients {
         if title.is_empty() {
-            title = Command::new(&tool)
+            title = crate::sys::command(&tool)
+                // Вывод идёт в кодировке консоли, а на русской Windows это
+                // не UTF-8: названия приезжали ромбиками. Переменной среды
+                // мало — у загрузчика свой ключ, он важнее.
+                .env("PYTHONIOENCODING", "utf-8")
+                .args(["--encoding", "utf-8"])
                 .args(["--no-warnings", "--skip-download", "--print", "%(title)s"])
                 .args(extra)
                 .arg(url)
@@ -186,7 +213,7 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
 
         // Общий размер спрашиваем заранее: сам загрузчик о нём молчит,
         // пока не закончит, а ждать вслепую неприятно.
-        let total = Command::new(&tool)
+        let total = crate::sys::command(&tool)
             .args(["--no-warnings", "--skip-download", "--print", "%(filesize_approx)s"])
             .args(extra)
             .arg(url)
@@ -201,10 +228,16 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
             })
             .unwrap_or(0);
 
-        let mut child = Command::new(&tool)
+        let mut child = crate::sys::command(&tool)
             .args([
                 "--no-warnings",
                 "--no-playlist",
+                // Прогресс спрашиваем у самого загрузчика: считать по файлам
+                // на диске нечестно — он пишет во временные куски, и полоска
+                // стояла на нуле до самого конца.
+                "--newline",
+                "--progress-template",
+                PROGRESS_TEMPLATE,
                 "-f",
                 "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best[ext=mp4]/best",
                 "-o",
@@ -212,21 +245,42 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
             .arg(&template)
             .args(extra)
             .arg(url)
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()?;
+
+        // Строки прогресса читает отдельный поток: основной должен успевать
+        // проверять отмену.
+        let seen = std::sync::Arc::new(std::sync::Mutex::new((0u64, 0u64)));
+        let stdout = child.stdout.take();
+        let reader_seen = seen.clone();
+        let reader = std::thread::spawn(move || {
+            use std::io::BufRead;
+            let Some(stdout) = stdout else { return };
+            for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Some(values) = parse_progress(&line) {
+                    *reader_seen.lock().unwrap() = values;
+                }
+            }
+        });
 
         let status = loop {
             if (progress.cancelled)() {
                 let _ = child.kill();
+                let _ = reader.join();
                 clean_downloads(dir);
                 return Err(anyhow!("отменено"));
             }
             if let Some(status) = child.try_wait()? {
                 break status;
             }
-            (progress.report)(downloaded_bytes(dir), total);
+            // Пока загрузчик молчит, показываем то, что уже легло на диск.
+            let (done, said_total) = *seen.lock().unwrap();
+            let done = if done > 0 { done } else { downloaded_bytes(dir) };
+            (progress.report)(done, if said_total > 0 { said_total } else { total });
             std::thread::sleep(std::time::Duration::from_millis(400));
         };
+        let _ = reader.join();
 
         if status.success() {
             (progress.report)(downloaded_bytes(dir), total);

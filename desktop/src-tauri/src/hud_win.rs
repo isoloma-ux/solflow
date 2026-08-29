@@ -70,11 +70,16 @@ fn keep_focus_elsewhere(_window: &tauri::WebviewWindow) {}
 
 /// По центру основного монитора — снизу или сверху, как выбрано в
 /// настройках.
+///
+/// Считаем не от всего экрана, а от рабочей области: панель задач съедает
+/// её нижнюю (или любую другую) часть, и пилюля, поставленная по высоте
+/// экрана, пряталась за панелью.
 fn position(app: &AppHandle) -> Option<(f64, f64)> {
     let monitor = app.primary_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
-    let size = monitor.size().to_logical::<f64>(scale);
-    let origin = monitor.position().to_logical::<f64>(scale);
+    let area = monitor.work_area();
+    let size = area.size.to_logical::<f64>(scale);
+    let origin = area.position.to_logical::<f64>(scale);
 
     let top = app
         .state::<crate::AppState>()

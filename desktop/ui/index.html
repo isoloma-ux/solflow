@@ -355,6 +355,7 @@
         </div>
 
         <p class="kicker list-head" id="topHead">Что взять</p>
+        <p class="muted small" id="modelAdvice"></p>
         <div id="modelTop"></div>
 
         <button class="show-all" id="showAll">Показать все модели</button>
@@ -400,6 +401,25 @@
               <button class="segment" data-start="show">Показывать</button>
               <button class="segment" data-start="hide">Скрывать</button>
             </div>
+          </div>
+          <div class="perm" id="permGpu">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect x="3.5" y="6.5" width="17" height="11" rx="2"/>
+              <rect x="7.5" y="10" width="4" height="4" rx="1"/>
+              <path d="M14.5 10h3M14.5 14h3"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Считать на видеокарте</p>
+              <p class="muted small" id="gpuHint">
+                Расшифровка идет быстрее, если видеокарта подходит
+              </p>
+            </div>
+            <button class="toggle" id="useGpu">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="useGpuLabel">Включено</span>
+            </button>
           </div>
           <div class="perm">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -668,6 +688,25 @@
             <button class="model-remove" id="clearDownloadsDir" hidden>Не хранить</button>
             <button class="pill-inset compact" id="pickDownloadsDir">Выбрать папку</button>
           </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 19.5h15"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Куда сохранять экспорт</p>
+              <p class="muted small" id="exportHint">
+                Сейчас в «Загрузки» — после сохранения папка открывается сама
+              </p>
+            </div>
+            <div class="segments" id="exportSegments">
+              <button class="segment" data-export="downloads">Загрузки</button>
+              <button class="segment" data-export="folder">Папка</button>
+              <button class="segment" data-export="ask">Спрашивать</button>
+            </div>
+            <button class="pill-inset compact" id="pickExportDir" hidden>Выбрать</button>
+          </div>
           <div class="perm" id="permDownloader">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
@@ -744,6 +783,20 @@
               Почта
             </button>
           </div>
+        </section>
+
+        <section class="panel">
+          <p class="kicker">Поддержать</p>
+          <h2>Sol Flow бесплатен и останется таким</h2>
+          <p class="muted small">
+            Ни подписки, ни рекламы, ни сбора данных. Если приложение
+            пригодилось и хочется сказать спасибо — можно поддержать проект.
+            Это ни на что не влияет: все возможности и так открыты
+          </p>
+          <button class="pill-inset link support"
+                  data-url="https://www.donationalerts.com/r/isoloma">
+            Поддержать проект
+          </button>
         </section>
 
         <section class="panel">

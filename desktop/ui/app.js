@@ -71,7 +71,17 @@ function render(state) {
   if (!recording) levels.fill(0);
 
   setPerm("permAccessibility", state.accessibility);
+
+  // Чем считается модель — видно в подсказке переключателя: обещать
+  // видеокарту и молча считать процессором нельзя.
+  if (state.device) {
+    lastDevice = state.device;
+    const hint = el("gpuHint");
+    if (hint) hint.textContent = `Сейчас считает ${state.device}`;
+  }
 }
+
+let lastDevice = null;
 
 function setPerm(id, granted) {
   // Строки может не быть: «Универсальный доступ» на Windows убран совсем.
@@ -179,6 +189,68 @@ let onlyTranslate = false;
  * Названия моделей ни о чём не говорят, а список из полусотни читать никто
  * не станет.
  */
+/** Название языка с большой буквы: «Русский», «Английский». */
+function languageName(code) {
+  const row = languageRows.find((l) => l.code === code);
+  if (!row) return code;
+  return row.name.charAt(0).toUpperCase() + row.name.slice(1);
+}
+
+/** Лучшая одноязычная модель для языка — по точности. */
+function bestFor(rows, code) {
+  return rows
+    .filter((m) => m.language_count === 1 && m.language_codes.includes(code))
+    .sort((a, b) => b.accuracy - a.accuracy)[0];
+}
+
+/** Лучшая многоязычная — тоже по точности. */
+function bestMulti(rows, code) {
+  return rows
+    .filter((m) => m.language_count > 1 && (!code || m.language_codes.includes(code)))
+    .sort((a, b) => b.accuracy - a.accuracy)[0];
+}
+
+/**
+ * Совет обычными словами. Главное, что нужно объяснить: баллы точности
+ * сравнивают модели на общих многоязычных тестах, где русского почти нет.
+ * Из-за этого GigaAM с её «69» разбирает русскую речь лучше, чем модель с
+ * «90», обученная на английском, — без этой оговорки список вводит в
+ * заблуждение.
+ */
+function modelAdvice(rows) {
+  if (languageFilter) {
+    const own = bestFor(rows, languageFilter);
+    const multi = bestMulti(rows, languageFilter);
+    const name = languageName(languageFilter);
+    if (own) {
+      let text =
+        `${name} язык: берите ${own.name} — она обучена только ему и потому ` +
+        "разбирает его точнее многоязычных, даже если общий балл у них выше " +
+        "(баллы считаются на многоязычных тестах).";
+      if (multi) text += ` Если нужны и другие языки — ${multi.name}.`;
+      return text;
+    }
+    if (multi) {
+      return `${name} язык: отдельной модели под него нет, берите многоязычную — ${multi.name}.`;
+    }
+    return "";
+  }
+
+  const ru = bestFor(rows, "ru");
+  const en = bestFor(rows, "en");
+  const multi = bestMulti(rows, null);
+  const parts = [];
+  if (ru) parts.push(`для русского — ${ru.name}`);
+  if (en) parts.push(`для английского — ${en.name}`);
+  if (multi) parts.push(`для смеси языков — ${multi.name}`);
+  if (!parts.length) return "";
+  return (
+    `Под один язык модели работают точнее: ${parts.join(", ")}. ` +
+    "Баллы точности считаются на общих многоязычных тестах, поэтому у " +
+    "одноязычной модели балл бывает ниже, а на своём языке она лучше."
+  );
+}
+
 function pickTop(shown) {
   const top = shown.slice(0, 5);
   const labels = new Map();
@@ -194,9 +266,12 @@ function pickTop(shown) {
   if (!labels.has(lightest.id)) labels.set(lightest.id, "Легче всех");
   for (const m of top) {
     if (!labels.has(m.id)) {
-      labels.set(m.id, languageFilter && m.language_count === 1
-        ? "Обучена под этот язык"
-        : "Хороший баланс");
+      labels.set(
+        m.id,
+        languageFilter && m.language_count === 1
+          ? `Идеально для этого языка`
+          : "Хороший баланс"
+      );
     }
   }
   return { top, labels };
@@ -236,8 +311,9 @@ function renderModels() {
   for (const m of top) topBox.appendChild(modelRow(m, labels.get(m.id)));
 
   el("topHead").textContent = languageFilter
-    ? "Что взять для этого языка"
+    ? `Что взять: ${languageName(languageFilter).toLowerCase()} язык`
     : "Что взять";
+  el("modelAdvice").textContent = modelAdvice(modelRows);
 
   // Остальные — под кнопкой: полсотни строк сразу читать невозможно.
   const rest = shown.slice(top.length);
@@ -525,8 +601,12 @@ function showPage(name, fromHistory = false) {
   });
   el("content").scrollTop = 0;
   if (name === "history") refreshHistory();
-  if (name === "settings") refreshSettings();
-  if (name === "about") checkUpdate(false);
+  if (name === "settings") refreshSettings(true);
+  if (name === "about") {
+    document.querySelector('.nav-item[data-page="about"]')?.classList.remove("has-news");
+    if (pendingUpdate) markUpdate(pendingUpdate);
+    else checkUpdate(false);
+  }
 }
 
 /** Шаг назад: из карточки встречи — в список, иначе в прошлый раздел. */
@@ -672,10 +752,13 @@ function stateLabel(m) {
   const pct = m.progress != null ? ` ${m.progress}%` : "";
   if (m.phase === "fetching") return fetchLabel(m);
   if (m.phase === "importing") return "Импортирую";
+  if (m.phase === "helper") return `Ставлю ffmpeg${pct}`;
   if (m.phase === "downloading") return `Качаю модель голосов${pct}`;
   if (m.phase === "diarizing") return `Разделяю говорящих${pct}`;
   if (m.phase === "transcribing") return `Расшифровываю${pct}`;
-  if (m.state === "failed") return "Не удалось расшифровать";
+  // Причину показываем прямо в строке: раньше она уходила в подпись над
+  // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
+  if (m.state === "failed") return m.error ? `Не вышло: ${m.error}` : "Не удалось расшифровать";
   if (m.state === "transcribing") return "Расшифровка прервана";
   if (m.state === "recorded") return "Ожидает расшифровки";
   return "";
@@ -2088,11 +2171,16 @@ el("historyClear").addEventListener("click", () => {
 
 // --- настройки -------------------------------------------------------------
 
-async function refreshSettings() {
-  const [settings, devices] = await Promise.all([
-    invoke("get_settings"),
-    invoke("list_input_devices"),
-  ]);
+// Перечисление микрофонов на Windows идёт через WASAPI и занимает заметное
+// время, а настройки перечитываются после каждого переключателя — поэтому
+// список берётся один раз и обновляется только при открытии экрана.
+let knownDevices = null;
+
+async function refreshSettings(reloadDevices = false) {
+  if (reloadDevices || !knownDevices) {
+    knownDevices = await invoke("list_input_devices");
+  }
+  const [settings, devices] = [await invoke("get_settings"), knownDevices];
 
   const select = el("inputDevice");
   select.textContent = "";
@@ -2128,6 +2216,13 @@ async function refreshSettings() {
   );
   el("overlayPositionRow").hidden = settings.overlay_style === "none";
 
+  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], settings.use_gpu);
+  el("gpuHint").textContent = lastDevice
+    ? `Сейчас считает ${lastDevice}`
+    : settings.use_gpu
+      ? "Расшифровка идет быстрее, если видеокарта подходит"
+      : "Считает процессор";
+
   markToggle("trayIcon", "trayIconLabel", ["Показана", "Скрыта"], settings.show_tray_icon);
   el("trayHint").textContent = settings.show_tray_icon
     ? "Через нее открывается окно и выход"
@@ -2161,6 +2256,17 @@ async function refreshSettings() {
     : "Файл удаляется после расшифровки — приложению нужен только звук";
   el("clearDownloadsDir").hidden = !keep;
   el("pickDownloadsDir").textContent = keep ? "Другая папка" : "Выбрать папку";
+
+  const exportDir = settings.export_dir;
+  const exportMode = settings.export_ask ? "ask" : exportDir ? "folder" : "downloads";
+  markSegments("exportSegments", "export", exportMode);
+  el("pickExportDir").hidden = exportMode !== "folder";
+  el("exportHint").textContent =
+    exportMode === "ask"
+      ? "Спрошу папку и имя при каждом экспорте"
+      : exportMode === "folder"
+        ? `Сохраняю в ${exportDir} — папка открывается после сохранения`
+        : "Сейчас в «Загрузки» — после сохранения папка открывается сама";
 
   const hasDownloader = await invoke("downloader_ready");
   el("downloaderDone").hidden = !hasDownloader;
@@ -2267,15 +2373,21 @@ function applyTheme(theme) {
 
 el("autostart").addEventListener("click", async () => {
   const enabled = !el("autostart").classList.contains("on");
+  // Переключатель встаёт сразу, запись в систему идёт следом: она занимает
+  // доли секунды, но ждать ответа, глядя на неподвижный переключатель,
+  // неприятно. Если система откажет — вернём как было и скажем почему.
+  el("autostart").classList.toggle("on", enabled);
+  el("autostartLabel").textContent = enabled ? "Включен" : "Выключен";
+  el("autostartHint").textContent = enabled
+    ? "Приложение появится в трее после входа"
+    : "Запускать придется вручную";
   try {
     await invoke("set_autostart", { enabled });
-    el("autostartHint").textContent = enabled
-      ? "Приложение появится в меню-баре после входа"
-      : "Запускать придется вручную";
   } catch (err) {
+    el("autostart").classList.toggle("on", !enabled);
+    el("autostartLabel").textContent = !enabled ? "Включен" : "Выключен";
     el("autostartHint").textContent = String(err);
   }
-  refreshSettings();
 });
 
 document.querySelectorAll("#themeSegments .segment").forEach((button) => {
@@ -2290,6 +2402,34 @@ el("pickDownloadsDir").addEventListener("click", async () => {
   const dir = await invoke("pick_downloads_dir");
   if (!dir) return;
   await invoke("set_downloads_dir", { dir });
+  refreshSettings();
+});
+
+el("useGpu").addEventListener("click", async () => {
+  const enabled = !el("useGpu").classList.contains("on");
+  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], enabled);
+  // Устройство выбирается при загрузке модели, поэтому она поднимается
+  // заново — пара секунд, и в подсказке появится, чем считает.
+  el("gpuHint").textContent = "Перезагружаю модель";
+  lastDevice = null;
+  await invoke("set_use_gpu", { enabled });
+});
+
+bindSegments("exportSegments", "export", async (mode) => {
+  await invoke("set_export_mode", { mode });
+  // «Папка» без выбранной папки — сразу диалог: иначе непонятно, куда
+  // приложение собралось сохранять.
+  if (mode === "folder") {
+    const dir = await invoke("pick_export_dir");
+    if (dir) await invoke("set_export_dir", { dir });
+  }
+  refreshSettings();
+});
+
+el("pickExportDir").addEventListener("click", async () => {
+  const dir = await invoke("pick_export_dir");
+  if (!dir) return;
+  await invoke("set_export_dir", { dir });
   refreshSettings();
 });
 
@@ -2501,6 +2641,57 @@ el("bugPreview").addEventListener("click", async () => {
 
 // --- обновления ------------------------------------------------------------
 
+// Приложение само смотрит, не вышла ли новая версия. Пометка появляется на
+// пункте «О проекте»: узнавать об обновлении, только если сам туда зайдёшь,
+// — так себе способ.
+listen("solflow-update", (e) => {
+  const info = e.payload;
+  if (!info || !info.newer) return;
+  pendingUpdate = info;
+  markUpdate(info);
+});
+
+let pendingUpdate = null;
+
+function markUpdate(info) {
+  const nav = document.querySelector('.nav-item[data-page="about"]');
+  if (nav) nav.classList.add("has-news");
+  const hint = el("updateHint");
+  if (!hint) return;
+  hint.textContent = `Вышла версия ${info.latest} — можно поставить`;
+  el("checkUpdate").textContent = "Обновить";
+  el("checkUpdate").onclick = () => installUpdate(info);
+}
+
+// Проценты установки: файл весит десятки мегабайт, и молчащая кнопка
+// выглядит как зависшая.
+listen("solflow-update-progress", (e) => {
+  const pct = e.payload;
+  const hint = el("updateHint");
+  if (!hint || !updating) return;
+  hint.textContent = pct >= 100 ? "Ставлю и перезапускаю" : `Качаю ${pct}%`;
+});
+
+let updating = false;
+
+async function installUpdate(info) {
+  if (updating) return;
+  updating = true;
+  el("checkUpdate").disabled = true;
+  el("updateHint").textContent = "Качаю";
+  try {
+    // Приложение перезапустится само, поэтому дальше этой строки код
+    // обычно не доходит.
+    await invoke("install_update");
+  } catch (err) {
+    updating = false;
+    el("checkUpdate").disabled = false;
+    el("updateHint").textContent = `${err} — можно скачать вручную`;
+    el("checkUpdate").textContent = "Открыть страницу";
+    el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
+  }
+}
+
 async function checkUpdate(loud) {
   const hint = el("updateHint");
   if (loud) hint.textContent = "Смотрю, что вышло";
@@ -2508,9 +2699,8 @@ async function checkUpdate(loud) {
     const info = await invoke("check_update");
     el("appVersion").textContent = info.current;
     if (info.latest && info.newer) {
-      hint.textContent = `Есть версия ${info.latest} — нажмите, чтобы открыть`;
-      el("checkUpdate").textContent = "Скачать";
-      el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
+      pendingUpdate = info;
+      markUpdate(info);
     } else if (info.latest) {
       hint.textContent = "У вас последняя версия";
     } else {
@@ -2559,6 +2749,17 @@ drawWave();
 // --- различия систем в разметке -------------------------------------------
 
 if (!IS_MAC) {
+  // На Windows это не меню-бар, а трей — правим подписи разом, чтобы не
+  // держать два варианта разметки.
+  for (const node of document.querySelectorAll(".perm-title, .muted")) {
+    if (node.children.length) continue;
+    if (node.textContent.includes("меню-бар")) {
+      node.textContent = node.textContent
+        .replace("меню-баре", "трее")
+        .replace("меню-бар", "трей");
+    }
+  }
+
   // «Универсальный доступ» — разрешение macOS: на Windows вставка работает
   // сразу, и строке в настройках там взяться неоткуда.
   el("permAccessibility")?.remove();

@@ -3,24 +3,38 @@ fn main() {
     tauri_build::build()
 }
 
-/// sherpa-onnx с onnxruntime внутри — статикой, чтобы бандл остался одним
-/// файлом. Библиотеки собраны build-macos (см. память проекта), порядок
-/// важен: c-api → core → зависимости. Под Windows таких библиотек ещё нет,
-/// поэтому там диаризация собирается только вместе с ними: без фичи
-/// `diarize` линковка пропускается целиком.
+/// Линковка sherpa-onnx для разделения говорящих. Без фичи `diarize`
+/// пропускается целиком.
+///
+/// На macOS библиотеки собраны свои (см. память проекта) и линкуются
+/// статикой, чтобы бандл остался одним файлом. На Windows берётся готовая
+/// сборка k2-fsa: там DLL и импортные библиотеки — статические собраны под
+/// другую разновидность рантайма и с Rust не сходятся, а DLL мы и так возим
+/// (модули движка).
 fn link_sherpa() {
     if std::env::var("CARGO_FEATURE_DIARIZE").is_err() {
         return;
     }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    if target_os == "windows" {
+        let sherpa = root.join("sherpa/win/lib");
+        println!("cargo:rustc-link-search=native={}", sherpa.display());
+        println!("cargo:rustc-link-lib=dylib=sherpa-onnx-c-api");
+        println!("cargo:rustc-link-lib=dylib=onnxruntime");
+        println!("cargo:rerun-if-changed=sherpa/win/lib");
+        return;
+    }
+
     if target_os != "macos" {
         panic!(
-            "фича diarize собрана только под macOS: под {target_os} нужны свои \
-             статические библиотеки sherpa-onnx — собирайте с --no-default-features"
+            "фича diarize собрана под macOS и Windows: под {target_os} нужны свои \
+             библиотеки sherpa-onnx — собирайте с --no-default-features"
         );
     }
 
-    let sherpa = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sherpa/lib");
+    let sherpa = root.join("sherpa/lib");
     println!("cargo:rustc-link-search=native={}", sherpa.display());
     for lib in [
         "sherpa-onnx-c-api",

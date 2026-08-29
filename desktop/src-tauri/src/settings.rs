@@ -28,6 +28,21 @@ pub struct Settings {
     #[serde(default)]
     pub downloads_dir: Option<String>,
 
+    /// Куда складывать экспорт встреч. None — папка «Загрузки», как было
+    /// раньше.
+    #[serde(default)]
+    pub export_dir: Option<String>,
+
+    /// Спрашивать папку при каждом экспорте. Перевешивает export_dir.
+    #[serde(default)]
+    pub export_ask: bool,
+
+    /// Считать на видеокарте, если она подходит. Выключенное — строго
+    /// процессор: на редких драйверах видеокарта считает неверно, и человеку
+    /// нужен способ это обойти.
+    #[serde(default = "default_use_gpu")]
+    pub use_gpu: bool,
+
     // --- запуск и оформление ---
     /// Запускаться без окна: приложение сразу уходит в меню-бар.
     #[serde(default)]
@@ -106,6 +121,10 @@ impl Settings {
 
 /// На Windows Alt+Space занят системой — им открывается меню окна, —
 /// поэтому там по умолчанию Ctrl+Space.
+fn default_use_gpu() -> bool {
+    true
+}
+
 fn default_hotkey() -> String {
     if cfg!(target_os = "macos") {
         "alt+space".to_string()
@@ -159,6 +178,9 @@ impl Default for Settings {
             start_sound: true,
             theme: default_theme(),
             downloads_dir: None,
+            export_dir: None,
+            export_ask: false,
+            use_gpu: default_use_gpu(),
             start_hidden: false,
             show_tray_icon: true,
             overlay_style: default_overlay_style(),
