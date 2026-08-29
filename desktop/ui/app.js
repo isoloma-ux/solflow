@@ -189,6 +189,68 @@ let onlyTranslate = false;
  * Названия моделей ни о чём не говорят, а список из полусотни читать никто
  * не станет.
  */
+/** Название языка с большой буквы: «Русский», «Английский». */
+function languageName(code) {
+  const row = languageRows.find((l) => l.code === code);
+  if (!row) return code;
+  return row.name.charAt(0).toUpperCase() + row.name.slice(1);
+}
+
+/** Лучшая одноязычная модель для языка — по точности. */
+function bestFor(rows, code) {
+  return rows
+    .filter((m) => m.language_count === 1 && m.language_codes.includes(code))
+    .sort((a, b) => b.accuracy - a.accuracy)[0];
+}
+
+/** Лучшая многоязычная — тоже по точности. */
+function bestMulti(rows, code) {
+  return rows
+    .filter((m) => m.language_count > 1 && (!code || m.language_codes.includes(code)))
+    .sort((a, b) => b.accuracy - a.accuracy)[0];
+}
+
+/**
+ * Совет обычными словами. Главное, что нужно объяснить: баллы точности
+ * сравнивают модели на общих многоязычных тестах, где русского почти нет.
+ * Из-за этого GigaAM с её «69» разбирает русскую речь лучше, чем модель с
+ * «90», обученная на английском, — без этой оговорки список вводит в
+ * заблуждение.
+ */
+function modelAdvice(rows) {
+  if (languageFilter) {
+    const own = bestFor(rows, languageFilter);
+    const multi = bestMulti(rows, languageFilter);
+    const name = languageName(languageFilter);
+    if (own) {
+      let text =
+        `${name} язык: берите ${own.name} — она обучена только ему и потому ` +
+        "разбирает его точнее многоязычных, даже если общий балл у них выше " +
+        "(баллы считаются на многоязычных тестах).";
+      if (multi) text += ` Если нужны и другие языки — ${multi.name}.`;
+      return text;
+    }
+    if (multi) {
+      return `${name} язык: отдельной модели под него нет, берите многоязычную — ${multi.name}.`;
+    }
+    return "";
+  }
+
+  const ru = bestFor(rows, "ru");
+  const en = bestFor(rows, "en");
+  const multi = bestMulti(rows, null);
+  const parts = [];
+  if (ru) parts.push(`для русского — ${ru.name}`);
+  if (en) parts.push(`для английского — ${en.name}`);
+  if (multi) parts.push(`для смеси языков — ${multi.name}`);
+  if (!parts.length) return "";
+  return (
+    `Под один язык модели работают точнее: ${parts.join(", ")}. ` +
+    "Баллы точности считаются на общих многоязычных тестах, поэтому у " +
+    "одноязычной модели балл бывает ниже, а на своём языке она лучше."
+  );
+}
+
 function pickTop(shown) {
   const top = shown.slice(0, 5);
   const labels = new Map();
@@ -204,9 +266,12 @@ function pickTop(shown) {
   if (!labels.has(lightest.id)) labels.set(lightest.id, "Легче всех");
   for (const m of top) {
     if (!labels.has(m.id)) {
-      labels.set(m.id, languageFilter && m.language_count === 1
-        ? "Обучена под этот язык"
-        : "Хороший баланс");
+      labels.set(
+        m.id,
+        languageFilter && m.language_count === 1
+          ? `Идеально для этого языка`
+          : "Хороший баланс"
+      );
     }
   }
   return { top, labels };
@@ -246,8 +311,9 @@ function renderModels() {
   for (const m of top) topBox.appendChild(modelRow(m, labels.get(m.id)));
 
   el("topHead").textContent = languageFilter
-    ? "Что взять для этого языка"
+    ? `Что взять: ${languageName(languageFilter).toLowerCase()} язык`
     : "Что взять";
+  el("modelAdvice").textContent = modelAdvice(modelRows);
 
   // Остальные — под кнопкой: полсотни строк сразу читать невозможно.
   const rest = shown.slice(top.length);

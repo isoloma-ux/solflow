@@ -264,6 +264,14 @@ body {
 .pill-inset:active { transform: scale(0.97); }
 .pill-inset.compact { padding: 7px 16px; font-size: 13px; margin: 0; }
 
+/* Единственная зелёная кнопка вне записи: поддержка — приглашение, а не
+   требование, поэтому контур, а не заливка. */
+.pill-inset.support {
+  border-color: var(--accent-solid);
+  color: var(--accent);
+}
+.pill-inset.support:hover { background: rgba(123, 199, 46, 0.12); }
+
 /* --- панель подготовки -------------------------------------------------- */
 
 .panel {
