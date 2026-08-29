@@ -317,7 +317,10 @@ function renderModels() {
   for (const m of top) topBox.appendChild(modelRow(m, labels.get(m.id)));
 
   el("topHead").textContent = languageFilter
-    ? t("Что взять: {0} язык", languageName(languageFilter).toLowerCase())
+    ? t(
+        "Что взять: {0} язык",
+        UI_LANG === "en" ? languageName(languageFilter) : languageName(languageFilter).toLowerCase()
+      )
     : t("Что взять");
   el("modelAdvice").textContent = modelAdvice(modelRows);
 
@@ -894,7 +897,7 @@ function renderProjects() {
     }
   };
 
-  addProject("Все записи", null);
+  addProject(t("Все записи"), null);
   for (const p of meetProjects) addProject(p.name, p.id);
 
   const plus = document.createElement("button");
@@ -2791,24 +2794,30 @@ el("checkUpdate").addEventListener("click", () => checkUpdate(true));
 
 // --- запуск ----------------------------------------------------------------
 
-invoke("set_ui_language", { language: UI_LANG });
+// Каталог приходит из Rust уже на нужном языке, поэтому язык сообщаем
+// первым и только потом просим модели и языки — иначе успеет приехать
+// русский список.
+const languageReady = invoke("set_ui_language", { language: UI_LANG }).catch(() => {});
+
 invoke("ui_state");
 invoke("app_version").then((version) => {
   appVersion = version;
   el("appVersion").textContent = version;
   showVersionInFoot();
 });
-refreshModels();
-invoke("list_languages").then((rows) => {
-  languageRows = rows;
-  renderFilters();
+languageReady.then(() => {
+  refreshModels();
+  invoke("list_languages").then((rows) => {
+    languageRows = rows;
+    renderFilters();
+  });
 });
 // Замер сделан на GigaAM Q4 через Metal — единственная цифра, которую мы
 // действительно мерили, поэтому названа именно она.
 invoke("machine_chip").then((chip) => {
   el("chipHint").textContent =
     t("Зеленым помечена активная. У вас {0}: GigaAM считает на нем ", chip) +
-    `примерно в 115 раз быстрее речи. Скачивание идет в фоне.`;
+    t("примерно в 115 раз быстрее речи. Скачивание идет в фоне.");
 });
 refreshMeetings();
 refreshHistory();

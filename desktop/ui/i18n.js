@@ -8,6 +8,8 @@
 // собирает на ходу, идут через t().
 
 const EN = {
+  "Русский": "Russian",
+  "примерно в 115 раз быстрее речи. Скачивание идет в фоне.": "about 115 times faster than speech. Downloads run in the background.",
   "Модель не найдена — положите .gguf в папку моделей": "No model found — put a .gguf into the models folder",
   "Загружаю модель в память": "Loading the model into memory",
   "Готово. Нажмите кнопку или сочетание": "Ready. Press the button or the shortcut",

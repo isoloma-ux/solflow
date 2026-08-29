@@ -26,6 +26,8 @@ struct Catalog {
 #[derive(Deserialize, Clone)]
 struct CatalogLanguage {
     name: String,
+    #[serde(default)]
+    name_en: String,
     models: u32,
 }
 
@@ -35,6 +37,8 @@ struct CatalogModel {
     revision: String,
     name: String,
     description: String,
+    #[serde(default)]
+    description_en: String,
     languages: Vec<String>,
     language_count: u32,
     accuracy_score: u32,
@@ -42,6 +46,8 @@ struct CatalogModel {
     speed_score: u32,
     #[serde(default)]
     speed_note: String,
+    #[serde(default)]
+    speed_note_en: String,
     #[serde(default)]
     streaming: bool,
     #[serde(default)]
@@ -125,6 +131,9 @@ impl ModelStore {
     }
 
     pub fn rows(&self, app: &AppHandle, active: &Option<String>) -> Vec<ModelRow> {
+        // Каталог хранит описания на обоих языках: переводить их на ходу
+        // нечем, а показывать русские подписи в английском окне нельзя.
+        let english = crate::lang::is_english(app);
         let dir = Self::models_dir(app);
         let progress = self.progress.lock().unwrap();
         let mut rows: Vec<ModelRow> = self
@@ -139,17 +148,34 @@ impl ModelStore {
                 Some(ModelRow {
                     id: m.id.clone(),
                     name: m.name.clone(),
-                    description: m.description.clone(),
-                    languages: if m.language_count > 1 {
-                        format!("языков: {}", m.language_count)
+                    description: if english && !m.description_en.is_empty() {
+                        m.description_en.clone()
                     } else {
-                        m.languages.join(", ")
+                        m.description.clone()
+                    },
+                    languages: if m.language_count > 1 {
+                        if english {
+                            format!("languages: {}", m.language_count)
+                        } else {
+                            format!("языков: {}", m.language_count)
+                        }
+                    } else {
+                        // Один язык — показываем его название, а не код.
+                        m.languages
+                            .iter()
+                            .map(|code| self.language_name(code, english))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     },
                     language_codes: m.languages.clone(),
                     language_count: m.language_count,
                     accuracy: m.accuracy_score,
                     speed: m.speed_score,
-                    note: m.speed_note.clone(),
+                    note: if english && !m.speed_note_en.is_empty() {
+                        m.speed_note_en.clone()
+                    } else {
+                        m.speed_note.clone()
+                    },
                     streaming: m.streaming,
                     translate: m.translate,
                     filename: file.filename.clone(),
@@ -177,15 +203,29 @@ impl ModelStore {
         rows
     }
 
+    /// Название языка по коду на нужном языке.
+    fn language_name(&self, code: &str, english: bool) -> String {
+        match self.catalog.languages.get(code) {
+            Some(lang) if english && !lang.name_en.is_empty() => lang.name_en.clone(),
+            Some(lang) => lang.name.clone(),
+            None => code.to_string(),
+        }
+    }
+
     /// Языки каталога, популярные сверху — как на Android.
-    pub fn languages(&self) -> Vec<LanguageRow> {
+    pub fn languages(&self, app: &AppHandle) -> Vec<LanguageRow> {
+        let english = crate::lang::is_english(app);
         let mut rows: Vec<LanguageRow> = self
             .catalog
             .languages
             .iter()
             .map(|(code, lang)| LanguageRow {
                 code: code.clone(),
-                name: lang.name.clone(),
+                name: if english && !lang.name_en.is_empty() {
+                    lang.name_en.clone()
+                } else {
+                    lang.name.clone()
+                },
                 models: lang.models,
             })
             .collect();

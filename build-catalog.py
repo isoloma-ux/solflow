@@ -45,6 +45,33 @@ MEASURED = {
 }
 
 
+def speed_note_en(model: dict) -> str:
+    """То же по-английски: английская версия приложения показывает эту строку."""
+    name = model["name"]
+    score = model.get("speed_score") or 0
+    accuracy = model.get("accuracy_score") or 0
+
+    if name in MEASURED:
+        speed = f"{MEASURED[name]}x faster than speech"
+    elif score >= 90:
+        speed = "very fast"
+    elif score >= 75:
+        speed = "fast"
+    else:
+        speed = "medium speed"
+
+    if model.get("language_count") == 1:
+        quality = "trained on a single language"
+    elif accuracy >= 85:
+        quality = "high accuracy"
+    elif accuracy >= 70:
+        quality = "good accuracy"
+    else:
+        quality = "weaker quality"
+
+    return f"{speed}, {quality}"
+
+
 def speed_note(model: dict) -> str:
     """Человеческое объяснение: насколько быстро и с каким качеством."""
     name = model["name"]
@@ -165,6 +192,38 @@ RU = {
 }
 
 
+# Те же языки по-английски: английская версия приложения показывает их
+# здесь же, в списке выбора.
+LANG_EN = {
+    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese",
+    "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian",
+    "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian",
+    "ca": "Catalan", "cs": "Czech", "cy": "Welsh", "da": "Danish",
+    "de": "German", "el": "Greek", "en": "English", "es": "Spanish",
+    "et": "Estonian", "eu": "Basque", "fa": "Persian", "fi": "Finnish",
+    "fil": "Filipino", "fo": "Faroese", "fr": "French", "ga": "Irish",
+    "gl": "Galician", "gu": "Gujarati", "ha": "Hausa", "haw": "Hawaiian",
+    "he": "Hebrew", "hi": "Hindi", "hr": "Croatian", "ht": "Haitian Creole",
+    "hu": "Hungarian", "hy": "Armenian", "id": "Indonesian", "is": "Icelandic",
+    "it": "Italian", "ja": "Japanese", "jw": "Javanese", "ka": "Georgian",
+    "kk": "Kazakh", "km": "Khmer", "kn": "Kannada", "ko": "Korean",
+    "la": "Latin", "lb": "Luxembourgish", "ln": "Lingala", "lo": "Lao",
+    "lt": "Lithuanian", "lv": "Latvian", "mg": "Malagasy", "mi": "Maori",
+    "mk": "Macedonian", "ml": "Malayalam", "mn": "Mongolian", "mr": "Marathi",
+    "ms": "Malay", "mt": "Maltese", "my": "Burmese", "nb": "Norwegian Bokmal",
+    "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk", "no": "Norwegian",
+    "oc": "Occitan", "pa": "Punjabi", "pl": "Polish", "ps": "Pashto",
+    "pt": "Portuguese", "ro": "Romanian", "ru": "Russian", "sa": "Sanskrit",
+    "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak", "sl": "Slovenian",
+    "sn": "Shona", "so": "Somali", "sq": "Albanian", "sr": "Serbian",
+    "su": "Sundanese", "sv": "Swedish", "sw": "Swahili", "ta": "Tamil",
+    "te": "Telugu", "tg": "Tajik", "th": "Thai", "tk": "Turkmen",
+    "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar", "uk": "Ukrainian",
+    "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese", "yi": "Yiddish",
+    "yo": "Yoruba", "yue": "Cantonese", "zh": "Chinese",
+}
+
+
 def main() -> None:
     src = json.load(open(SRC, encoding="utf-8"))
     supported = set(os.listdir(ARCH_DIR))
@@ -206,12 +265,15 @@ def main() -> None:
             "name": m["name"],
             "architecture": m["architecture"],
             "description": RU.get(english, english),
+            # Английские варианты рядом: приложение выбирает по языку окна.
+            "description_en": english,
             "license": m.get("license", ""),
             "languages": m.get("languages", []),
             "language_count": m.get("language_count", 0),
             "speed_score": m.get("speed_score"),
             "accuracy_score": m.get("accuracy_score"),
             "speed_note": speed_note(m),
+            "speed_note_en": speed_note_en(m),
             # Запасное зеркало Handy хранит только основную версию: проверено,
             # Q4_K_M и F16 отдают 404, Q8_0 отдаётся. Приложению это нужно,
             # чтобы подсказать выход, когда Hugging Face заблокирован.
@@ -230,7 +292,8 @@ def main() -> None:
         for code in m["languages"]:
             counts[code] = counts.get(code, 0) + 1
     out["languages"] = {
-        code: {"name": LANG_RU.get(code, code), "models": n}
+        code: {"name": LANG_RU.get(code, code),
+               "name_en": LANG_EN.get(code, code), "models": n}
         for code, n in sorted(counts.items(), key=lambda kv: (-kv[1], LANG_RU.get(kv[0], kv[0])))
     }
 

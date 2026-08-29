@@ -908,7 +908,7 @@ fn catalog_news(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 fn list_languages(app: AppHandle) -> Vec<models::LanguageRow> {
-    app.state::<models::ModelStore>().languages()
+    app.state::<models::ModelStore>().languages(&app)
 }
 
 #[tauri::command]
