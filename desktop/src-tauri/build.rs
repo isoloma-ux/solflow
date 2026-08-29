@@ -36,6 +36,11 @@ fn link_sherpa() {
 
     let sherpa = root.join("sherpa/lib");
     println!("cargo:rustc-link-search=native={}", sherpa.display());
+
+    // Линкуем только то, что есть: свои сборки и готовые от k2-fsa
+    // отличаются мелочами (у одних mlas лежит отдельной библиотекой, у
+    // других уже внутри onnxruntime). Порядок важен и сохраняется.
+    let present = |name: &str| sherpa.join(format!("lib{name}.a")).exists();
     for lib in [
         "sherpa-onnx-c-api",
         "sherpa-onnx-core",
@@ -49,7 +54,9 @@ fn link_sherpa() {
         "onnxruntime",
         "onnxruntime_mlas_arm64",
     ] {
-        println!("cargo:rustc-link-lib=static={lib}");
+        if present(lib) {
+            println!("cargo:rustc-link-lib=static={lib}");
+        }
     }
     println!("cargo:rustc-link-lib=c++");
     println!("cargo:rustc-link-lib=framework=Foundation");
