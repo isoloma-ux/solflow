@@ -1,0 +1,97 @@
+# Сборка APK. Запускается по тегу вида v0.2.12 и кладёт файл в тот же
+# релиз, что и десктопные сборки.
+#
+# В репозитории нет ни движка, ни библиотек sherpa: движок — чужой проект,
+# библиотеки весят десятки мегабайт. И то и другое качается здесь, версии
+# закреплены явно — сборка должна повторяться через год так же, как сегодня.
+name: android
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TCPP_TAG: v0.2.2
+  SHERPA: 1.13.6
+  NDK: 28.2.13676358
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Движок transcribe.cpp
+        run: |
+          git clone --depth 1 --branch "$TCPP_TAG" \
+            https://github.com/handy-computer/transcribe.cpp tcpp
+          test -f tcpp/CMakeLists.txt
+
+      - name: Библиотеки sherpa-onnx
+        run: |
+          url=https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA}/sherpa-onnx-v${SHERPA}-android.tar.bz2
+          curl -sL -o sherpa-android.tar.bz2 "$url"
+          mkdir -p sherpa-android
+          tar -xjf sherpa-android.tar.bz2 -C sherpa-android
+          mkdir -p app-android/app/src/main/jniLibs/arm64-v8a
+          find sherpa-android -path "*arm64-v8a*" -name "*.so" \
+            -exec cp {} app-android/app/src/main/jniLibs/arm64-v8a/ \;
+          ls -la app-android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: NDK и CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;$NDK" "cmake;3.31.6" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK" >> "$GITHUB_ENV"
+
+      - name: Ключ подписи
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/solflow.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/solflow.jks" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.7.1"
+
+      - name: Сборка
+        working-directory: app-android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: solflow
+        run: gradle assembleRelease --no-daemon
+
+      # Подпись проверяем прямо здесь: неподписанный или подписанный чужим
+      # ключом APK не встанет поверх установленного, а понять это можно
+      # только на телефоне — слишком поздно.
+      - name: Проверка подписи
+        working-directory: app-android
+        run: |
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          "$signer" verify --print-certs "$apk"
+          "$signer" verify --print-certs "$apk" | grep -q "O=Sol Flow" \
+            || { echo "APK подписан не нашим ключом"; exit 1; }
+
+      - name: Публикуем
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: app-android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          out="SolFlow_${version}.apk"
+          cp app/build/outputs/apk/release/*.apk "$out"
+          gh release upload "$tag" "$out" --clobber
+          gh release edit "$tag" --draft=false --latest

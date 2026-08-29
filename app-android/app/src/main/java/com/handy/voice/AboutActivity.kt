@@ -189,11 +189,8 @@ class AboutActivity : AppCompatActivity() {
     private companion object {
         const val MAIL = "me@isoloma.ru"
 
-        /**
-         * Где искать новые версии. Пока репозиторий не заведён, проверка
-         * просто ничего не находит — приложение от этого не ломается.
-         */
-        const val RELEASES_API = "https://api.github.com/repos/isoloma/solflow/releases/latest"
-        const val RELEASES_PAGE = "https://github.com/isoloma/solflow/releases/latest"
+        /** Где искать новые версии — тот же релиз, что у Mac и Windows. */
+        const val RELEASES_API = "https://api.github.com/repos/isoloma-ux/solflow/releases/latest"
+        const val RELEASES_PAGE = "https://github.com/isoloma-ux/solflow/releases/latest"
     }
 }

@@ -37,12 +37,28 @@ android {
         }
     }
 
+    // Ключ подписи берётся из переменных окружения — так его не нужно
+    // держать в репозитории. Без них собирается отладочная подпись, и
+    // сборка на чужой машине не ломается.
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+    if (keystorePath != null && file(keystorePath).exists()) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "solflow"
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Подписываем отладочным ключом: APK ставится сайдлоадом, в Play он
-            // не поедет, а отдельный keystore пока только мешал бы.
-            signingConfig = signingConfigs.getByName("debug")
+            // Свой ключ, если он есть: только подписанные им сборки ставятся
+            // поверх друг друга. Отладочный годится для проверок на своём
+            // телефоне, но живёт год — на нём нельзя строить обновления.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
         debug {
             // Нативный код в debug компилируется с -O0, и ggml от этого
