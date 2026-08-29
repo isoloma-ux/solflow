@@ -363,8 +363,21 @@ fn start_recording(app: &AppHandle, from_hotkey: bool) {
     };
     if sound {
         history::play_start_sound(app);
+        // Глушение системного звука откладываем: сигнал начинает звучать не
+        // мгновенно, и глушение успевало прихлопнуть его же — сигнал то
+        // слышно, то нет. Если запись к этому моменту уже кончилась,
+        // глушить нечего: иначе звук остался бы выключенным насовсем.
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(350));
+            let phase = handle.state::<AppState>().phase.load(Ordering::SeqCst);
+            if phase == PHASE_REC_UI || phase == PHASE_REC_HOTKEY {
+                mute_system(&handle);
+            }
+        });
+    } else {
+        mute_system(app);
     }
-    mute_system(app);
     match state.recorder.start(device) {
         Ok(()) => {
             log::info!("запись пошла (hotkey={from_hotkey})");
@@ -1107,8 +1120,11 @@ fn set_use_gpu(app: AppHandle, enabled: bool) {
     ensure_model_loaded(app);
 }
 
+/// Асинхронная нарочно: синхронные команды Tauri идут по главному потоку, а
+/// системный диалог его же и ждёт — окно повисало намертво. Асинхронная
+/// уходит в отдельный поток, и ждать диалог там можно.
 #[tauri::command]
-fn pick_export_dir(app: AppHandle) -> Option<String> {
+async fn pick_export_dir(app: AppHandle) -> Option<String> {
     app.dialog()
         .file()
         .set_title("Куда складывать экспорт встреч")
@@ -1117,8 +1133,9 @@ fn pick_export_dir(app: AppHandle) -> Option<String> {
         .map(|dir| dir.to_string_lossy().to_string())
 }
 
+/// Асинхронная по той же причине, что и pick_export_dir.
 #[tauri::command]
-fn pick_downloads_dir(app: AppHandle) -> Option<String> {
+async fn pick_downloads_dir(app: AppHandle) -> Option<String> {
     app.dialog()
         .file()
         .set_title("Куда складывать скачанное")
@@ -1179,7 +1196,7 @@ fn meeting_set_project(app: AppHandle, id: i64, project: Option<String>) {
 }
 
 #[tauri::command]
-fn meeting_export(
+async fn meeting_export(
     app: AppHandle,
     id: i64,
     format: String,
@@ -1212,7 +1229,7 @@ fn meeting_export(
 /// Групповые действия из списка. Заголовки приходят из окна — там же, где
 /// собирается «Встреча 27 августа» для встреч без своего названия.
 #[tauri::command]
-fn meetings_export(
+async fn meetings_export(
     app: AppHandle,
     ids: Vec<i64>,
     format: String,
