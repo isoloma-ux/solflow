@@ -1,6 +1,6 @@
 [package]
 name = "solflow"
-version = "0.2.7"
+version = "0.2.8"
 description = "Sol Flow — офлайновый голосовой ввод"
 edition = "2021"
 

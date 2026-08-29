@@ -708,22 +708,24 @@ function plural(n, one, few, many) {
 }
 
 function fmtClock(seconds) {
-  const t = Math.floor(seconds);
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = t % 60;
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
   const mm = String(m).padStart(2, "0");
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 function fmtDur(seconds) {
-  const t = Math.floor(seconds);
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
+  // Переменная нарочно не «t»: так зовётся функция перевода, и локальная
+  // переменная её затирала — любая запись с длительностью роняла отрисовку.
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
   if (h > 0) return t("{0} ч {1} мин", h, m);
   if (m > 0) return t("{0} мин", m);
-  return t("{0} с", t);
+  return t("{0} с", total);
 }
 
 function fmtDate(at) {
