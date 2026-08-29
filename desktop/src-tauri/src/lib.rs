@@ -602,6 +602,12 @@ fn send_bug_report(app: AppHandle, description: String) {
     sys::open_url(&url);
 }
 
+/// Версия приложения — окно показывает её в подвале, не спрашивая сеть.
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 #[tauri::command]
 fn check_update() -> UpdateInfo {
     latest_release()
@@ -1327,6 +1333,7 @@ pub fn run() {
             open_link,
             check_update,
             install_update,
+            app_version,
             bug_report,
             send_bug_report,
             models_dir,

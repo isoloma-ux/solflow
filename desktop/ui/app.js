@@ -2656,6 +2656,13 @@ let pendingUpdate = null;
 function markUpdate(info) {
   const nav = document.querySelector('.nav-item[data-page="about"]');
   if (nav) nav.classList.add("has-news");
+
+  // Та же новость в подвале: чтобы её увидеть, не нужно никуда заходить.
+  const foot = el("footVersion");
+  if (foot) {
+    foot.classList.add("has-news");
+    el("footVersionText").textContent = `Обновить до ${info.latest}`;
+  }
   const hint = el("updateHint");
   if (!hint) return;
   hint.textContent = `Вышла версия ${info.latest} — можно поставить`;
@@ -2667,9 +2674,11 @@ function markUpdate(info) {
 // выглядит как зависшая.
 listen("solflow-update-progress", (e) => {
   const pct = e.payload;
+  if (!updating) return;
+  const text = pct >= 100 ? "Ставлю и перезапускаю" : `Качаю ${pct}%`;
   const hint = el("updateHint");
-  if (!hint || !updating) return;
-  hint.textContent = pct >= 100 ? "Ставлю и перезапускаю" : `Качаю ${pct}%`;
+  if (hint) hint.textContent = text;
+  el("footVersionText").textContent = text;
 });
 
 let updating = false;
@@ -2679,6 +2688,7 @@ async function installUpdate(info) {
   updating = true;
   el("checkUpdate").disabled = true;
   el("updateHint").textContent = "Качаю";
+  el("footVersionText").textContent = "Качаю";
   try {
     // Приложение перезапустится само, поэтому дальше этой строки код
     // обычно не доходит.
@@ -2689,8 +2699,43 @@ async function installUpdate(info) {
     el("updateHint").textContent = `${err} — можно скачать вручную`;
     el("checkUpdate").textContent = "Открыть страницу";
     el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
+    el("footVersionText").textContent = "Не вышло обновить";
   }
 }
+
+// Кнопка в подвале: пока новостей нет — просто версия, по нажатию сходит и
+// проверит; когда новость есть — она же ставит обновление.
+let appVersion = "";
+
+function showVersionInFoot() {
+  el("footVersion").classList.remove("has-news");
+  el("footVersionText").textContent = `Sol Flow ${appVersion}`;
+}
+
+el("footVersion").addEventListener("click", async () => {
+  if (updating) return;
+  if (pendingUpdate) {
+    installUpdate(pendingUpdate);
+    return;
+  }
+  el("footVersionText").textContent = "Смотрю, что вышло";
+  try {
+    const info = await invoke("check_update");
+    if (info.newer) {
+      pendingUpdate = info;
+      markUpdate(info);
+      return;
+    }
+    el("footVersionText").textContent = info.latest
+      ? "У вас последняя версия"
+      : "Не удалось проверить";
+  } catch {
+    el("footVersionText").textContent = "Не удалось проверить";
+  }
+  // Через несколько секунд возвращаем обычную подпись: подвал не место
+  // для отчётов.
+  setTimeout(showVersionInFoot, 4000);
+});
 
 async function checkUpdate(loud) {
   const hint = el("updateHint");
@@ -2716,6 +2761,11 @@ el("checkUpdate").addEventListener("click", () => checkUpdate(true));
 // --- запуск ----------------------------------------------------------------
 
 invoke("ui_state");
+invoke("app_version").then((version) => {
+  appVersion = version;
+  el("appVersion").textContent = version;
+  showVersionInFoot();
+});
 refreshModels();
 invoke("list_languages").then((rows) => {
   languageRows = rows;
