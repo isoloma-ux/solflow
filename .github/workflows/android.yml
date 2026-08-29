@@ -93,5 +93,9 @@ jobs:
           version="${tag#v}"
           out="SolFlow_${version}.apk"
           cp app/build/outputs/apk/release/*.apk "$out"
+          # Релиз может ещё не существовать: десктопные сборки идут
+          # параллельно, и кто успел первым — заранее не известно.
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --title "Sol Flow $tag" --generate-notes
           gh release upload "$tag" "$out" --clobber
           gh release edit "$tag" --draft=false --latest
