@@ -36,14 +36,55 @@ const PASTE_YOURSELF: &str =
 #[cfg(not(target_os = "macos"))]
 const PASTE_YOURSELF: &str = "Текст в буфере обмена — нажмите Ctrl+V";
 
-pub struct EnigoState(pub Mutex<Enigo>);
+pub struct EnigoState(pub Mutex<Option<Enigo>>);
 
 impl EnigoState {
-    /// Вызывать только с главного потока (setup).
-    pub fn new() -> Result<Self> {
-        let enigo = Enigo::new(&Settings::default()).map_err(|e| anyhow!("enigo: {e}"))?;
-        Ok(Self(Mutex::new(enigo)))
+    /// Пустая: сама «нажималка» создаётся при первой попытке вставить.
+    pub fn new() -> Self {
+        Self(Mutex::new(None))
     }
+}
+
+/// Создаёт «нажималку», если её ещё нет.
+///
+/// Раньше она создавалась один раз при запуске, и это было ловушкой: без
+/// «Универсального доступа» создание падает, а разрешение человек выдаёт
+/// уже после запуска — вставка молчала до перезапуска приложения. Теперь
+/// попытка повторяется, и первая же вставка после выдачи права работает.
+///
+/// Создавать можно только на главном потоке: инициализация дёргает
+/// HIToolbox, который вне главной очереди роняет процесс.
+fn ensure_enigo(app: &AppHandle) -> Result<()> {
+    let state = app
+        .try_state::<EnigoState>()
+        .ok_or_else(|| anyhow!("нажималка не заведена"))?;
+    if state.0.lock().map(|e| e.is_some()).unwrap_or(false) {
+        return Ok(());
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    handle
+        .clone()
+        .run_on_main_thread(move || {
+            let made = Enigo::new(&Settings::default()).map_err(|e| format!("{e}"));
+            match made {
+                Ok(enigo) => {
+                    if let Some(state) = handle.try_state::<EnigoState>() {
+                        *state.0.lock().unwrap() = Some(enigo);
+                    }
+                    let _ = tx.send(Ok(()));
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                }
+            }
+        })
+        .map_err(|e| anyhow!("{e}"))?;
+
+    rx.recv_timeout(std::time::Duration::from_secs(3))
+        .map_err(|_| anyhow!("нажималка не ответила"))?
+        .map_err(|e| anyhow!("{e}"))
 }
 
 /// Разрешение «Универсальный доступ» выдано? Без него Cmd+V не долетит.
@@ -115,10 +156,14 @@ pub fn paste_text(app: &AppHandle, text: &str, options: &PasteOptions) -> Result
         .map_err(|e| anyhow!("буфер обмена: {e}"))?;
 
     {
+        ensure_enigo(app)?;
         let state = app
             .try_state::<EnigoState>()
-            .ok_or_else(|| anyhow!("enigo не инициализирован"))?;
-        let mut enigo = state.0.lock().map_err(|_| anyhow!("enigo занят"))?;
+            .ok_or_else(|| anyhow!("нажималка не заведена"))?;
+        let mut guard = state.0.lock().map_err(|_| anyhow!("нажималка занята"))?;
+        let enigo = guard
+            .as_mut()
+            .ok_or_else(|| anyhow!("нажималка не создалась"))?;
         std::thread::sleep(std::time::Duration::from_millis(80));
         enigo.key(PASTE_MOD, Direction::Press).map_err(|e| anyhow!("{e}"))?;
         enigo.key(Key::Other(VK_V), Direction::Click).map_err(|e| anyhow!("{e}"))?;

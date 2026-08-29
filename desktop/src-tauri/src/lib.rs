@@ -1437,12 +1437,10 @@ pub fn run() {
             // Enigo — строго на главном потоке, см. комментарий в paste.rs.
             app.manage(lang::Language::new());
 
-            match paste::EnigoState::new() {
-                Ok(enigo) => {
-                    app.manage(enigo);
-                }
-                Err(e) => log::error!("enigo не создался: {e}"),
-            }
+            // Сама «нажималка» появится при первой вставке: до выдачи
+            // «Универсального доступа» её создать нельзя, а разрешение
+            // человек выдаёт уже после запуска (см. paste.rs).
+            app.manage(paste::EnigoState::new());
 
             // Где лежат скачанные yt-dlp и ffmpeg — запоминается один раз.
             tools::init(app.handle());
