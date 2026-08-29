@@ -162,9 +162,9 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k build build.keychain > /dev/null
           # Своему сертификату нужно доверие, иначе codesign не считает его
-          # пригодным для подписи.
-          openssl pkcs12 -in cert.p12 -passin pass:"$CERT_PASSWORD" \
-            -clcerts -nokeys -out cert.pem -legacy
+          # пригодным для подписи. Сам сертификат берём из связки, а не из
+          # контейнера: openssl на раннере — LibreSSL, и ключи у него свои.
+          security find-certificate -c "Sol Flow Signing" -p build.keychain > cert.pem
           sudo security add-trusted-cert -d -r trustRoot -p codeSign \
             -k /Library/Keychains/System.keychain cert.pem
           security find-identity -v -p codesigning
