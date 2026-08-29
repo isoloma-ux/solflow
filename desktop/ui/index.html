@@ -426,6 +426,23 @@
           </div>
           <div class="perm">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5"/>
+              <path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.3 3.3 8.5s-1.1 6.1-3.3 8.5c-2.2-2.4-3.3-5.3-3.3-8.5S9.8 5.9 12 3.5z"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Язык интерфейса</p>
+              <p class="muted small">Обычно как в системе, но можно закрепить</p>
+            </div>
+            <div class="segments" id="languageSegments">
+              <button class="segment" data-language="auto">Как в системе</button>
+              <button class="segment" data-language="ru">Русский</button>
+              <button class="segment" data-language="en">English</button>
+            </div>
+          </div>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
               <path d="M3 8.5h18M6.5 5.5v6M11 5.5v6M15.5 5.5v6"/>
               <path d="M4 12.5v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>
@@ -870,6 +887,7 @@
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

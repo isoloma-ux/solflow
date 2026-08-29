@@ -33,6 +33,10 @@ pub struct Settings {
     #[serde(default)]
     pub export_dir: Option<String>,
 
+    /// Язык интерфейса: "auto" — как в системе, иначе "ru" или "en".
+    #[serde(default = "default_language")]
+    pub language: String,
+
     /// Спрашивать папку при каждом экспорте. Перевешивает export_dir.
     #[serde(default)]
     pub export_ask: bool,
@@ -121,6 +125,10 @@ impl Settings {
 
 /// На Windows Alt+Space занят системой — им открывается меню окна, —
 /// поэтому там по умолчанию Ctrl+Space.
+fn default_language() -> String {
+    "auto".to_string()
+}
+
 fn default_use_gpu() -> bool {
     true
 }
@@ -180,6 +188,7 @@ impl Default for Settings {
             downloads_dir: None,
             export_dir: None,
             export_ask: false,
+            language: default_language(),
             use_gpu: default_use_gpu(),
             start_hidden: false,
             show_tray_icon: true,

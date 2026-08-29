@@ -98,7 +98,7 @@ pub fn paste_text(app: &AppHandle, text: &str, options: &PasteOptions) -> Result
         app.clipboard()
             .write_text(text.to_string())
             .map_err(|e| anyhow!("буфер обмена: {e}"))?;
-        return Err(anyhow!(PASTE_YOURSELF));
+        return Err(anyhow!(crate::lang::t(app, PASTE_YOURSELF)));
     }
 
     // Прежний буфер возвращаем на место, если так велят настройки:

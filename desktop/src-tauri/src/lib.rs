@@ -15,6 +15,7 @@ mod engine;
 mod fetch;
 mod history;
 mod hotkey;
+mod lang;
 /// Оверлей на macOS — NSPanel, на остальных системах обычное окно.
 #[cfg_attr(not(target_os = "macos"), path = "hud_win.rs")]
 mod hud;
@@ -229,9 +230,15 @@ fn apply_tray(app: &AppHandle) {
     }
 
     let build = || -> tauri::Result<()> {
-        let open_item =
-            MenuItem::with_id(app, "open", "Открыть Sol Flow", true, None::<&str>)?;
-        let quit_item = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
+        let open_item = MenuItem::with_id(
+            app,
+            "open",
+            lang::t(app, "Открыть Sol Flow"),
+            true,
+            None::<&str>,
+        )?;
+        let quit_item =
+            MenuItem::with_id(app, "quit", lang::t(app, "Выйти"), true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
         let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
         TrayIconBuilder::with_id("main")
@@ -313,7 +320,7 @@ fn emit_state(app: &AppHandle, detail: Option<String>) {
         model: state.engine.model_name.lock().unwrap().clone(),
         detail,
         accessibility: paste::accessibility_granted(),
-        hotkey_label: hotkey::label(&hotkey_text),
+        hotkey_label: hotkey::label(app, &hotkey_text),
         hotkey: hotkey_text,
         device: state.engine.device_label(),
     };
@@ -529,7 +536,7 @@ fn set_hotkey(app: AppHandle, combo: String) -> Result<String, String> {
     settings::save(&app, &s);
     drop(s);
     emit_state(&app, None);
-    Ok(hotkey::label(&combo))
+    Ok(hotkey::label(&app, &combo))
 }
 
 /// Ссылка открывается в браузере, а не внутри окна приложения.
@@ -1031,6 +1038,35 @@ fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
 
 /// Выбор папки системным диалогом. Команда синхронная, а значит идёт не с
 /// главного потока — ждать ответа пользователя тут можно.
+/// Окно сообщает, на каком языке оно в итоге открылось: по этому языку
+/// говорят меню в трее и сообщения из Rust. Определять язык второй раз тут
+/// незачем — два определения рано или поздно разойдутся.
+#[tauri::command]
+fn set_ui_language(app: AppHandle, language: String) {
+    {
+        let state = app.state::<lang::Language>();
+        let mut current = state.0.lock().unwrap();
+        if *current == language {
+            return;
+        }
+        *current = language;
+    }
+    // Меню в трее уже собрано — пересобираем его на новом языке.
+    let _ = app.remove_tray_by_id("main");
+    apply_tray(&app);
+    emit_state(&app, None);
+}
+
+/// Язык интерфейса: "auto", "ru" или "en". Окно после этого перезагружает
+/// себя — переводить уже нарисованное на ходу дороже, чем открыть заново.
+#[tauri::command]
+fn set_language(app: AppHandle, language: String) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    s.language = language;
+    settings::save(&app, &s);
+}
+
 /// Режим экспорта: "downloads" — в «Загрузки», "folder" — в выбранную
 /// папку, "ask" — спрашивать каждый раз.
 #[tauri::command]
@@ -1369,6 +1405,8 @@ pub fn run() {
             set_export_dir,
             pick_export_dir,
             set_export_mode,
+            set_language,
+            set_ui_language,
             set_use_gpu,
             downloader_ready,
             install_downloader,
@@ -1397,6 +1435,8 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // Enigo — строго на главном потоке, см. комментарий в paste.rs.
+            app.manage(lang::Language::new());
+
             match paste::EnigoState::new() {
                 Ok(enigo) => {
                     app.manage(enigo);

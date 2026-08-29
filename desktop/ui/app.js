@@ -7,17 +7,23 @@ const { listen } = window.__TAURI__.event;
 
 const el = (id) => document.getElementById(id);
 
+// Язык применяем до первой отрисовки: настройки приедут из Rust чуть позже,
+// а показывать полсекунды русский текст английскому человеку не хочется.
+// Поэтому выбор запоминается ещё и здесь, рядом с окном.
+UI_LANG = localStorage.getItem("solflow-lang") || systemLanguage();
+translateDocument();
+
 // Какая система под окном: значки клавиш, «Универсальный доступ» и часть
 // подписей на Windows выглядят иначе. Берём из user-agent — он приходит
 // вместе с окном, ещё до первого ответа из Rust.
 const IS_MAC = navigator.userAgent.includes("Mac");
 
 const statusText = {
-  no_model: "Модель не найдена — положите .gguf в папку моделей",
-  loading: "Загружаю модель в память",
-  ready: "Готово. Нажмите кнопку или сочетание",
-  recording: "Идет запись",
-  transcribing: "Распознаю",
+  no_model: t("Модель не найдена — положите .gguf в папку моделей"),
+  loading: t("Загружаю модель в память"),
+  ready: t("Готово. Нажмите кнопку или сочетание"),
+  recording: t("Идет запись"),
+  transcribing: t("Распознаю"),
 };
 
 // --- волна ---------------------------------------------------------------
@@ -77,7 +83,7 @@ function render(state) {
   if (state.device) {
     lastDevice = state.device;
     const hint = el("gpuHint");
-    if (hint) hint.textContent = `Сейчас считает ${state.device}`;
+    if (hint) hint.textContent = t("Сейчас считает {0}", state.device);
   }
 }
 
@@ -99,7 +105,7 @@ listen("solflow-level", (e) => {
 });
 listen("solflow-result", (e) => {
   const text = e.payload;
-  el("result").textContent = text || "Ничего не распознано";
+  el("result").textContent = text || t("Ничего не распознано");
   el("result").hidden = false;
   el("copy").hidden = !text;
 });
@@ -107,7 +113,7 @@ listen("solflow-history", () => {
   if (page === "history") refreshHistory();
 });
 listen("solflow-history-failed", (e) => {
-  el("historyHint").textContent = `Не вышло: ${e.payload}`;
+  el("historyHint").textContent = t("Не вышло: {0}", e.payload);
 });
 
 el("record").addEventListener("click", () => invoke("ui_toggle"));
@@ -126,10 +132,10 @@ let capturing = false;
 
 el("changeHotkey").addEventListener("click", () => {
   capturing = !capturing;
-  el("changeHotkey").textContent = capturing ? "Отмена" : "Изменить";
+  el("changeHotkey").textContent = capturing ? t("Отмена") : t("Изменить");
   el("hotkeyHint").textContent = capturing
-    ? "Нажмите новое сочетание"
-    : "Можно назначить своё";
+    ? t("Нажмите новое сочетание")
+    : t("Можно назначить своё");
   if (capturing) el("hotkeyLabel2").textContent = "…";
   else invoke("ui_state");
 });
@@ -147,8 +153,8 @@ window.addEventListener("keydown", async (e) => {
   if (e.shiftKey) parts.push("shift");
   if (parts.length === 0) {
     el("hotkeyHint").textContent = IS_MAC
-      ? "Нужен модификатор: ⌘, ⌥, ⌃ или ⇧"
-      : "Нужен модификатор: Ctrl, Alt или Shift";
+      ? t("Нужен модификатор: ⌘, ⌥, ⌃ или ⇧")
+      : t("Нужен модификатор: Ctrl, Alt или Shift");
     return;
   }
 
@@ -162,18 +168,18 @@ window.addEventListener("keydown", async (e) => {
     const label = await invoke("set_hotkey", { combo: parts.join("+") });
     el("hotkeyLabel").textContent = label;
     el("hotkeyLabel2").textContent = label;
-    el("hotkeyHint").textContent = "Сохранено";
+    el("hotkeyHint").textContent = t("Сохранено");
   } catch (err) {
     el("hotkeyHint").textContent = String(err);
   }
   capturing = false;
-  el("changeHotkey").textContent = "Изменить";
+  el("changeHotkey").textContent = t("Изменить");
 });
 // --- каталог моделей ------------------------------------------------------
 
 function sizeLabel(bytes) {
   const mb = bytes / 1e6;
-  return mb >= 1000 ? `${(mb / 1000).toFixed(1)} ГБ` : `${Math.round(mb)} МБ`;
+  return mb >= 1000 ? t("{0} ГБ", (mb / 1000).toFixed(1)) : t("{0} МБ", Math.round(mb));
 }
 
 let modelRows = [];
@@ -224,14 +230,14 @@ function modelAdvice(rows) {
     const name = languageName(languageFilter);
     if (own) {
       let text =
-        `${name} язык: берите ${own.name} — она обучена только ему и потому ` +
-        "разбирает его точнее многоязычных, даже если общий балл у них выше " +
-        "(баллы считаются на многоязычных тестах).";
-      if (multi) text += ` Если нужны и другие языки — ${multi.name}.`;
+        t("{0} язык: берите {1} — она обучена только ему и потому ", name, own.name) +
+        t("разбирает его точнее многоязычных, даже если общий балл у них выше ") +
+        t("(баллы считаются на многоязычных тестах).");
+      if (multi) text += t(" Если нужны и другие языки — {0}.", multi.name);
       return text;
     }
     if (multi) {
-      return `${name} язык: отдельной модели под него нет, берите многоязычную — ${multi.name}.`;
+      return t("{0} язык: отдельной модели под него нет, берите многоязычную — {1}.", name, multi.name);
     }
     return "";
   }
@@ -240,14 +246,14 @@ function modelAdvice(rows) {
   const en = bestFor(rows, "en");
   const multi = bestMulti(rows, null);
   const parts = [];
-  if (ru) parts.push(`для русского — ${ru.name}`);
-  if (en) parts.push(`для английского — ${en.name}`);
-  if (multi) parts.push(`для смеси языков — ${multi.name}`);
+  if (ru) parts.push(t("для русского — {0}", ru.name));
+  if (en) parts.push(t("для английского — {0}", en.name));
+  if (multi) parts.push(t("для смеси языков — {0}", multi.name));
   if (!parts.length) return "";
   return (
-    `Под один язык модели работают точнее: ${parts.join(", ")}. ` +
-    "Баллы точности считаются на общих многоязычных тестах, поэтому у " +
-    "одноязычной модели балл бывает ниже, а на своём языке она лучше."
+    t("Под один язык модели работают точнее: {0}. ", parts.join(", ")) +
+    t("Баллы точности считаются на общих многоязычных тестах, поэтому у ") +
+    t("одноязычной модели балл бывает ниже, а на своём языке она лучше.")
   );
 }
 
@@ -260,17 +266,17 @@ function pickTop(shown) {
     top.reduce((a, b) => (b[key] > a[key] ? b : a));
   const lightest = top.reduce((a, b) => (b.size_bytes < a.size_bytes ? b : a));
 
-  labels.set(best("accuracy").id, "Точнее всех");
+  labels.set(best("accuracy").id, t("Точнее всех"));
   const fastest = best("speed");
-  if (!labels.has(fastest.id)) labels.set(fastest.id, "Быстрее всех");
-  if (!labels.has(lightest.id)) labels.set(lightest.id, "Легче всех");
+  if (!labels.has(fastest.id)) labels.set(fastest.id, t("Быстрее всех"));
+  if (!labels.has(lightest.id)) labels.set(lightest.id, t("Легче всех"));
   for (const m of top) {
     if (!labels.has(m.id)) {
       labels.set(
         m.id,
         languageFilter && m.language_count === 1
           ? `Идеально для этого языка`
-          : "Хороший баланс"
+          : t("Хороший баланс")
       );
     }
   }
@@ -311,8 +317,8 @@ function renderModels() {
   for (const m of top) topBox.appendChild(modelRow(m, labels.get(m.id)));
 
   el("topHead").textContent = languageFilter
-    ? `Что взять: ${languageName(languageFilter).toLowerCase()} язык`
-    : "Что взять";
+    ? t("Что взять: {0} язык", languageName(languageFilter).toLowerCase())
+    : t("Что взять");
   el("modelAdvice").textContent = modelAdvice(modelRows);
 
   // Остальные — под кнопкой: полсотни строк сразу читать невозможно.
@@ -320,8 +326,8 @@ function renderModels() {
   for (const m of rest) list.appendChild(modelRow(m));
   el("showAll").hidden = rest.length === 0;
   el("showAll").textContent = allModelsShown
-    ? "Свернуть список"
-    : `Показать остальные (${rest.length})`;
+    ? t("Свернуть список")
+    : t("Показать остальные ({0})", rest.length);
   list.hidden = !allModelsShown;
 }
 
@@ -350,8 +356,8 @@ function modelRow(m, label) {
   // Умения показываем словами: «потоковая» и «с переводом» — то, по чему
   // модели и выбирают, а из названия этого не видно.
   const skills = [];
-  if (m.streaming) skills.push("потоковая");
-  if (m.translate) skills.push("с переводом");
+  if (m.streaming) skills.push(t("потоковая"));
+  if (m.translate) skills.push(t("с переводом"));
 
   const meta = document.createElement("p");
   meta.className = "model-meta";
@@ -373,17 +379,17 @@ function modelRow(m, label) {
   const button = document.createElement("button");
   button.className = "pill-inset compact";
   if (m.progress !== null && m.progress !== undefined) {
-    button.textContent = "Отмена";
+    button.textContent = t("Отмена");
     button.onclick = () => invoke("cancel_model", { filename: m.filename });
   } else if (m.active) {
-    button.textContent = "Активна";
+    button.textContent = t("Активна");
     button.classList.add("active-mark");
     button.disabled = true;
   } else if (m.downloaded) {
-    button.textContent = "Выбрать";
+    button.textContent = t("Выбрать");
     button.onclick = () => invoke("set_active_model", { filename: m.filename });
   } else {
-    button.textContent = "Скачать";
+    button.textContent = t("Скачать");
     button.onclick = () => invoke("download_model", { id: m.id });
   }
   row.appendChild(button);
@@ -391,7 +397,7 @@ function modelRow(m, label) {
   if (m.downloaded && !m.active) {
     const remove = document.createElement("button");
     remove.className = "model-remove";
-    remove.textContent = "Удалить";
+    remove.textContent = t("Удалить");
     remove.onclick = () => invoke("delete_model", { filename: m.filename });
     row.appendChild(remove);
   }
@@ -413,7 +419,7 @@ el("showAll").addEventListener("click", () => {
 function renderModelPick() {
   const downloaded = modelRows.filter((m) => m.downloaded);
   const active = modelRows.find((m) => m.active);
-  el("modelPickName").textContent = active ? active.name : "Модель не выбрана";
+  el("modelPickName").textContent = active ? active.name : t("Модель не выбрана");
   el("modelPick").disabled = downloaded.length === 0;
 
   const menu = el("modelPickMenu");
@@ -421,7 +427,7 @@ function renderModelPick() {
   if (!downloaded.length) {
     const empty = document.createElement("p");
     empty.className = "lang-empty";
-    empty.textContent = "Ни одна модель не скачана";
+    empty.textContent = t("Ни одна модель не скачана");
     menu.appendChild(empty);
     return;
   }
@@ -462,7 +468,7 @@ function renderFilters() {
   const lang = languageRows.find((l) => l.code === languageFilter);
   const title = lang
     ? lang.name.charAt(0).toUpperCase() + lang.name.slice(1)
-    : "Все языки";
+    : t("Все языки");
   el("filterLanguage").textContent = `${title} ▾`;
   el("filterLanguage").classList.toggle("on", languageFilter !== null);
   el("filterDownloaded").classList.toggle("on", onlyDownloaded);
@@ -499,7 +505,7 @@ function renderLanguages() {
     list.appendChild(row);
   };
 
-  if (!needle) addRow("Любой язык", null, null);
+  if (!needle) addRow(t("Любой язык"), null, null);
   const matches = languageRows.filter(
     (l) => !needle || l.name.startsWith(needle) || l.code === needle
   );
@@ -507,7 +513,7 @@ function renderLanguages() {
   if (!matches.length && needle) {
     const empty = document.createElement("p");
     empty.className = "lang-empty";
-    empty.textContent = "Такого языка в каталоге нет";
+    empty.textContent = t("Такого языка в каталоге нет");
     list.appendChild(empty);
   }
 }
@@ -549,13 +555,13 @@ el("filterTranslate").addEventListener("click", () => {
 // Каталог живёт в приложении, но модели на диске могли поменяться руками —
 // пересканируем и заодно проверяем, не появилось ли обновлений каталога.
 el("rescanModels").addEventListener("click", async () => {
-  el("rescanModels").textContent = "Проверяю";
+  el("rescanModels").textContent = t("Проверяю");
   await refreshModels();
   const news = await invoke("catalog_news").catch(() => null);
-  el("rescanModels").textContent = "Обновить список";
+  el("rescanModels").textContent = t("Обновить список");
   el("chipHint").textContent = news
     ? news
-    : "Список обновлен, новых моделей нет";
+    : t("Список обновлен, новых моделей нет");
 });
 
 // Поле с крестиком очистки — как clearableSearch на Android.
@@ -684,6 +690,10 @@ el("toTop").addEventListener("click", () => {
 
 /** Русское склонение по числу: 1 файл, 2 файла, 5 файлов. */
 function plural(n, one, few, many) {
+  // В английском форм две, и правило простое; русские три формы приходят
+  // сюда уже переведёнными, поэтому выбираем из них по-английски.
+  if (UI_LANG === "en") return `${n} ${n === 1 ? one : many}`;
+
   const mod100 = n % 100;
   const mod10 = n % 10;
   let word = many;
@@ -708,9 +718,9 @@ function fmtDur(seconds) {
   const t = Math.floor(seconds);
   const h = Math.floor(t / 3600);
   const m = Math.floor((t % 3600) / 60);
-  if (h > 0) return `${h} ч ${m} мин`;
-  if (m > 0) return `${m} мин`;
-  return `${t} с`;
+  if (h > 0) return t("{0} ч {1} мин", h, m);
+  if (m > 0) return t("{0} мин", m);
+  return t("{0} с", t);
 }
 
 function fmtDate(at) {
@@ -722,14 +732,14 @@ function fmtDate(at) {
 
 function meetingTitle(m) {
   if (m.title) return m.title;
-  return (m.imported ? "Импорт " : "Встреча ") + fmtDate(m.at);
+  return (m.imported ? t("Импорт ") : t("Встреча ")) + fmtDate(m.at);
 }
 
 /** Скорость считаем сами: Rust шлёт только «скачано из всего». */
 const fetchSeen = new Map();
 
 function fetchLabel(m) {
-  if (!m.fetched) return "Качаю по ссылке";
+  if (!m.fetched) return t("Качаю по ссылке");
   const [done, total] = m.fetched;
   const now = Date.now();
   const previous = fetchSeen.get(m.id);
@@ -738,37 +748,37 @@ function fetchLabel(m) {
   let speed = "";
   if (previous && now > previous.at && done > previous.done) {
     const perSecond = ((done - previous.done) * 1000) / (now - previous.at);
-    speed = ` · ${(perSecond / 1e6).toFixed(1)} МБ/с`;
+    speed = t(" · {0} МБ/с", (perSecond / 1e6).toFixed(1));
   }
   const mb = (bytes) => (bytes / 1e6).toFixed(1);
   if (total > 0) {
     const pct = Math.min(99, Math.floor((done * 100) / total));
-    return `Качаю ${pct}% · ${mb(done)} из ${mb(total)} МБ${speed}`;
+    return t("Качаю {0}% · {1} из {2} МБ{3}", pct, mb(done), mb(total), speed);
   }
-  return `Качаю ${mb(done)} МБ${speed}`;
+  return t("Качаю {0} МБ{1}", mb(done), speed);
 }
 
 function stateLabel(m) {
   const pct = m.progress != null ? ` ${m.progress}%` : "";
   if (m.phase === "fetching") return fetchLabel(m);
-  if (m.phase === "importing") return "Импортирую";
-  if (m.phase === "helper") return `Ставлю ffmpeg${pct}`;
-  if (m.phase === "downloading") return `Качаю модель голосов${pct}`;
-  if (m.phase === "diarizing") return `Разделяю говорящих${pct}`;
-  if (m.phase === "transcribing") return `Расшифровываю${pct}`;
+  if (m.phase === "importing") return t("Импортирую");
+  if (m.phase === "helper") return t("Ставлю ffmpeg{0}", pct);
+  if (m.phase === "downloading") return t("Качаю модель голосов{0}", pct);
+  if (m.phase === "diarizing") return t("Разделяю говорящих{0}", pct);
+  if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
   // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
-  if (m.state === "failed") return m.error ? `Не вышло: ${m.error}` : "Не удалось расшифровать";
-  if (m.state === "transcribing") return "Расшифровка прервана";
-  if (m.state === "recorded") return "Ожидает расшифровки";
+  if (m.state === "failed") return m.error ? t("Не вышло: {0}", m.error) : t("Не удалось расшифровать");
+  if (m.state === "transcribing") return t("Расшифровка прервана");
+  if (m.state === "recorded") return t("Ожидает расшифровки");
   return "";
 }
 
 // --- встречи: список и проекты --------------------------------------------
 
 const MEET_HINT =
-  "Запись уходит в файл на диске, расшифровка — на этом компьютере. " +
-  "Файл можно перетащить в окно";
+  t("Запись уходит в файл на диске, расшифровка — на этом компьютере. ") +
+  t("Файл можно перетащить в окно");
 
 let meetRows = [];
 let meetProjects = [];
@@ -837,7 +847,7 @@ function renderProjects() {
       renderMeetings();
     };
     if (id !== null) {
-      item.title = "Двойной клик — переименовать, правая кнопка — меню";
+      item.title = t("Двойной клик — переименовать, правая кнопка — меню");
       item.ondblclick = () => startInlineRename(item, id);
       item.oncontextmenu = (e) => {
         e.preventDefault();
@@ -853,7 +863,7 @@ function renderProjects() {
       if (!inside.length) {
         const empty = document.createElement("p");
         empty.className = "nav-empty";
-        empty.textContent = "Пусто";
+        empty.textContent = t("Пусто");
         list.appendChild(empty);
       }
       for (const m of inside.slice(0, 30)) {
@@ -861,8 +871,8 @@ function renderProjects() {
         link.className = "nav-meeting" + (detailId === m.id ? " on" : "");
         link.textContent = meetingTitle(m);
         link.title =
-          "Двойной клик — переименовать, правая кнопка — меню. " +
-          "Можно перетащить в другой проект";
+          t("Двойной клик — переименовать, правая кнопка — меню. ") +
+          t("Можно перетащить в другой проект");
         link.onclick = () => {
           showPage("meetings");
           openMeeting(m.id);
@@ -889,12 +899,12 @@ function renderProjects() {
 
   const plus = document.createElement("button");
   plus.className = "nav-item nav-add";
-  plus.textContent = "+ Проект";
+  plus.textContent = t("+ Проект");
   plus.onclick = () => startInlineCreate(plus);
   box.appendChild(plus);
 
   const current = meetProjects.find((p) => p.id === projectFilter);
-  el("meetingsTitle").textContent = current ? current.name : "Записи и расшифровки";
+  el("meetingsTitle").textContent = current ? current.name : t("Записи и расшифровки");
   el("deleteProject").hidden = !current;
 }
 
@@ -923,14 +933,14 @@ function inlineField(anchor, value, placeholder, commit) {
 }
 
 function startInlineCreate(anchor) {
-  inlineField(anchor, "", "Название проекта", (name) => {
+  inlineField(anchor, "", t("Название проекта"), (name) => {
     if (name) invoke("project_create", { name }).then(refreshMeetings);
   });
 }
 
 function startInlineRename(anchor, id) {
   const project = meetProjects.find((p) => p.id === id);
-  inlineField(anchor, project ? project.name : "", "Название", (name) => {
+  inlineField(anchor, project ? project.name : "", t("Название"), (name) => {
     if (name) invoke("project_rename", { id, name }).then(refreshMeetings);
   });
 }
@@ -960,29 +970,29 @@ function openSidebarMeetingMenu(anchor, meeting) {
     menu.appendChild(row);
   };
 
-  item("Открыть", () => {
+  item(t("Открыть"), () => {
     showPage("meetings");
     openMeeting(meeting.id);
   });
-  item("Переименовать", () => startMeetingRename(anchor, meeting));
+  item(t("Переименовать"), () => startMeetingRename(anchor, meeting));
 
   // Перенос без перетаскивания — на случай, когда мышью неудобно.
-  const targets = [{ id: null, name: "Без проекта" }, ...meetProjects];
+  const targets = [{ id: null, name: t("Без проекта") }, ...meetProjects];
   for (const target of targets) {
     if (target.id === meeting.project) continue;
-    item(`В «${target.name}»`, () => {
+    item(t("В «{0}»", target.name), () => {
       invoke("meeting_set_project", { id: meeting.id, project: target.id });
     });
   }
 
   const remove = document.createElement("button");
   remove.className = "lang-row danger";
-  remove.textContent = "Удалить запись";
+  remove.textContent = t("Удалить запись");
   let armed = false;
   remove.onclick = () => {
     if (!armed) {
       armed = true;
-      remove.textContent = "Точно удалить?";
+      remove.textContent = t("Точно удалить?");
       return;
     }
     closeProjectMenu();
@@ -1027,16 +1037,16 @@ function openProjectMenu(anchor, id, label) {
     menu.appendChild(row);
   };
 
-  item("Открыть", () => {
+  item(t("Открыть"), () => {
     projectFilter = id;
     closeMeeting();
     showPage("meetings");
     renderProjects();
     renderMeetings();
   });
-  item("Переименовать", () => startInlineRename(anchor, id));
+  item(t("Переименовать"), () => startInlineRename(anchor, id));
   item(
-    openProjects.has(String(id)) ? "Свернуть" : "Развернуть",
+    openProjects.has(String(id)) ? t("Свернуть") : t("Развернуть"),
     () => {
       const key = String(id);
       if (openProjects.has(key)) openProjects.delete(key);
@@ -1047,12 +1057,12 @@ function openProjectMenu(anchor, id, label) {
 
   const remove = document.createElement("button");
   remove.className = "lang-row danger";
-  remove.textContent = `Удалить «${label}»`;
+  remove.textContent = t("Удалить «{0}»", label);
   let armed = false;
   remove.onclick = () => {
     if (!armed) {
       armed = true;
-      remove.textContent = "Точно удалить?";
+      remove.textContent = t("Точно удалить?");
       return;
     }
     closeProjectMenu();
@@ -1088,7 +1098,7 @@ function startMeetingDrag(event, meeting) {
       ghost.className = "drag-ghost";
       const ids = selected.has(meeting.id) ? selected.size : 1;
       ghost.textContent =
-        ids > 1 ? `${ids} записи` : meetingTitle(meeting);
+        ids > 1 ? t("{0} записи", ids) : meetingTitle(meeting);
       document.body.appendChild(ghost);
       document.body.classList.add("dragging-meeting");
     }
@@ -1122,12 +1132,12 @@ function startMeetingDrag(event, meeting) {
     clearSelection();
 
     const where = project
-      ? `«${meetProjects.find((p) => p.id === project)?.name || "проект"}»`
-      : "«Все записи»";
+      ? `«${meetProjects.find((p) => p.id === project)?.name || t("проект")}»`
+      : t("«Все записи»");
     el("meetStatus").textContent =
       ids.length > 1
-        ? `Перенес ${plural(ids.length, "запись", "записи", "записей")} в ${where}`
-        : `Перенес запись в ${where}`;
+        ? t("Перенес {0} в {1}", plural(ids.length, t("запись"), t("записи"), t("записей")), where)
+        : t("Перенес запись в {0}", where);
   };
 
   document.addEventListener("mousemove", move);
@@ -1172,7 +1182,7 @@ function renderMeetings() {
     // Галочка выбора: по наведению видна у всех, у выбранных — всегда.
     const check = document.createElement("button");
     check.className = "meet-check" + (selected.has(m.id) ? " on" : "");
-    check.title = "Выбрать";
+    check.title = t("Выбрать");
     check.onclick = (e) => {
       e.stopPropagation();
       toggleSelected(m.id);
@@ -1199,8 +1209,8 @@ function renderMeetings() {
     if (m.phase) {
       const stop = document.createElement("button");
       stop.className = "row-cancel";
-      stop.textContent = "Отмена";
-      stop.title = "Прервать работу";
+      stop.textContent = t("Отмена");
+      stop.title = t("Прервать работу");
       stop.onclick = (e) => {
         e.stopPropagation();
         invoke("meeting_cancel", { id: m.id });
@@ -1234,7 +1244,7 @@ function renderMeetings() {
       if (hit.count > hit.quotes.length) {
         const more = document.createElement("p");
         more.className = "hit-more";
-        more.textContent = `и еще ${hit.count - hit.quotes.length}`;
+        more.textContent = t("и еще {0}", hit.count - hit.quotes.length);
         found.appendChild(more);
       }
       text.appendChild(found);
@@ -1249,7 +1259,7 @@ function renderMeetings() {
       '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
       '<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/>' +
       '<circle cx="19" cy="12" r="1.7"/></svg>';
-    menu.title = "Действия";
+    menu.title = t("Действия");
     menu.onclick = (e) => {
       e.stopPropagation();
       openRowMenu(m, menu);
@@ -1306,14 +1316,14 @@ function renderSelection() {
   const count = selected.size;
   document.body.classList.toggle("selecting", count > 0);
   el("bulkBar").hidden = count === 0;
-  el("bulkCount").textContent = `Выбрано ${count}`;
+  el("bulkCount").textContent = t("Выбрано {0}", count);
   if (!count) el("bulkMenu").hidden = true;
 }
 
 function selectedTitles() {
   return [...selected].map((id) => {
     const m = meetRows.find((r) => r.id === id);
-    return m ? meetingTitle(m) : "Встреча";
+    return m ? meetingTitle(m) : t("Встреча");
   });
 }
 
@@ -1330,7 +1340,7 @@ el("bulkMenu").addEventListener("click", async (e) => {
   if (!format) return;
   el("bulkMenu").hidden = true;
   const ids = [...selected];
-  el("meetStatus").textContent = `Готовлю ${plural(ids.length, "файл", "файла", "файлов")}`;
+  el("meetStatus").textContent = t("Готовлю {0}", plural(ids.length, t("файл"), t("файла"), t("файлов")));
   try {
     const done = await invoke("meetings_export", {
       ids,
@@ -1339,8 +1349,8 @@ el("bulkMenu").addEventListener("click", async (e) => {
     });
     el("meetStatus").textContent =
       done === ids.length
-        ? `Сохранено в Загрузки: ${done}`
-        : `Сохранено ${done} из ${ids.length} — у остальных нет расшифровки`;
+        ? t("Сохранено в Загрузки: {0}", done)
+        : t("Сохранено {0} из {1} — у остальных нет расшифровки", done, ids.length);
   } catch (err) {
     el("meetStatus").textContent = String(err);
   }
@@ -1367,11 +1377,11 @@ el("bulkProject").addEventListener("click", (e) => {
       }
       clearSelection();
       el("meetStatus").textContent =
-        `Перенес ${plural(ids.length, "запись", "записи", "записей")} в «${label}»`;
+        t("Перенес {0} в «{1}»", plural(ids.length, t("запись"), t("записи"), t("записей")), label);
     };
     menu.appendChild(row);
   };
-  addRow("Без проекта", null);
+  addRow(t("Без проекта"), null);
   for (const p of meetProjects) addRow(p.name, p.id);
 });
 
@@ -1389,16 +1399,16 @@ el("bulkAgain").addEventListener("click", () => {
 let bulkDeleteArmed = null;
 el("bulkDelete").addEventListener("click", () => {
   if (!bulkDeleteArmed) {
-    el("bulkDeleteLabel").textContent = `Удалить ${selected.size}?`;
+    el("bulkDeleteLabel").textContent = t("Удалить {0}?", selected.size);
     bulkDeleteArmed = setTimeout(() => {
       bulkDeleteArmed = null;
-      el("bulkDeleteLabel").textContent = "Удалить";
+      el("bulkDeleteLabel").textContent = t("Удалить");
     }, 3000);
     return;
   }
   clearTimeout(bulkDeleteArmed);
   bulkDeleteArmed = null;
-  el("bulkDeleteLabel").textContent = "Удалить";
+  el("bulkDeleteLabel").textContent = t("Удалить");
   invoke("meetings_delete", { ids: [...selected] });
   clearSelection();
 });
@@ -1446,34 +1456,34 @@ function openRowMenu(meeting, button) {
 
   const title = meetingTitle(meeting);
   const exportAs = async (format) => {
-    el("meetStatus").textContent = "Готовлю файл";
+    el("meetStatus").textContent = t("Готовлю файл");
     try {
       await invoke("meeting_export", { id: meeting.id, format, title });
-      el("meetStatus").textContent = `Файл .${format} сохранен в Загрузки`;
+      el("meetStatus").textContent = t("Файл .{0} сохранен в Загрузки", format);
     } catch (err) {
       el("meetStatus").textContent = String(err);
     }
   };
 
-  item("Открыть", null, () => openMeeting(meeting.id));
-  item("Экспорт", ".txt", () => exportAs("txt"));
-  item("Экспорт", ".md", () => exportAs("md"));
-  item("Экспорт", ".docx", () => exportAs("docx"));
-  item("Экспорт", ".pdf", () => exportAs("pdf"));
-  item("Расшифровать заново", null, () =>
+  item(t("Открыть"), null, () => openMeeting(meeting.id));
+  item(t("Экспорт"), ".txt", () => exportAs("txt"));
+  item(t("Экспорт"), ".md", () => exportAs("md"));
+  item(t("Экспорт"), ".docx", () => exportAs("docx"));
+  item(t("Экспорт"), ".pdf", () => exportAs("pdf"));
+  item(t("Расшифровать заново"), null, () =>
     invoke("meeting_transcribe", { id: meeting.id })
   );
-  item("Выбрать", null, () => toggleSelected(meeting.id));
+  item(t("Выбрать"), null, () => toggleSelected(meeting.id));
 
   // Удаление — сразу из меню, но с подтверждением на том же месте.
   const remove = document.createElement("button");
   remove.className = "lang-row danger";
-  remove.textContent = "Удалить";
+  remove.textContent = t("Удалить");
   let armed = false;
   remove.onclick = () => {
     if (!armed) {
       armed = true;
-      remove.textContent = "Точно удалить?";
+      remove.textContent = t("Точно удалить?");
       return;
     }
     closeRowMenu();
@@ -1504,10 +1514,10 @@ async function refreshMeetings() {
   const working = meetRows.filter((m) => m.phase);
   el("meetStatus").textContent = working.length
     ? working.some((m) => m.phase === "importing")
-      ? "Вытаскиваю звук из файла"
+      ? t("Вытаскиваю звук из файла")
       : working.some((m) => m.phase === "diarizing" || m.phase === "downloading")
-        ? "Разделяю говорящих"
-        : "Расшифровываю запись"
+        ? t("Разделяю говорящих")
+        : t("Расшифровываю запись")
     : MEET_HINT;
 
   renderProjects();
@@ -1519,16 +1529,16 @@ async function refreshMeetings() {
 el("deleteProject").addEventListener("click", () => {
   if (!projectFilter) return;
   if (!deleteProjectArmed) {
-    el("deleteProjectLabel").textContent = "Точно удалить проект?";
+    el("deleteProjectLabel").textContent = t("Точно удалить проект?");
     deleteProjectArmed = setTimeout(() => {
       deleteProjectArmed = null;
-      el("deleteProjectLabel").textContent = "Удалить проект";
+      el("deleteProjectLabel").textContent = t("Удалить проект");
     }, 3000);
     return;
   }
   clearTimeout(deleteProjectArmed);
   deleteProjectArmed = null;
-  el("deleteProjectLabel").textContent = "Удалить проект";
+  el("deleteProjectLabel").textContent = t("Удалить проект");
   deleteProject(projectFilter);
 });
 let deleteProjectArmed = null;
@@ -1536,7 +1546,7 @@ let deleteProjectArmed = null;
 clearableSearch("meetSearch", "meetSearchClear", refreshMeetings);
 listen("solflow-meetings", refreshMeetings);
 listen("solflow-import-failed", (e) => {
-  el("meetStatus").textContent = `Импорт не удался: ${e.payload}`;
+  el("meetStatus").textContent = t("Импорт не удался: {0}", e.payload);
 });
 
 // --- встречи: запись -------------------------------------------------------
@@ -1569,7 +1579,7 @@ function renderRec(p) {
   el("meetIconStop").hidden = !p.active;
   el("meetRecLive").hidden = !p.active;
   el("meetRecHint").hidden = p.active;
-  if (p.error) el("meetStatus").textContent = `Запись: ${p.error}`;
+  if (p.error) el("meetStatus").textContent = t("Запись: {0}", p.error);
   if (p.active) {
     el("meetTimer").textContent = fmtClock(p.seconds);
     meetLevels.shift();
@@ -1593,7 +1603,7 @@ async function importUrl() {
   const url = el("meetUrl").value.trim();
   if (!url) return;
   if (!/^https?:\/\//i.test(url)) {
-    el("urlHint").textContent = "Ссылка должна начинаться с http";
+    el("urlHint").textContent = t("Ссылка должна начинаться с http");
     el("urlHint").hidden = false;
     return;
   }
@@ -1606,12 +1616,12 @@ async function importUrl() {
     /yandex|yadi\.sk/i.test(host);
   if (!direct && !(await invoke("downloader_ready"))) {
     el("urlHint").textContent =
-      "Для этой ссылки нужен загрузчик — включите его в настройках";
+      t("Для этой ссылки нужен загрузчик — включите его в настройках");
     el("urlHint").hidden = false;
     return;
   }
 
-  el("urlHint").textContent = "Качаю по ссылке";
+  el("urlHint").textContent = t("Качаю по ссылке");
   el("urlHint").hidden = false;
   el("meetUrl").value = "";
   el("meetUrlClear").hidden = true;
@@ -1632,9 +1642,9 @@ function setDropping(on, count) {
   document.body.classList.toggle("dropping", on);
   el("meetImportLabel").textContent = on
     ? count > 1
-      ? `Отпустите — ${plural(count, "файл", "файла", "файлов")}`
-      : "Отпустите файл"
-    : "Импортировать файл";
+      ? t("Отпустите — {0}", plural(count, t("файл"), t("файла"), t("файлов")))
+      : t("Отпустите файл")
+    : t("Импортировать файл");
 }
 
 listen("tauri://drag-enter", (e) => {
@@ -1692,7 +1702,7 @@ async function renderDetail() {
   select.textContent = "";
   const none = document.createElement("option");
   none.value = "";
-  none.textContent = "Без проекта";
+  none.textContent = t("Без проекта");
   select.appendChild(none);
   for (const p of meetProjects) {
     const option = document.createElement("option");
@@ -1717,7 +1727,7 @@ async function renderDetail() {
       const head = document.createElement("button");
       head.className = `speaker speaker-${s.spk % 6}`;
       head.textContent = speakerName(m, s.spk);
-      head.title = "Нажмите, чтобы дать имя";
+      head.title = t("Нажмите, чтобы дать имя");
       head.onclick = () => focusSpeakerField(s.spk);
       box.appendChild(head);
     }
@@ -1744,15 +1754,15 @@ async function renderDetail() {
   el("meetFindCount").hidden = !needle;
   el("meetFindCount").textContent = needle
     ? found
-      ? plural(found, "совпадение", "совпадения", "совпадений")
-      : "ничего"
+      ? plural(found, t("совпадение"), t("совпадения"), t("совпадений"))
+      : t("ничего")
     : "";
   findIndex = -1;
 
   if (!detailSegments.length && m.phase) {
     const hint = document.createElement("p");
     hint.className = "muted small";
-    hint.textContent = "Реплики появляются по мере расшифровки";
+    hint.textContent = t("Реплики появляются по мере расшифровки");
     box.appendChild(hint);
   }
 }
@@ -1761,7 +1771,7 @@ async function renderDetail() {
 
 function speakerName(meeting, index) {
   const own = meeting.names?.[String(index)];
-  return own && own.trim() ? own : `Говорящий ${index + 1}`;
+  return own && own.trim() ? own : t("Говорящий {0}", index + 1);
 }
 
 /**
@@ -1795,7 +1805,7 @@ function renderSpeakersPanel(meeting, segments) {
     input.className = "search";
     input.id = `speakerName${index}`;
     input.type = "text";
-    input.placeholder = `Говорящий ${index + 1}`;
+    input.placeholder = t("Говорящий {0}", index + 1);
     input.value = meeting.names?.[String(index)] || "";
     const commit = () => {
       invoke("meeting_rename_speaker", {
@@ -1835,8 +1845,8 @@ el("meetSpeakers").addEventListener("click", async (e) => {
   // Первая диаризация тянет модель голосов — предупреждаем о докачке.
   const [ready, mb] = await invoke("diarize_status");
   el("speakersHint").textContent = ready
-    ? "Разбор идет на этом компьютере"
-    : `Первый раз докачает модель голосов, ${mb} МБ`;
+    ? t("Разбор идет на этом компьютере")
+    : t("Первый раз докачает модель голосов, {0} МБ", mb);
 });
 
 el("speakersMenu").addEventListener("click", (e) => {
@@ -1845,7 +1855,7 @@ el("speakersMenu").addEventListener("click", (e) => {
   if (value === undefined) return;
   el("speakersMenu").hidden = true;
   invoke("meeting_diarize", { id: detailId, speakers: Number(value) });
-  showDetailStatus("Разделяю говорящих");
+  showDetailStatus(t("Разделяю говорящих"));
 });
 
 document.addEventListener("click", () => {
@@ -1853,7 +1863,7 @@ document.addEventListener("click", () => {
 });
 
 listen("solflow-diarize-failed", (e) =>
-  showDetailStatus(`Не удалось разделить говорящих: ${e.payload}`)
+  showDetailStatus(t("Не удалось разделить говорящих: {0}", e.payload))
 );
 
 // Поиск по открытой расшифровке: подсвечивает слова и ведёт по ним.
@@ -1866,7 +1876,7 @@ el("meetFind").addEventListener("keydown", (e) => {
   findIndex = (findIndex + 1) % found.length;
   found.forEach((row, i) => row.classList.toggle("current", i === findIndex));
   found[findIndex].scrollIntoView({ block: "center", behavior: "smooth" });
-  el("meetFindCount").textContent = `${findIndex + 1} из ${found.length}`;
+  el("meetFindCount").textContent = t("{0} из {1}", findIndex + 1, found.length);
 });
 
 let findIndex = -1;
@@ -1884,7 +1894,7 @@ el("meetProjectSelect").addEventListener("change", () => {
 el("meetCopy").addEventListener("click", () => {
   const text = detailSegments.map((s) => s.text).join("\n");
   navigator.clipboard.writeText(text);
-  showDetailStatus("Скопировано");
+  showDetailStatus(t("Скопировано"));
 });
 
 function showDetailStatus(text) {
@@ -1895,14 +1905,14 @@ function showDetailStatus(text) {
 async function exportMeeting(format) {
   const m = meetRows.find((r) => r.id === detailId);
   if (!m) return;
-  showDetailStatus("Готовлю файл");
+  showDetailStatus(t("Готовлю файл"));
   try {
     await invoke("meeting_export", {
       id: detailId,
       format,
       title: meetingTitle(m),
     });
-    showDetailStatus(`Файл .${format} сохранен в Загрузки`);
+    showDetailStatus(t("Файл .{0} сохранен в Загрузки", format));
   } catch (err) {
     showDetailStatus(String(err));
   }
@@ -1926,23 +1936,23 @@ document.addEventListener("click", () => {
 
 el("meetAgain").addEventListener("click", () => {
   invoke("meeting_transcribe", { id: detailId });
-  showDetailStatus("Расшифровка пошла заново");
+  showDetailStatus(t("Расшифровка пошла заново"));
 });
 
 // Удаление в два нажатия — окно подтверждения тут ни к чему.
 let deleteArmed = null;
 el("meetDelete").addEventListener("click", () => {
   if (!deleteArmed) {
-    el("meetDeleteLabel").textContent = "Точно удалить?";
+    el("meetDeleteLabel").textContent = t("Точно удалить?");
     deleteArmed = setTimeout(() => {
       deleteArmed = null;
-      el("meetDeleteLabel").textContent = "Удалить";
+      el("meetDeleteLabel").textContent = t("Удалить");
     }, 3000);
     return;
   }
   clearTimeout(deleteArmed);
   deleteArmed = null;
-  el("meetDeleteLabel").textContent = "Удалить";
+  el("meetDeleteLabel").textContent = t("Удалить");
   invoke("meeting_delete", { id: detailId });
   closeMeeting();
 });
@@ -2027,7 +2037,7 @@ function renderHistory() {
 
       const play = document.createElement("button");
       play.className = "player-play";
-      play.title = "Прослушать";
+      play.title = t("Прослушать");
       play.innerHTML = ICON_PLAY;
 
       const bar = document.createElement("div");
@@ -2089,15 +2099,15 @@ function renderHistory() {
       return button;
     };
 
-    iconButton(ICON_COPY, "Скопировать текст", () => {
+    iconButton(ICON_COPY, t("Скопировать текст"), () => {
       navigator.clipboard.writeText(entry.text);
-      el("historyHint").textContent = "Скопировано";
+      el("historyHint").textContent = t("Скопировано");
       setTimeout(() => (el("historyHint").textContent = HISTORY_HINT), 1500);
     });
 
     if (entry.audio) {
-      iconButton(ICON_REDO, "Расшифровать заново", () => {
-        el("historyHint").textContent = "Расшифровываю заново";
+      iconButton(ICON_REDO, t("Расшифровать заново"), () => {
+        el("historyHint").textContent = t("Расшифровываю заново");
         invoke("history_retranscribe", { at: entry.at });
       });
     }
@@ -2105,7 +2115,7 @@ function renderHistory() {
     let armed = false;
     const remove = iconButton(
       ICON_TRASH,
-      "Удалить запись",
+      t("Удалить запись"),
       () => {
         if (!armed) {
           armed = true;
@@ -2148,7 +2158,7 @@ const ICON_TRASH =
   '<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></svg>';
 
 const HISTORY_HINT =
-  "Хранятся последние триста расшифровок. Нажмите на текст, чтобы скопировать";
+  t("Хранятся последние триста расшифровок. Нажмите на текст, чтобы скопировать");
 
 clearableSearch("historySearch", "historySearchClear", renderHistory);
 
@@ -2156,16 +2166,16 @@ clearableSearch("historySearch", "historySearchClear", renderHistory);
 let historyClearArmed = null;
 el("historyClear").addEventListener("click", () => {
   if (!historyClearArmed) {
-    el("historyClearLabel").textContent = "Точно очистить?";
+    el("historyClearLabel").textContent = t("Точно очистить?");
     historyClearArmed = setTimeout(() => {
       historyClearArmed = null;
-      el("historyClearLabel").textContent = "Очистить историю";
+      el("historyClearLabel").textContent = t("Очистить историю");
     }, 3000);
     return;
   }
   clearTimeout(historyClearArmed);
   historyClearArmed = null;
-  el("historyClearLabel").textContent = "Очистить историю";
+  el("historyClearLabel").textContent = t("Очистить историю");
   invoke("history_clear");
 });
 
@@ -2186,7 +2196,7 @@ async function refreshSettings(reloadDevices = false) {
   select.textContent = "";
   const auto = document.createElement("option");
   auto.value = "";
-  auto.textContent = "Системный по умолчанию";
+  auto.textContent = t("Системный по умолчанию");
   select.appendChild(auto);
   for (const name of devices) {
     const option = document.createElement("option");
@@ -2199,12 +2209,24 @@ async function refreshSettings(reloadDevices = false) {
   if (settings.input_device && !devices.includes(settings.input_device)) {
     const missing = document.createElement("option");
     missing.value = settings.input_device;
-    missing.textContent = `${settings.input_device} — сейчас не подключен`;
+    missing.textContent = t("{0} — сейчас не подключен", settings.input_device);
     select.appendChild(missing);
   }
   select.value = settings.input_device || "";
 
+  // Настройки — источник правды: если в них другой язык, окно
+  // перезагружается один раз и дальше держит его.
+  const wanted = settings.language === "auto" || !settings.language
+    ? systemLanguage()
+    : settings.language;
+  if (wanted !== UI_LANG) {
+    localStorage.setItem("solflow-lang", wanted);
+    location.reload();
+    return;
+  }
+
   applyTheme(settings.theme);
+  markSegments("languageSegments", "language", settings.language || "auto");
   markSegments("startHiddenSegments", "start", settings.start_hidden ? "hide" : "show");
   markSegments("overlayStyleSegments", "overlay", settings.overlay_style);
   markSegments("overlayPositionSegments", "position", settings.overlay_position);
@@ -2216,46 +2238,46 @@ async function refreshSettings(reloadDevices = false) {
   );
   el("overlayPositionRow").hidden = settings.overlay_style === "none";
 
-  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], settings.use_gpu);
+  markToggle("useGpu", "useGpuLabel", [t("Включено"), t("Выключено")], settings.use_gpu);
   el("gpuHint").textContent = lastDevice
-    ? `Сейчас считает ${lastDevice}`
+    ? t("Сейчас считает {0}", lastDevice)
     : settings.use_gpu
-      ? "Расшифровка идет быстрее, если видеокарта подходит"
-      : "Считает процессор";
+      ? t("Расшифровка идет быстрее, если видеокарта подходит")
+      : t("Считает процессор");
 
-  markToggle("trayIcon", "trayIconLabel", ["Показана", "Скрыта"], settings.show_tray_icon);
+  markToggle("trayIcon", "trayIconLabel", [t("Показана"), t("Скрыта")], settings.show_tray_icon);
   el("trayHint").textContent = settings.show_tray_icon
-    ? "Через нее открывается окно и выход"
-    : "Окно вернется, если запустить приложение снова";
+    ? t("Через нее открывается окно и выход")
+    : t("Окно вернется, если запустить приложение снова");
   markToggle(
     "muteRecording",
     "muteRecordingLabel",
-    ["Включено", "Выключено"],
+    [t("Включено"), t("Выключено")],
     settings.mute_while_recording
   );
   markToggle(
     "removeFillers",
     "removeFillersLabel",
-    ["Включено", "Выключено"],
+    [t("Включено"), t("Выключено")],
     settings.remove_fillers
   );
-  markToggle("keepAudio", "keepAudioLabel", ["Включено", "Выключено"], settings.keep_audio);
+  markToggle("keepAudio", "keepAudioLabel", [t("Включено"), t("Выключено")], settings.keep_audio);
   el("modelUnload").value = settings.model_unload;
   el("historyLimit").value = String(settings.history_limit);
   el("historyRetention").value = settings.history_retention;
 
   const autostart = await invoke("autostart_enabled");
   el("autostart").classList.toggle("on", autostart);
-  el("autostartLabel").textContent = autostart ? "Включен" : "Выключен";
+  el("autostartLabel").textContent = autostart ? t("Включен") : t("Выключен");
   el("startSound").classList.toggle("on", settings.start_sound);
-  el("startSoundLabel").textContent = settings.start_sound ? "Включен" : "Выключен";
+  el("startSoundLabel").textContent = settings.start_sound ? t("Включен") : t("Выключен");
 
   const keep = settings.downloads_dir;
   el("downloadsHint").textContent = keep
-    ? `Сохраняю в ${keep}`
-    : "Файл удаляется после расшифровки — приложению нужен только звук";
+    ? t("Сохраняю в {0}", keep)
+    : t("Файл удаляется после расшифровки — приложению нужен только звук");
   el("clearDownloadsDir").hidden = !keep;
-  el("pickDownloadsDir").textContent = keep ? "Другая папка" : "Выбрать папку";
+  el("pickDownloadsDir").textContent = keep ? t("Другая папка") : t("Выбрать папку");
 
   const exportDir = settings.export_dir;
   const exportMode = settings.export_ask ? "ask" : exportDir ? "folder" : "downloads";
@@ -2263,17 +2285,17 @@ async function refreshSettings(reloadDevices = false) {
   el("pickExportDir").hidden = exportMode !== "folder";
   el("exportHint").textContent =
     exportMode === "ask"
-      ? "Спрошу папку и имя при каждом экспорте"
+      ? t("Спрошу папку и имя при каждом экспорте")
       : exportMode === "folder"
-        ? `Сохраняю в ${exportDir} — папка открывается после сохранения`
-        : "Сейчас в «Загрузки» — после сохранения папка открывается сама";
+        ? t("Сохраняю в {0} — папка открывается после сохранения", exportDir)
+        : t("Сейчас в «Загрузки» — после сохранения папка открывается сама");
 
   const hasDownloader = await invoke("downloader_ready");
   el("downloaderDone").hidden = !hasDownloader;
   el("installDownloader").hidden = hasDownloader;
   if (hasDownloader) {
     el("downloaderHint").textContent =
-      "Ссылки на YouTube и VK скачиваются и расшифровываются";
+      t("Ссылки на YouTube и VK скачиваются и расшифровываются");
   }
 }
 
@@ -2330,19 +2352,19 @@ bindSegments("submitSegments", "submit", (v) => {
   if (v !== "off") option("auto_submit_key", v);
 });
 
-bindToggle("trayIcon", "trayIconLabel", ["Показана", "Скрыта"], (on) => {
+bindToggle("trayIcon", "trayIconLabel", [t("Показана"), t("Скрыта")], (on) => {
   option("show_tray_icon", on);
   el("trayHint").textContent = on
-    ? "Через нее открывается окно и выход"
-    : "Окно вернется, если запустить приложение снова";
+    ? t("Через нее открывается окно и выход")
+    : t("Окно вернется, если запустить приложение снова");
 });
-bindToggle("muteRecording", "muteRecordingLabel", ["Включено", "Выключено"], (on) =>
+bindToggle("muteRecording", "muteRecordingLabel", [t("Включено"), t("Выключено")], (on) =>
   option("mute_while_recording", on)
 );
-bindToggle("removeFillers", "removeFillersLabel", ["Включено", "Выключено"], (on) =>
+bindToggle("removeFillers", "removeFillersLabel", [t("Включено"), t("Выключено")], (on) =>
   option("remove_fillers", on)
 );
-bindToggle("keepAudio", "keepAudioLabel", ["Включено", "Выключено"], (on) =>
+bindToggle("keepAudio", "keepAudioLabel", [t("Включено"), t("Выключено")], (on) =>
   option("keep_audio", on)
 );
 
@@ -2377,15 +2399,15 @@ el("autostart").addEventListener("click", async () => {
   // доли секунды, но ждать ответа, глядя на неподвижный переключатель,
   // неприятно. Если система откажет — вернём как было и скажем почему.
   el("autostart").classList.toggle("on", enabled);
-  el("autostartLabel").textContent = enabled ? "Включен" : "Выключен";
+  el("autostartLabel").textContent = enabled ? t("Включен") : t("Выключен");
   el("autostartHint").textContent = enabled
-    ? "Приложение появится в трее после входа"
-    : "Запускать придется вручную";
+    ? t("Приложение появится в трее после входа")
+    : t("Запускать придется вручную");
   try {
     await invoke("set_autostart", { enabled });
   } catch (err) {
     el("autostart").classList.toggle("on", !enabled);
-    el("autostartLabel").textContent = !enabled ? "Включен" : "Выключен";
+    el("autostartLabel").textContent = !enabled ? t("Включен") : t("Выключен");
     el("autostartHint").textContent = String(err);
   }
 });
@@ -2407,12 +2429,21 @@ el("pickDownloadsDir").addEventListener("click", async () => {
 
 el("useGpu").addEventListener("click", async () => {
   const enabled = !el("useGpu").classList.contains("on");
-  markToggle("useGpu", "useGpuLabel", ["Включено", "Выключено"], enabled);
+  markToggle("useGpu", "useGpuLabel", [t("Включено"), t("Выключено")], enabled);
   // Устройство выбирается при загрузке модели, поэтому она поднимается
   // заново — пара секунд, и в подсказке появится, чем считает.
-  el("gpuHint").textContent = "Перезагружаю модель";
+  el("gpuHint").textContent = t("Перезагружаю модель");
   lastDevice = null;
   await invoke("set_use_gpu", { enabled });
+});
+
+bindSegments("languageSegments", "language", async (choice) => {
+  await invoke("set_language", { language: choice });
+  const wanted = choice === "auto" ? systemLanguage() : choice;
+  localStorage.setItem("solflow-lang", wanted);
+  // Перерисовать уже показанное окно на ходу дороже и грязнее, чем открыть
+  // его заново: перезагрузка отрабатывает мгновенно и ничего не забывает.
+  if (wanted !== UI_LANG) location.reload();
 });
 
 bindSegments("exportSegments", "export", async (mode) => {
@@ -2443,18 +2474,18 @@ el("clearDownloadsDir").addEventListener("click", async () => {
 listen("solflow-downloader-progress", (e) => {
   const pct = e.payload;
   if (pct > 0 && pct < 100) {
-    el("downloaderHint").textContent = `Ставлю загрузчик, ${pct}%`;
+    el("downloaderHint").textContent = t("Ставлю загрузчик, {0}%", pct);
   }
 });
 
 el("installDownloader").addEventListener("click", async () => {
   el("installDownloader").disabled = true;
   el("downloaderHint").textContent = IS_MAC
-    ? "Ставлю загрузчик, это займет минуту"
-    : "Ставлю загрузчик и ffmpeg, это займет несколько минут";
+    ? t("Ставлю загрузчик, это займет минуту")
+    : t("Ставлю загрузчик и ffmpeg, это займет несколько минут");
   try {
     await invoke("install_downloader");
-    el("downloaderHint").textContent = "Готово, ссылки на видео теперь работают";
+    el("downloaderHint").textContent = t("Готово, ссылки на видео теперь работают");
   } catch (err) {
     el("downloaderHint").textContent = String(err);
   }
@@ -2487,10 +2518,10 @@ document.querySelectorAll(".link[data-url]").forEach((button) => {
  */
 const INTRO = [
   {
-    title: `Голос становится текстом на вашем ${IS_MAC ? "Mac" : "компьютере"}`,
+    title: t("Голос становится текстом на вашем {0}", IS_MAC ? "Mac" : t("компьютере")),
     text:
-      "Ничего не уходит в интернет: ни диктовки, ни записи встреч. Модель " +
-      "распознавания живет на диске и работает без сети.",
+      t("Ничего не уходит в интернет: ни диктовки, ни записи встреч. Модель ") +
+      t("распознавания живет на диске и работает без сети."),
     shot: `<div class="shot">
         <div class="shot-side">
           <div class="shot-line on"></div><div class="shot-line short"></div>
@@ -2508,12 +2539,12 @@ const INTRO = [
       </div>`,
   },
   {
-    title: "Диктуйте в любое приложение",
+    title: t("Диктуйте в любое приложение"),
     text:
-      `Нажмите ${IS_MAC ? "⌥Пробел" : "Ctrl+Пробел"} где угодно: быстрое нажатие — ` +
-      "запись пошла, второе — " +
-      "текст вставился в активное поле. Или зажмите, скажите и отпустите. " +
-      "Сочетание и микрофон меняются в настройках.",
+      t("Нажмите {0} где угодно: быстрое нажатие — ", IS_MAC ? t("⌥Пробел") : t("Ctrl+Пробел")) +
+      t("запись пошла, второе — ") +
+      t("текст вставился в активное поле. Или зажмите, скажите и отпустите. ") +
+      t("Сочетание и микрофон меняются в настройках."),
     shot: `<div class="shot">
         <div class="shot-side">
           <div class="shot-line on"></div><div class="shot-line short"></div>
@@ -2528,11 +2559,11 @@ const INTRO = [
       </div>`,
   },
   {
-    title: "Встречи: запись, расшифровка, говорящие",
+    title: t("Встречи: запись, расшифровка, говорящие"),
     text:
-      "Пишите встречу часами или бросьте в окно файл — подойдет аудио и " +
-      "видео, можно дать ссылку на YouTube или Яндекс.Диск. Приложение " +
-      "разложит речь по времени и разделит голоса, а имена подставит в текст.",
+      t("Пишите встречу часами или бросьте в окно файл — подойдет аудио и ") +
+      t("видео, можно дать ссылку на YouTube или Яндекс.Диск. Приложение ") +
+      t("разложит речь по времени и разделит голоса, а имена подставит в текст."),
     shot: `<div class="shot">
         <div class="shot-side">
           <div class="shot-line"></div><div class="shot-line on short"></div>
@@ -2550,11 +2581,11 @@ const INTRO = [
       </div>`,
   },
   {
-    title: "Проекты, поиск и экспорт",
+    title: t("Проекты, поиск и экспорт"),
     text:
-      "Записи раскладываются по проектам — перетащите их мышью в папку " +
-      "слева. Готовое отдается в txt, Markdown, Word и PDF: заголовок, " +
-      "метки времени, имена говорящих.",
+      t("Записи раскладываются по проектам — перетащите их мышью в папку ") +
+      t("слева. Готовое отдается в txt, Markdown, Word и PDF: заголовок, ") +
+      t("метки времени, имена говорящих."),
     shot: `<div class="shot">
         <div class="shot-side">
           <div class="shot-line"></div><div class="shot-line on short"></div>
@@ -2584,7 +2615,7 @@ function renderIntro() {
     (_, i) => `<span class="${i === introStep ? "on" : ""}"></span>`
   ).join("");
   el("introNext").textContent =
-    introStep === INTRO.length - 1 ? "Начать" : "Дальше";
+    introStep === INTRO.length - 1 ? t("Начать") : t("Дальше");
   el("introSkip").hidden = introStep === INTRO.length - 1;
 }
 
@@ -2625,8 +2656,8 @@ el("bugSend").addEventListener("click", () => {
 el("bugCopy").addEventListener("click", async () => {
   const text = await invoke("bug_report", { description: el("bugText").value });
   await navigator.clipboard.writeText(text);
-  el("bugCopy").textContent = "Скопировано";
-  setTimeout(() => (el("bugCopy").textContent = "Скопировать отчет"), 1500);
+  el("bugCopy").textContent = t("Скопировано");
+  setTimeout(() => (el("bugCopy").textContent = t("Скопировать отчет")), 1500);
 });
 
 el("bugPreview").addEventListener("click", async () => {
@@ -2661,12 +2692,12 @@ function markUpdate(info) {
   const foot = el("footVersion");
   if (foot) {
     foot.classList.add("has-news");
-    el("footVersionText").textContent = `Обновить до ${info.latest}`;
+    el("footVersionText").textContent = t("Обновить до {0}", info.latest);
   }
   const hint = el("updateHint");
   if (!hint) return;
-  hint.textContent = `Вышла версия ${info.latest} — можно поставить`;
-  el("checkUpdate").textContent = "Обновить";
+  hint.textContent = t("Вышла версия {0} — можно поставить", info.latest);
+  el("checkUpdate").textContent = t("Обновить");
   el("checkUpdate").onclick = () => installUpdate(info);
 }
 
@@ -2675,7 +2706,7 @@ function markUpdate(info) {
 listen("solflow-update-progress", (e) => {
   const pct = e.payload;
   if (!updating) return;
-  const text = pct >= 100 ? "Ставлю и перезапускаю" : `Качаю ${pct}%`;
+  const text = pct >= 100 ? t("Ставлю и перезапускаю") : t("Качаю {0}%", pct);
   const hint = el("updateHint");
   if (hint) hint.textContent = text;
   el("footVersionText").textContent = text;
@@ -2687,8 +2718,8 @@ async function installUpdate(info) {
   if (updating) return;
   updating = true;
   el("checkUpdate").disabled = true;
-  el("updateHint").textContent = "Качаю";
-  el("footVersionText").textContent = "Качаю";
+  el("updateHint").textContent = t("Качаю");
+  el("footVersionText").textContent = t("Качаю");
   try {
     // Приложение перезапустится само, поэтому дальше этой строки код
     // обычно не доходит.
@@ -2696,10 +2727,10 @@ async function installUpdate(info) {
   } catch (err) {
     updating = false;
     el("checkUpdate").disabled = false;
-    el("updateHint").textContent = `${err} — можно скачать вручную`;
-    el("checkUpdate").textContent = "Открыть страницу";
+    el("updateHint").textContent = t("{0} — можно скачать вручную", err);
+    el("checkUpdate").textContent = t("Открыть страницу");
     el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
-    el("footVersionText").textContent = "Не вышло обновить";
+    el("footVersionText").textContent = t("Не вышло обновить");
   }
 }
 
@@ -2718,7 +2749,7 @@ el("footVersion").addEventListener("click", async () => {
     installUpdate(pendingUpdate);
     return;
   }
-  el("footVersionText").textContent = "Смотрю, что вышло";
+  el("footVersionText").textContent = t("Смотрю, что вышло");
   try {
     const info = await invoke("check_update");
     if (info.newer) {
@@ -2727,10 +2758,10 @@ el("footVersion").addEventListener("click", async () => {
       return;
     }
     el("footVersionText").textContent = info.latest
-      ? "У вас последняя версия"
-      : "Не удалось проверить";
+      ? t("У вас последняя версия")
+      : t("Не удалось проверить");
   } catch {
-    el("footVersionText").textContent = "Не удалось проверить";
+    el("footVersionText").textContent = t("Не удалось проверить");
   }
   // Через несколько секунд возвращаем обычную подпись: подвал не место
   // для отчётов.
@@ -2739,7 +2770,7 @@ el("footVersion").addEventListener("click", async () => {
 
 async function checkUpdate(loud) {
   const hint = el("updateHint");
-  if (loud) hint.textContent = "Смотрю, что вышло";
+  if (loud) hint.textContent = t("Смотрю, что вышло");
   try {
     const info = await invoke("check_update");
     el("appVersion").textContent = info.current;
@@ -2747,9 +2778,9 @@ async function checkUpdate(loud) {
       pendingUpdate = info;
       markUpdate(info);
     } else if (info.latest) {
-      hint.textContent = "У вас последняя версия";
+      hint.textContent = t("У вас последняя версия");
     } else {
-      hint.textContent = loud ? "Не удалось проверить — нет связи?" : "";
+      hint.textContent = loud ? t("Не удалось проверить — нет связи?") : "";
     }
   } catch (err) {
     hint.textContent = String(err);
@@ -2760,6 +2791,7 @@ el("checkUpdate").addEventListener("click", () => checkUpdate(true));
 
 // --- запуск ----------------------------------------------------------------
 
+invoke("set_ui_language", { language: UI_LANG });
 invoke("ui_state");
 invoke("app_version").then((version) => {
   appVersion = version;
@@ -2775,7 +2807,7 @@ invoke("list_languages").then((rows) => {
 // действительно мерили, поэтому названа именно она.
 invoke("machine_chip").then((chip) => {
   el("chipHint").textContent =
-    `Зеленым помечена активная. У вас ${chip}: GigaAM считает на нем ` +
+    t("Зеленым помечена активная. У вас {0}: GigaAM считает на нем ", chip) +
     `примерно в 115 раз быстрее речи. Скачивание идет в фоне.`;
 });
 refreshMeetings();
@@ -2800,14 +2832,17 @@ drawWave();
 
 if (!IS_MAC) {
   // На Windows это не меню-бар, а трей — правим подписи разом, чтобы не
-  // держать два варианта разметки.
+  // держать два варианта разметки. По-английски замена та же, только слова
+  // другие, поэтому идём через словарь.
+  const from = [t("меню-баре"), t("меню-бар")];
+  const to = [t("трее"), t("трей")];
   for (const node of document.querySelectorAll(".perm-title, .muted")) {
     if (node.children.length) continue;
-    if (node.textContent.includes("меню-бар")) {
-      node.textContent = node.textContent
-        .replace("меню-баре", "трее")
-        .replace("меню-бар", "трей");
-    }
+    let text = node.textContent;
+    from.forEach((word, i) => {
+      text = text.split(word).join(to[i]);
+    });
+    if (text !== node.textContent) node.textContent = text;
   }
 
   // «Универсальный доступ» — разрешение macOS: на Windows вставка работает
@@ -2822,6 +2857,6 @@ if (!IS_MAC) {
   // Подпись сочетания до первого ответа из Rust.
   for (const id of ["hotkeyLabel", "hotkeyLabel2"]) {
     const node = el(id);
-    if (node && node.textContent.includes("⌥")) node.textContent = "Ctrl + Пробел";
+    if (node && node.textContent.includes("⌥")) node.textContent = t("Ctrl + Пробел");
   }
 }

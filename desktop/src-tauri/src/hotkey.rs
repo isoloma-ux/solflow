@@ -61,7 +61,7 @@ fn key_code(key: &str) -> Option<Code> {
 
 /// Подпись сочетания для интерфейса. На Mac это значки клавиш, на Windows
 /// значков нет — там их пишут словами.
-pub fn label(text: &str) -> String {
+pub fn label(app: &tauri::AppHandle, text: &str) -> String {
     let mac = cfg!(target_os = "macos");
     text.split('+')
         .map(|p| match p.trim().to_lowercase().as_str() {
@@ -71,7 +71,7 @@ pub fn label(text: &str) -> String {
             "alt" | "option" | "opt" => if mac { "⌥" } else { "Alt" }.to_string(),
             "shift" => if mac { "⇧" } else { "Shift" }.to_string(),
             "ctrl" | "control" => if mac { "⌃" } else { "Ctrl" }.to_string(),
-            "space" => "Пробел".to_string(),
+            "space" => crate::lang::t(app, "Пробел"),
             other => {
                 let mut chars = other.chars();
                 match chars.next() {
