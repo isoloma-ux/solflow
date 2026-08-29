@@ -96,6 +96,21 @@ jobs:
           "VULKAN_SDK=C:\\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Append
           "C:\\VulkanSDK\\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      # Разделение говорящих: готовая сборка k2-fsa (импортные библиотеки и
+      # DLL). Статические у них собраны под другую разновидность рантайма и
+      # с Rust не сходятся, а DLL мы и так возим.
+      - name: sherpa-onnx
+        shell: bash
+        run: |
+          url=https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA}/sherpa-onnx-v${SHERPA}-win-x64-shared-MD-Release-no-tts-lib.tar.bz2
+          curl -sL -o sherpa.tar.bz2 "$url"
+          mkdir -p sherpa/win
+          tar -xjf sherpa.tar.bz2 --strip-components=1 -C sherpa/win
+          rm sherpa.tar.bz2
+          ls -la sherpa/win/lib
+        env:
+          SHERPA: 1.13.6
+
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
@@ -110,11 +125,11 @@ jobs:
       - name: Сборка
         shell: bash
         run: |
-          cargo build --release --locked --no-default-features --features gpu
+          cargo build --release --locked --features gpu
           cp target/release/*.dll .
+          cp sherpa/win/lib/*.dll .
           ls -la *.dll
-          tauri build --config tauri.gpu.conf.json --bundles nsis -- \
-            --no-default-features --features gpu
+          tauri build --config tauri.gpu.conf.json --bundles nsis -- --features gpu
 
       # Номер прогона в имени: версия меняется по смыслу, а сборок между
       # версиями бывает несколько, и путать их не хочется.
