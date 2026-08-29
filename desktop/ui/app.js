@@ -602,7 +602,11 @@ function showPage(name, fromHistory = false) {
   el("content").scrollTop = 0;
   if (name === "history") refreshHistory();
   if (name === "settings") refreshSettings(true);
-  if (name === "about") checkUpdate(false);
+  if (name === "about") {
+    document.querySelector('.nav-item[data-page="about"]')?.classList.remove("has-news");
+    if (pendingUpdate) markUpdate(pendingUpdate);
+    else checkUpdate(false);
+  }
 }
 
 /** Шаг назад: из карточки встречи — в список, иначе в прошлый раздел. */
@@ -2637,6 +2641,29 @@ el("bugPreview").addEventListener("click", async () => {
 
 // --- обновления ------------------------------------------------------------
 
+// Приложение само смотрит, не вышла ли новая версия. Пометка появляется на
+// пункте «О проекте»: узнавать об обновлении, только если сам туда зайдёшь,
+// — так себе способ.
+listen("solflow-update", (e) => {
+  const info = e.payload;
+  if (!info || !info.newer) return;
+  pendingUpdate = info;
+  markUpdate(info);
+});
+
+let pendingUpdate = null;
+
+function markUpdate(info) {
+  const nav = document.querySelector('.nav-item[data-page="about"]');
+  if (nav) nav.classList.add("has-news");
+  const hint = el("updateHint");
+  if (hint) {
+    hint.textContent = `Есть версия ${info.latest} — нажмите, чтобы открыть`;
+    el("checkUpdate").textContent = "Скачать";
+    el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
+  }
+}
+
 async function checkUpdate(loud) {
   const hint = el("updateHint");
   if (loud) hint.textContent = "Смотрю, что вышло";
@@ -2644,9 +2671,8 @@ async function checkUpdate(loud) {
     const info = await invoke("check_update");
     el("appVersion").textContent = info.current;
     if (info.latest && info.newer) {
-      hint.textContent = `Есть версия ${info.latest} — нажмите, чтобы открыть`;
-      el("checkUpdate").textContent = "Скачать";
-      el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
+      pendingUpdate = info;
+      markUpdate(info);
     } else if (info.latest) {
       hint.textContent = "У вас последняя версия";
     } else {

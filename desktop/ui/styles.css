@@ -117,6 +117,18 @@ body {
   transition: color var(--press) var(--ease-out), background var(--press) var(--ease-out);
 }
 .nav-item:hover { color: var(--ink); background: var(--graphite-2); }
+
+/* Точка у пункта меню: вышла новая версия. */
+.nav-item.has-news::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+  vertical-align: middle;
+}
 .nav-item.on {
   color: var(--ink);
   background: var(--graphite-2);

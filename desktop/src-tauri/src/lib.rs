@@ -541,7 +541,7 @@ fn open_link(url: String) {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct UpdateInfo {
     current: String,
     latest: Option<String>,
@@ -604,6 +604,30 @@ fn send_bug_report(app: AppHandle, description: String) {
 
 #[tauri::command]
 fn check_update() -> UpdateInfo {
+    latest_release()
+}
+
+/// Раз в шесть часов смотрим, не вышла ли новая версия, и говорим окну.
+/// Человек не должен узнавать об обновлении, только если сам зайдёт в «О
+/// проекте»; первый раз спрашиваем через минуту после старта — при запуске
+/// со стартом системы сети может ещё не быть.
+fn spawn_update_watch(app: AppHandle) {
+    const FIRST_DELAY: u64 = 60;
+    const EVERY: u64 = 6 * 60 * 60;
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(FIRST_DELAY));
+        loop {
+            let info = latest_release();
+            if info.newer {
+                let _ = app.emit("solflow-update", info);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(EVERY));
+        }
+    });
+}
+
+fn latest_release() -> UpdateInfo {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let latest = net::get_json(RELEASES_API)
         .ok()
@@ -1379,6 +1403,8 @@ pub fn run() {
                     }
                 });
             }
+
+            spawn_update_watch(app.handle().clone());
 
             if let Err(e) = register_hotkey(app.handle(), &loaded_settings.hotkey) {
                 log::error!("хоткей: {e}");

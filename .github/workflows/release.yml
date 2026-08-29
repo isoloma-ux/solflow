@@ -1,0 +1,84 @@
+# Публикация версии. Запускается по тегу вида v0.2.2: собирает установщик
+# и выкладывает его релизом — оттуда же приложение узнаёт про обновления.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: win-release-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: win-release-
+
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          $url = "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\\vulkan_sdk.exe"
+          & "$env:RUNNER_TEMP\\vulkan_sdk.exe" --root C:\\VulkanSDK --accept-licenses `
+            --default-answer --confirm-command install | Out-Null
+          "VULKAN_SDK=C:\\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "C:\\VulkanSDK\\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: sherpa-onnx
+        shell: bash
+        run: |
+          url=https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA}/sherpa-onnx-v${SHERPA}-win-x64-shared-MD-Release-no-tts-lib.tar.bz2
+          curl -sL -o sherpa.tar.bz2 "$url"
+          mkdir -p sherpa/win
+          tar -xjf sherpa.tar.bz2 --strip-components=1 -C sherpa/win
+          rm sherpa.tar.bz2
+        env:
+          SHERPA: 1.13.6
+
+      - name: Ставим tauri-cli
+        run: npm install -g @tauri-apps/cli@^2
+
+      - name: Сборка
+        shell: bash
+        run: |
+          rm -rf target/release/bundle/nsis
+          cargo build --release --locked --features gpu
+          cp target/release/*.dll .
+          cp sherpa/win/lib/*.dll .
+          tauri build --config tauri.gpu.conf.json --bundles nsis -- --features gpu
+
+      # Релиз создаётся, если его ещё нет, и в него кладётся установщик.
+      # Неподписанный .exe встречает SmartScreen — об этом сказано прямо в
+      # описании релиза, чтобы человек не пугался.
+      - name: Публикуем
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          {
+            echo "Установщик для Windows."
+            echo
+            echo "Приложение не подписано, поэтому при первом запуске Windows покажет"
+            echo "предупреждение SmartScreen: «Подробнее» → «Выполнить в любом случае»."
+            echo
+            echo "Распознавание идёт офлайн, модели скачиваются в самом приложении."
+          } > notes.md
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --title "Sol Flow $tag" --notes-file notes.md
+          gh release upload "$tag" target/release/bundle/nsis/*.exe --clobber
