@@ -1890,6 +1890,7 @@ class MainActivity : AppCompatActivity() {
         // обученные на одном языке точнее многоязычных на нём, хотя их общий
         // балл ниже.
         val specialisedFirst = languageFilter != null
+        showModelAdvice()
         models.submit(
             shown.sortedWith(
                 compareByDescending<CatalogModel> { m -> m.files.any { it.filename == active } }
@@ -1900,6 +1901,30 @@ class MainActivity : AppCompatActivity() {
             downloaded,
             active,
         )
+    }
+
+    /**
+     * Совет обычными словами: какую модель брать.
+     *
+     * Объясняет главное, без чего список вводит в заблуждение: баллы
+     * точности считаются на общих многоязычных тестах, где русского почти
+     * нет. Поэтому GigaAM со своими «69» разбирает русскую речь лучше, чем
+     * модель с «90», обученная на английском.
+     */
+    private fun showModelAdvice() {
+        val all = Catalog.models(this)
+        fun bestFor(code: String) = all
+            .filter { it.languageCount == 1 && code in it.languages }
+            .maxByOrNull { it.accuracyScore }
+        val multi = all.filter { it.languageCount > 1 }.maxByOrNull { it.accuracyScore }
+
+        val parts = buildList {
+            bestFor("ru")?.let { add(getString(R.string.model_advice_for, it.name)) }
+            bestFor("en")?.let { add(getString(R.string.model_advice_en, it.name)) }
+            multi?.let { add(getString(R.string.model_advice_multi, it.name)) }
+        }
+        ui.pageModels.modelAdvice.text =
+            if (parts.isEmpty()) "" else getString(R.string.model_advice, parts.joinToString(", "))
     }
 
     /**

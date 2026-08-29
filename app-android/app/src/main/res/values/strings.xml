@@ -330,7 +330,14 @@
     <string name="update_checking">Смотрю…</string>
     <string name="update_failed">Не удалось спросить — нет сети или выпусков еще нет</string>
     <string name="update_current">У вас последняя версия</string>
-    <string name="update_available">Вышла %1$s — открываю страницу загрузки</string>
+    <string name="update_available">Вышла %1$s — можно поставить</string>
+    <string name="update_install">Обновить</string>
+    <string name="update_downloading">Качаю %1$d%%</string>
+    <string name="update_downloading_plain">Качаю</string>
+    <string name="update_installing">Открываю установщик</string>
+    <string name="update_download_failed">Не удалось скачать — попробуйте ещё раз</string>
+    <string name="update_no_file">В выпуске нет файла для Android</string>
+    <string name="update_permission">Нужно разрешить установку из этого приложения</string>
     <string name="about_stack_kicker">Как это устроено</string>
     <string name="about_stack">Распознавание — transcribe.cpp с моделями GigaAM и Whisper, разделение голосов — sherpa-onnx. Открытые проекты, за которые спасибо их авторам.</string>
     <string name="about_bug_kicker">Если что-то сломалось</string>
@@ -360,4 +367,15 @@
     <string name="intro4_title">Проекты, поиск и экспорт</string>
     <string name="intro4_text">Встречи раскладываются по проектам, поиск ищет по всем расшифровкам. Готовое отдается в txt, Markdown, Word и PDF.</string>
 
+    <string name="set_language">Язык интерфейса</string>
+    <string name="set_language_hint">Обычно как в системе, но можно закрепить</string>
+    <string name="language_system">Как в системе</string>
+    <string name="support_kicker">Поддержать</string>
+    <string name="support_title">Sol Flow бесплатен и останется таким</string>
+    <string name="support_text">Ни подписки, ни рекламы, ни сбора данных. Если приложение пригодилось и хочется сказать спасибо — можно поддержать проект. Это ни на что не влияет: все возможности и так открыты</string>
+    <string name="support_button">Поддержать проект</string>
+    <string name="model_advice">Под один язык модели работают точнее: %1$s. Баллы точности считаются на общих многоязычных тестах, поэтому у одноязычной модели балл бывает ниже, а на своем языке она лучше.</string>
+    <string name="model_advice_for">для русского — %1$s</string>
+    <string name="model_advice_en">для английского — %1$s</string>
+    <string name="model_advice_multi">для смеси языков — %1$s</string>
 </resources>

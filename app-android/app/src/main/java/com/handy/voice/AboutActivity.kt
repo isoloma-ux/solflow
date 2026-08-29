@@ -57,6 +57,7 @@ class AboutActivity : AppCompatActivity() {
         ui.linkTelegram.setOnClickListener { open("https://t.me/russian_cmo") }
         ui.linkYoutube.setOnClickListener { open("https://www.youtube.com/@IvanSPro") }
         ui.linkMail.setOnClickListener { open("mailto:$MAIL") }
+        ui.linkSupport.setOnClickListener { open(DONATION) }
         ui.linkEngine.setOnClickListener {
             open("https://github.com/handy-computer/transcribe.cpp")
         }
@@ -82,34 +83,62 @@ class AboutActivity : AppCompatActivity() {
         ui.checkUpdate.isEnabled = false
         ui.updateStatus.setText(R.string.update_checking)
         lifecycleScope.launch {
-            val latest = withContext(Dispatchers.IO) { latestTag() }
+            val release = withContext(Dispatchers.IO) { AppUpdate.latest() }
             ui.checkUpdate.isEnabled = true
             when {
-                latest == null -> ui.updateStatus.setText(R.string.update_failed)
-                newer(latest, BuildConfig.VERSION_NAME) -> {
-                    ui.updateStatus.text = getString(R.string.update_available, latest)
-                    open(RELEASES_PAGE)
-                }
+                release == null -> ui.updateStatus.setText(R.string.update_failed)
+                newer(release.version, BuildConfig.VERSION_NAME) -> offerUpdate(release)
                 else -> ui.updateStatus.setText(R.string.update_current)
             }
         }
     }
 
-    private fun latestTag(): String? = runCatching {
-        val conn = (URL(RELEASES_API).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 8_000
-            readTimeout = 10_000
-            setRequestProperty("User-Agent", "SolFlow")
+    /**
+     * Предлагает поставить новую версию. Кнопка «Проверить» превращается в
+     * «Обновить»: пусть человек нажмёт ещё раз осознанно, а не получит
+     * закачку на несколько десятков мегабайт от одного захода в «О проекте».
+     */
+    private fun offerUpdate(release: AppUpdate.Release) {
+        ui.updateStatus.text = getString(R.string.update_available, release.version)
+        if (release.apkUrl == null) {
+            ui.updateStatus.setText(R.string.update_no_file)
+            return
         }
-        try {
-            if (conn.responseCode !in 200..299) return null
-            JSONObject(conn.inputStream.bufferedReader().readText()).optString("tag_name")
-                .takeIf { it.isNotBlank() }
-        } finally {
-            conn.disconnect()
+        ui.checkUpdate.setText(R.string.update_install)
+        ui.checkUpdate.setOnClickListener { installUpdate(release.apkUrl) }
+    }
+
+    private fun installUpdate(url: String) {
+        // Разрешение спрашиваем до закачки: качать сорок мегабайт, чтобы
+        // упереться в отказ, — так себе обмен.
+        if (!AppUpdate.canInstall(this)) {
+            ui.updateStatus.setText(R.string.update_permission)
+            AppUpdate.askInstallPermission(this)
+            return
         }
-    }.getOrNull()
+        ui.checkUpdate.isEnabled = false
+        ui.updateStatus.setText(R.string.update_downloading_plain)
+        lifecycleScope.launch {
+            val apk = withContext(Dispatchers.IO) {
+                AppUpdate.download(this@AboutActivity, url) { share ->
+                    val text = if (share >= 0f) {
+                        getString(R.string.update_downloading, (share * 100).toInt())
+                    } else {
+                        getString(R.string.update_downloading_plain)
+                    }
+                    runOnUiThread { ui.updateStatus.text = text }
+                }
+            }
+            ui.checkUpdate.isEnabled = true
+            if (apk == null) {
+                ui.updateStatus.setText(R.string.update_download_failed)
+                return@launch
+            }
+            ui.updateStatus.setText(R.string.update_installing)
+            AppUpdate.install(this@AboutActivity, apk)
+        }
+    }
+
 
     /** Сравнение версий вида «2.2.1» по числам, а не по строкам. */
     private fun newer(latest: String, current: String): Boolean {
@@ -186,11 +215,13 @@ class AboutActivity : AppCompatActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
-    private companion object {
+    companion object {
         const val MAIL = "me@isoloma.ru"
+        const val DONATION = "https://www.donationalerts.com/r/isoloma"
 
         /** Где искать новые версии — тот же релиз, что у Mac и Windows. */
-        const val RELEASES_API = "https://api.github.com/repos/isoloma-ux/solflow/releases/latest"
+        const val RELEASES_API =
+            "https://api.github.com/repos/isoloma-ux/solflow/releases/latest"
         const val RELEASES_PAGE = "https://github.com/isoloma-ux/solflow/releases/latest"
     }
 }

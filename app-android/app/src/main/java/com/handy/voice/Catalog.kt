@@ -41,6 +41,23 @@ data class CatalogModel(
 /** Язык из каталога: код, русское название и сколько моделей его знают. */
 data class CatalogLanguage(val code: String, val name: String, val models: Int)
 
+/**
+ * Поле каталога на языке интерфейса.
+ *
+ * Описания моделей и названия языков лежат в каталоге сразу на двух языках:
+ * переводить их на ходу нечем, а показывать русские подписи в английском
+ * окне нельзя. Английский вариант хранится рядом с суффиксом `_en`; если
+ * его нет, остаётся русский — это лучше пустого места.
+ */
+private fun JSONObject.localized(field: String): String {
+    val english = java.util.Locale.getDefault().language == "en"
+    if (english) {
+        val value = optString("${field}_en")
+        if (value.isNotBlank()) return value
+    }
+    return optString(field)
+}
+
 object Catalog {
 
     private var cached: List<CatalogModel>? = null
@@ -60,7 +77,7 @@ object Catalog {
         val langObj = root.optJSONObject("languages")
         languages = langObj?.keys()?.asSequence()?.map { code ->
             val item = langObj.getJSONObject(code)
-            CatalogLanguage(code, item.getString("name"), item.getInt("models"))
+            CatalogLanguage(code, item.localized("name"), item.getInt("models"))
         }?.sortedByDescending { it.models }?.toList().orEmpty()
 
         val arr = root.getJSONArray("models")
@@ -73,13 +90,13 @@ object Catalog {
                 revision = m.getString("revision"),
                 name = m.getString("name"),
                 architecture = m.getString("architecture"),
-                description = m.optString("description"),
+                description = m.localized("description"),
                 license = m.optString("license"),
                 languages = langsArr?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
                 languageCount = m.optInt("language_count"),
                 speedScore = m.optInt("speed_score"),
                 accuracyScore = m.optInt("accuracy_score"),
-                speedNote = m.optString("speed_note"),
+                speedNote = m.localized("speed_note"),
                 defaultQuant = m.optString("default_quant"),
                 files = (0 until filesArr.length()).map { j ->
                     val f = filesArr.getJSONObject(j)

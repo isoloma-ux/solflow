@@ -43,6 +43,16 @@
         android:textSize="14sp"
         android:text="@string/catalog_hint" />
 
+    <!-- Совет обычными словами: какую модель брать под язык. Заполняется
+         из каталога, поэтому текста здесь нет. -->
+    <TextView
+        android:id="@+id/modelAdvice"
+        style="@style/Text.Muted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="14sp" />
+
     <EditText
         android:id="@+id/modelSearch"
         android:layout_width="match_parent"

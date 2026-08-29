@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -62,6 +63,17 @@ class SettingsActivity : AppCompatActivity() {
         ui.settingsList.removeAllViews()
 
         group(R.string.group_look)
+        choice(
+            R.string.set_language, R.string.set_language_hint,
+            languageOptions(), currentLanguage(),
+        ) { value ->
+            // Язык меняет система: она сама пересоздаёт экраны и запоминает
+            // выбор — своего хранения не нужно.
+            AppCompatDelegate.setApplicationLocales(
+                if (value == LANGUAGE_SYSTEM) LocaleListCompat.getEmptyLocaleList()
+                else LocaleListCompat.forLanguageTags(value)
+            )
+        }
         choice(
             R.string.set_theme, R.string.set_theme_hint,
             themeOptions(), AppPrefs.theme(this),
@@ -205,6 +217,20 @@ class SettingsActivity : AppCompatActivity() {
 
     // --- наборы вариантов -------------------------------------------------
 
+    /** Выбранный язык: пустой список — «как в системе». */
+    private fun currentLanguage(): String =
+        AppCompatDelegate.getApplicationLocales().toLanguageTags()
+            .split(",").firstOrNull()?.take(2)?.takeIf { it.isNotBlank() }
+            ?: LANGUAGE_SYSTEM
+
+    /** Названия языков — на них самих: так их узнают и те, кто не читает
+     *  по-русски, и те, кто не читает по-английски. */
+    private fun languageOptions() = listOf(
+        LANGUAGE_SYSTEM to getString(R.string.language_system),
+        "ru" to "Русский",
+        "en" to "English",
+    )
+
     private fun themeOptions() = listOf(
         "system" to getString(R.string.theme_system),
         "light" to getString(R.string.theme_light),
@@ -238,6 +264,9 @@ class SettingsActivity : AppCompatActivity() {
 
     companion object {
         private const val SYSTEM_MIC = "system"
+
+        /** «Как в системе» — не код языка, поэтому отдельным значением. */
+        private const val LANGUAGE_SYSTEM = "system"
 
         /**
          * Тема из настроек. Вызывается при старте приложения и при смене:

@@ -11,8 +11,8 @@ android {
         applicationId = "com.handy.voice"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.2"
+        versionCode = 23
+        versionName = "2.3"
 
         ndk {
             // Только arm64: 32-битных телефонов, которым нужна была бы armeabi-v7a,
