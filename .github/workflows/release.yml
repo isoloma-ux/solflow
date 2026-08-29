@@ -149,6 +149,9 @@ jobs:
         run: |
           rm -rf target/release/bundle/macos
           tauri build --bundles app
+          # Проверяем, что подпись «на месте» действительно легла: без неё
+          # система объявляет скачанный бандл повреждённым (проверено).
+          codesign --verify --verbose=1 "target/release/bundle/macos/Sol Flow.app"
 
       # Приложение кладётся в архив с именем без пробелов, а в манифест
       # дописывается вторая платформа — к той, что уже положила Windows.
