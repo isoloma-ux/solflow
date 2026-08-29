@@ -105,6 +105,10 @@ jobs:
           gh release view "$tag" >/dev/null 2>&1 \
             || gh release create "$tag" --title "Sol Flow $tag" --notes-file notes.md
           gh release upload "$tag" "$out" "$out.sig" latest.json --clobber
+          # Релиз мог остаться черновиком: если тег перевыпускали, GitHub
+          # прячет уже созданный релиз в черновики, и наружу он не виден —
+          # приложение считает последней прошлую версию (проверено).
+          gh release edit "$tag" --draft=false --latest
 
   # Mac-версия. Идёт после Windows, потому что дописывает свою платформу в
   # уже созданный манифест обновления.
@@ -221,4 +225,5 @@ jobs:
 
           gh release upload "$tag" "$out" "$out.sig" "SolFlow_${version}_macOS.zip" \
             latest.json --clobber
+          gh release edit "$tag" --draft=false --latest
 
