@@ -2657,9 +2657,37 @@ function markUpdate(info) {
   const nav = document.querySelector('.nav-item[data-page="about"]');
   if (nav) nav.classList.add("has-news");
   const hint = el("updateHint");
-  if (hint) {
-    hint.textContent = `Есть версия ${info.latest} — нажмите, чтобы открыть`;
-    el("checkUpdate").textContent = "Скачать";
+  if (!hint) return;
+  hint.textContent = `Вышла версия ${info.latest} — можно поставить`;
+  el("checkUpdate").textContent = "Обновить";
+  el("checkUpdate").onclick = () => installUpdate(info);
+}
+
+// Проценты установки: файл весит десятки мегабайт, и молчащая кнопка
+// выглядит как зависшая.
+listen("solflow-update-progress", (e) => {
+  const pct = e.payload;
+  const hint = el("updateHint");
+  if (!hint || !updating) return;
+  hint.textContent = pct >= 100 ? "Ставлю и перезапускаю" : `Качаю ${pct}%`;
+});
+
+let updating = false;
+
+async function installUpdate(info) {
+  if (updating) return;
+  updating = true;
+  el("checkUpdate").disabled = true;
+  el("updateHint").textContent = "Качаю";
+  try {
+    // Приложение перезапустится само, поэтому дальше этой строки код
+    // обычно не доходит.
+    await invoke("install_update");
+  } catch (err) {
+    updating = false;
+    el("checkUpdate").disabled = false;
+    el("updateHint").textContent = `${err} — можно скачать вручную`;
+    el("checkUpdate").textContent = "Открыть страницу";
     el("checkUpdate").onclick = () => invoke("open_link", { url: info.url });
   }
 }

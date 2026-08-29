@@ -52,8 +52,13 @@ jobs:
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
+      # Ключ подписи обновлений лежит в секретах репозитория: приложение
+      # ставит скачанное само, и без проверки подписи это была бы дыра.
       - name: Сборка
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
           rm -rf target/release/bundle/nsis
           cargo build --release --locked --features gpu
@@ -79,6 +84,24 @@ jobs:
             echo
             echo "Распознавание идёт офлайн, модели скачиваются в самом приложении."
           } > notes.md
+          # Имя без пробелов: адрес обновления должен быть простым, а
+          # подпись считается по содержимому и переименования не боится.
+          version="${tag#v}"
+          out=SolFlow_${version}_x64-setup.exe
+          cp target/release/bundle/nsis/*-setup.exe "$out"
+          cp target/release/bundle/nsis/*-setup.exe.sig "$out.sig"
+
+          # Манифест для встроенного обновления: по нему приложение узнаёт
+          # версию, адрес файла и его подпись.
+          jq -n \
+            --arg version "$version" \
+            --arg signature "$(cat "$out.sig")" \
+            --arg url "https://github.com/isoloma-ux/solflow/releases/download/$tag/$out" \
+            '{version: $version, notes: "Обновление Sol Flow",
+              platforms: {"windows-x86_64": {signature: $signature, url: $url}}}' \
+            > latest.json
+          cat latest.json
+
           gh release view "$tag" >/dev/null 2>&1 \
             || gh release create "$tag" --title "Sol Flow $tag" --notes-file notes.md
-          gh release upload "$tag" target/release/bundle/nsis/*.exe --clobber
+          gh release upload "$tag" "$out" "$out.sig" latest.json --clobber

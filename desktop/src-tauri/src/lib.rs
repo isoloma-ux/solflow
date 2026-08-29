@@ -644,6 +644,50 @@ fn latest_release() -> UpdateInfo {
     }
 }
 
+/// Скачивает и ставит новую версию. Файл берётся с GitHub и проверяется по
+/// подписи: приложение само запускает то, что скачало, и без проверки это
+/// была бы дыра — подменят ответ, и оно послушно поставит чужое.
+///
+/// Проценты уходят в окно: установщик весит десятки мегабайт.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| format!("не вышло проверить обновление: {e}"))?;
+
+    let Some(update) = update else {
+        return Err("новой версии нет".to_string());
+    };
+
+    let mut downloaded: u64 = 0;
+    let progress = app.clone();
+    let done = app.clone();
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let pct = total
+                    .map(|t| ((downloaded * 100) / t.max(1)).min(99) as u8)
+                    .unwrap_or(0);
+                let _ = progress.emit("solflow-update-progress", pct);
+            },
+            move || {
+                let _ = done.emit("solflow-update-progress", 100u8);
+            },
+        )
+        .await
+        .map_err(|e| format!("обновление не поставилось: {e}"))?;
+
+    // На Windows установщик просит закрыть приложение сам, но перезапуск
+    // делаем явно: иначе человек остаётся перед пустотой.
+    app.restart();
+}
+
 #[tauri::command]
 fn open_accessibility(app: AppHandle) {
     sys::open_accessibility_settings();
@@ -1257,6 +1301,7 @@ pub fn run() {
     }));
 
     let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -1281,6 +1326,7 @@ pub fn run() {
             open_accessibility,
             open_link,
             check_update,
+            install_update,
             bug_report,
             send_bug_report,
             models_dir,
