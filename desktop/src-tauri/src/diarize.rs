@@ -22,6 +22,11 @@ const CLUSTER_THRESHOLD: f32 = 0.5;
 /// голос. Замер на двух чтецах: свои пары 0.13–0.20, чужие от 0.25.
 const SINGLE_VOICE_DISTANCE: f32 = 0.3;
 
+/// Слияние дороже этого — склейка двух разных людей, здесь и режем след.
+/// Замер на живых встречах (4 и 3 голоса, один микрофон на комнату):
+/// куски одного голоса сшиваются до 0.28, разные люди — от 0.48.
+const AUTO_SPLIT_DISTANCE: f32 = 0.4;
+
 const WINDOW_SEC: usize = 600;
 const EMBED_SPEECH_SEC: f32 = 10.0;
 const THREADS: i32 = 4;
@@ -637,16 +642,23 @@ fn auto_target(points: &[&[f32]]) -> usize {
         return points.len();
     }
 
-    let mut cut = 0;
-    let mut best_gap = 0.0;
-    for i in 0..merges.len().saturating_sub(1) {
-        let gap = merges[i + 1] - merges[i];
-        if gap >= best_gap {
-            best_gap = gap;
-            cut = i;
+    // Режем на первом дорогом слиянии. Прежний поиск самого большого скачка
+    // подводил: наверху следа, где сшиваются заведомо разные люди, скачки
+    // бывают крупнее, чем на границе «свой/чужой», — и редкий говорящий
+    // сливался с соседом (проверено на живой встрече с тремя голосами).
+    for (i, m) in merges.iter().enumerate() {
+        if *m >= AUTO_SPLIT_DISTANCE {
+            return points.len() - i;
         }
     }
-    points.len() - (cut + 1)
+    // Дорогих слияний нет, но серые (0.3–0.4) есть — иначе сюда бы не дошли.
+    // Режем по мягкому порогу: лучше лишний голос, чем два человека в одном.
+    for (i, m) in merges.iter().enumerate() {
+        if *m >= SINGLE_VOICE_DISTANCE {
+            return points.len() - i;
+        }
+    }
+    points.len() - merges.len()
 }
 
 /// Кластеризуются только крупные говорящие: осколки с парой секунд речи

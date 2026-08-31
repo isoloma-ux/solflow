@@ -43,6 +43,13 @@ object Diarizer {
      */
     private const val SINGLE_VOICE_DISTANCE = 0.3f
 
+    /**
+     * Слияние дороже этого — склейка двух разных людей, здесь и режется
+     * след слияний. Замер на живых встречах (4 и 3 голоса, один микрофон):
+     * куски одного голоса сшиваются до 0.28, разные люди — от 0.48.
+     */
+    private const val AUTO_SPLIT_DISTANCE = 0.4f
+
     private const val WINDOW_SEC = 600
     private const val EMBED_SPEECH_SEC = 10f
     private const val THREADS = 4
@@ -417,18 +424,20 @@ object Diarizer {
         if (merges.last() < SINGLE_VOICE_DISTANCE) return 1
         if (merges.first() >= SINGLE_VOICE_DISTANCE) return bigPoints.size
 
-        // Есть переход от дешёвых слияний к дорогим: режем по самому
-        // большому скачку, выполняются только слияния до него.
-        var cut = 0
-        var bestGap = 0f
-        for (i in 0 until merges.size - 1) {
-            val gap = merges[i + 1] - merges[i]
-            if (gap >= bestGap) {
-                bestGap = gap
-                cut = i
-            }
+        // Режем на первом дорогом слиянии. Прежний поиск самого большого
+        // скачка подводил: наверху следа, где сшиваются заведомо разные
+        // люди, скачки бывают крупнее, чем на границе «свой/чужой», — и
+        // редкий говорящий сливался с соседом (замер на живой встрече с
+        // тремя голосами: свои куски до 0.28, чужие от 0.48).
+        for ((i, m) in merges.withIndex()) {
+            if (m >= AUTO_SPLIT_DISTANCE) return bigPoints.size - i
         }
-        return bigPoints.size - (cut + 1)
+        // Дорогих нет, но серые (0.3–0.4) есть — режем по мягкому порогу:
+        // лучше лишний голос, чем два человека в одном.
+        for ((i, m) in merges.withIndex()) {
+            if (m >= SINGLE_VOICE_DISTANCE) return bigPoints.size - i
+        }
+        return bigPoints.size - merges.size
     }
 
     private fun cosine(a: FloatArray, b: FloatArray): Float {
