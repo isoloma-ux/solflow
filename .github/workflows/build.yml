@@ -124,6 +124,11 @@ jobs:
       # (проверено падением прогона).
       - name: Сборка
         shell: bash
+        # Ключ подписи обновлений нужен и здесь: с настроенным updater
+        # tauri build без него падает (проверено падением прогона).
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
           # Прошлые сборки лежат в кеше вместе со своими установщиками —
           # чистим, иначе в артефакт уезжает и старая версия.
