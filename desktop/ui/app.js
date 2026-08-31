@@ -2711,7 +2711,7 @@ el("showIntro").addEventListener("click", showIntro);
 // Показывается один раз после смены версии. На первом запуске хватает
 // вводного экрана, поэтому окно молча помечает версию как увиденную.
 // Суффикс поднимают, когда текст обновился внутри той же версии.
-const WHATSNEW_REV = "-2";
+const WHATSNEW_REV = "-3";
 
 function maybeShowWhatsNew(version) {
   const seen = version + WHATSNEW_REV;

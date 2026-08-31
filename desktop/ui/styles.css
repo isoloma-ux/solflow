@@ -1466,3 +1466,23 @@ textarea {
   left: 0;
   width: 240px;
 }
+
+/* Пункты «Что нового»: точка в цвет акцента у каждого. */
+.whatsnew-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.whatsnew-list li {
+  position: relative;
+  padding-left: 18px;
+  margin-top: 10px;
+  color: var(--fog);
+  font-size: 14px;
+}
+.whatsnew-list li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--accent-solid);
+}
