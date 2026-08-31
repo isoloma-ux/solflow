@@ -1632,7 +1632,13 @@ function renderRec(p) {
   el("meetRecLive").hidden = !p.active;
   el("meetRecHint").hidden = p.active;
   el("meetPause").hidden = !p.active;
-  el("meetPause").textContent = p.paused ? t("Продолжить") : t("Пауза");
+  // Подпись меняется только по делу: событие записи приходит пять раз в
+  // секунду, и постоянная замена текстового узла роняла клики в WebKit —
+  // нажатие, попавшее между заменами, не превращалось в click.
+  const pauseLabel = p.paused ? t("Продолжить") : t("Пауза");
+  if (el("meetPause").textContent !== pauseLabel) {
+    el("meetPause").textContent = pauseLabel;
+  }
   if (p.error) el("meetStatus").textContent = t("Запись: {0}", p.error);
   if (p.active) {
     el("meetTimer").textContent = fmtClock(p.seconds);

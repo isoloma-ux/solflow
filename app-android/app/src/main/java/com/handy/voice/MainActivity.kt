@@ -633,26 +633,35 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    /**
+     * Шторка в три блока, разделённых волосками: «Все встречи» наверху сама
+     * по себе, проекты со своим заголовком и приглушённым «+ Новый проект»,
+     * внизу — разделы приложения. Раньше всё сливалось в один столбик, и
+     * «Новый проект» читался как ещё один проект.
+     */
     private fun renderDrawer() {
         renderDrawerFoot()
         val box = ui.drawerList
         box.removeAllViews()
 
-        drawerGroup(R.string.drawer_projects)
         drawerRow(getString(R.string.project_all), projectFilter == null) { pickProject(null) }
+
+        drawerDivider()
+        drawerGroup(R.string.drawer_projects)
         drawerRow(getString(R.string.project_none), projectFilter == NO_PROJECT) {
             pickProject(NO_PROJECT)
         }
         for (project in MeetingStore.projects(this)) {
             drawerRow(project.name, projectFilter == project.id) { pickProject(project.id) }
         }
-        drawerRow(getString(R.string.project_new), false) {
+        drawerRow("+  " + getString(R.string.project_new_title), false, muted = true) {
             ui.drawer.closeDrawer(GravityCompat.START)
             askProjectName(null) { name ->
                 pickProject(MeetingStore.createProject(this, name).id)
             }
         }
 
+        drawerDivider()
         drawerGroup(R.string.drawer_app)
         drawerRow(getString(R.string.tab_settings), false) {
             ui.drawer.closeDrawer(GravityCompat.START)
@@ -667,10 +676,32 @@ class MainActivity : AppCompatActivity() {
     private fun drawerGroup(title: Int) {
         val view = layoutInflater.inflate(R.layout.item_setting_group, ui.drawerList, false)
         (view as TextView).setText(title)
+        // После волоска заголовку хватает небольшого отступа: свои 28dp он
+        // носит для настроек, где волосков нет.
+        (view.layoutParams as LinearLayout.LayoutParams).topMargin =
+            (10 * resources.displayMetrics.density).toInt()
         ui.drawerList.addView(view)
     }
 
-    private fun drawerRow(title: String, active: Boolean, onTap: () -> Unit) {
+    /** Волосок между блоками шторки. */
+    private fun drawerDivider() {
+        val density = resources.displayMetrics.density
+        val line = View(this)
+        line.setBackgroundColor(getColor(R.color.hairline))
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (1 * density).toInt().coerceAtLeast(1),
+        )
+        lp.topMargin = (10 * density).toInt()
+        ui.drawerList.addView(line, lp)
+    }
+
+    private fun drawerRow(
+        title: String,
+        active: Boolean,
+        muted: Boolean = false,
+        onTap: () -> Unit,
+    ) {
         val row = layoutInflater
             .inflate(R.layout.item_drawer_row, ui.drawerList, false) as TextView
         row.text = title
@@ -678,6 +709,8 @@ class MainActivity : AppCompatActivity() {
             row.setTextColor(getColor(R.color.accent))
             row.typeface = resources.getFont(R.font.inter_medium)
         }
+        // Приглушённая строка — действие, а не пункт списка.
+        if (muted) row.setTextColor(getColor(R.color.fog))
         row.setOnClickListener { onTap() }
         ui.drawerList.addView(row)
     }
