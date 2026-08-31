@@ -20,6 +20,15 @@ const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="
 const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
 
+/// Одна встреча внутри файла: экспорт нескольких — это те же куски,
+/// разделённые разрывом страницы.
+pub struct Section<'a> {
+    pub title: &'a str,
+    pub duration: &'a str,
+    pub segments: &'a [Segment],
+    pub speaker_at: &'a dyn Fn(usize) -> Option<String>,
+}
+
 /// Собирает готовый файл .docx.
 pub fn build(
     title: &str,
@@ -30,23 +39,36 @@ pub fn build(
     clock: &dyn Fn(f32) -> String,
 ) -> Vec<u8> {
     let _ = names;
+    build_many(
+        &[Section { title, duration, segments, speaker_at }],
+        clock,
+    )
+}
+
+/// Несколько встреч одним файлом; каждая начинается со своей страницы.
+pub fn build_many(sections: &[Section], clock: &dyn Fn(f32) -> String) -> Vec<u8> {
     let mut body = String::new();
 
-    // Размеры шрифта в OOXML — в половинах пункта: 18pt это 36.
-    body.push_str(&paragraph(title, 36, true, None, 0));
-    body.push_str(&paragraph(duration, 20, false, Some("8A8A8A"), 0));
-
-    for (i, s) in segments.iter().enumerate() {
-        if let Some(name) = speaker_at(i) {
-            body.push_str(&paragraph(&name, 24, true, None, 320));
+    for (n, sec) in sections.iter().enumerate() {
+        if n > 0 {
+            body.push_str(r#"<w:p><w:r><w:br w:type="page"/></w:r></w:p>"#);
         }
-        // Метка времени и текст — одним абзацем, как в HTML-экспорте:
-        // время серым и мельче, дальше сама реплика.
-        body.push_str(&format!(
-            r#"<w:p><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="8A8A8A"/></w:rPr><w:t xml:space="preserve">{}  </w:t></w:r><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">{}</w:t></w:r></w:p>"#,
-            esc(&clock(s.s)),
-            esc(&s.text)
-        ));
+        // Размеры шрифта в OOXML — в половинах пункта: 18pt это 36.
+        body.push_str(&paragraph(sec.title, 36, true, None, 0));
+        body.push_str(&paragraph(sec.duration, 20, false, Some("8A8A8A"), 0));
+
+        for (i, s) in sec.segments.iter().enumerate() {
+            if let Some(name) = (sec.speaker_at)(i) {
+                body.push_str(&paragraph(&name, 24, true, None, 320));
+            }
+            // Метка времени и текст — одним абзацем, как в HTML-экспорте:
+            // время серым и мельче, дальше сама реплика.
+            body.push_str(&format!(
+                r#"<w:p><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="8A8A8A"/></w:rPr><w:t xml:space="preserve">{}  </w:t></w:r><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">{}</w:t></w:r></w:p>"#,
+                esc(&clock(s.s)),
+                esc(&s.text)
+            ));
+        }
     }
 
     let document = format!(

@@ -408,7 +408,7 @@ class DictationService : Service() {
                     else R.string.bubble_running_hint
                 )
             )
-            .setSmallIcon(android.R.drawable.presence_audio_online)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
             .addAction(
                 Notification.Action.Builder(null, getString(R.string.turn_off), stop).build()
@@ -438,7 +438,7 @@ class DictationService : Service() {
             Notification.Builder(this, CHANNEL_ALERT)
                 .setContentTitle(getString(R.string.accessibility_lost))
                 .setContentText(getString(R.string.accessibility_lost_hint))
-                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build(),

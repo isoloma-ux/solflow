@@ -151,6 +151,16 @@ impl<'a> Document<'a> {
         }
     }
 
+    /// Начать новую страницу: в склееном экспорте каждая встреча идёт со
+    /// своей, как подшивка. На пустой странице ничего не делает.
+    pub fn page_break(&mut self) {
+        if self.pages.last().map(|p| p.is_empty()) == Some(true) {
+            return;
+        }
+        self.pages.push(Vec::new());
+        self.y = MARGIN;
+    }
+
     pub fn finish(self) -> Vec<u8> {
         build(self.regular, self.medium, &self.pages)
     }

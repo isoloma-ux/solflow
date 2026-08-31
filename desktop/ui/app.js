@@ -770,6 +770,7 @@ function stateLabel(m) {
   if (m.phase === "helper") return t("Ставлю ffmpeg{0}", pct);
   if (m.phase === "downloading") return t("Качаю модель голосов{0}", pct);
   if (m.phase === "diarizing") return t("Разделяю говорящих{0}", pct);
+  if (m.phase === "queued") return t("В очереди на расшифровку");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
   // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
@@ -1322,7 +1323,10 @@ function renderSelection() {
   document.body.classList.toggle("selecting", count > 0);
   el("bulkBar").hidden = count === 0;
   el("bulkCount").textContent = t("Выбрано {0}", count);
-  if (!count) el("bulkMenu").hidden = true;
+  if (!count) {
+    el("bulkMenu").hidden = true;
+    el("bulkHowMenu").hidden = true;
+  }
 }
 
 function selectedTitles() {
@@ -1339,27 +1343,68 @@ el("bulkExport").addEventListener("click", (e) => {
   const menu = el("bulkMenu");
   menu.hidden = !menu.hidden;
 });
+// Формат выбран. Одна встреча уходит сразу; для нескольких — второй
+// вопрос: по файлам или одним, как на Android.
+let bulkFormat = null;
+
+async function runBulkExport(format, combined) {
+  const ids = [...selected];
+  el("meetStatus").textContent = t("Готовлю {0}", plural(ids.length, t("файл"), t("файла"), t("файлов")));
+  try {
+    if (combined) {
+      const date = new Intl.DateTimeFormat(UI_LANG === "ru" ? "ru" : "en", {
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date());
+      const path = await invoke("meetings_export_combined", {
+        ids,
+        format,
+        titles: selectedTitles(),
+        title: t("Встречи {0}", date),
+      });
+      el("meetStatus").textContent = path
+        ? t("Сохранено одним файлом: {0}", ids.length)
+        : "";
+    } else {
+      const done = await invoke("meetings_export", {
+        ids,
+        format,
+        titles: selectedTitles(),
+      });
+      el("meetStatus").textContent =
+        done === ids.length
+          ? t("Сохранено в Загрузки: {0}", done)
+          : t("Сохранено {0} из {1} — у остальных нет расшифровки", done, ids.length);
+    }
+  } catch (err) {
+    el("meetStatus").textContent = String(err);
+  }
+  clearSelection();
+}
+
 el("bulkMenu").addEventListener("click", async (e) => {
   e.stopPropagation();
   const format = e.target.closest("[data-bulk-format]")?.dataset.bulkFormat;
   if (!format) return;
   el("bulkMenu").hidden = true;
-  const ids = [...selected];
-  el("meetStatus").textContent = t("Готовлю {0}", plural(ids.length, t("файл"), t("файла"), t("файлов")));
-  try {
-    const done = await invoke("meetings_export", {
-      ids,
-      format,
-      titles: selectedTitles(),
-    });
-    el("meetStatus").textContent =
-      done === ids.length
-        ? t("Сохранено в Загрузки: {0}", done)
-        : t("Сохранено {0} из {1} — у остальных нет расшифровки", done, ids.length);
-  } catch (err) {
-    el("meetStatus").textContent = String(err);
+  if (selected.size > 1) {
+    bulkFormat = format;
+    el("bulkHowMenu").hidden = false;
+    return;
   }
-  clearSelection();
+  await runBulkExport(format, false);
+});
+
+el("bulkHowMenu").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const how = e.target.closest("[data-bulk-how]")?.dataset.bulkHow;
+  if (!how) return;
+  el("bulkHowMenu").hidden = true;
+  const format = bulkFormat;
+  bulkFormat = null;
+  if (format) await runBulkExport(format, how === "single");
 });
 
 // «В проект» для отмеченных: то же, что перетащить их в сайдбар.
@@ -1393,6 +1438,8 @@ el("bulkProject").addEventListener("click", (e) => {
 document.addEventListener("click", () => {
   const menu = el("bulkProjectMenu");
   if (menu) menu.hidden = true;
+  const how = el("bulkHowMenu");
+  if (how) how.hidden = true;
 });
 
 el("bulkAgain").addEventListener("click", () => {
@@ -1584,6 +1631,8 @@ function renderRec(p) {
   el("meetIconStop").hidden = !p.active;
   el("meetRecLive").hidden = !p.active;
   el("meetRecHint").hidden = p.active;
+  el("meetPause").hidden = !p.active;
+  el("meetPause").textContent = p.paused ? t("Продолжить") : t("Пауза");
   if (p.error) el("meetStatus").textContent = t("Запись: {0}", p.error);
   if (p.active) {
     el("meetTimer").textContent = fmtClock(p.seconds);
@@ -1598,6 +1647,7 @@ function renderRec(p) {
 el("meetRecord").addEventListener("click", () =>
   invoke(meetRecActive ? "meeting_record_stop" : "meeting_record_start")
 );
+el("meetPause").addEventListener("click", () => invoke("meeting_record_pause"));
 el("meetImport").addEventListener("click", () => invoke("meeting_import"));
 
 // --- расшифровка по ссылке -------------------------------------------------
@@ -2654,10 +2704,14 @@ el("showIntro").addEventListener("click", showIntro);
 
 // Показывается один раз после смены версии. На первом запуске хватает
 // вводного экрана, поэтому окно молча помечает версию как увиденную.
+// Суффикс поднимают, когда текст обновился внутри той же версии.
+const WHATSNEW_REV = "-2";
+
 function maybeShowWhatsNew(version) {
+  const seen = version + WHATSNEW_REV;
   try {
-    if (localStorage.getItem("whatsnewSeen") === version) return;
-    localStorage.setItem("whatsnewSeen", version);
+    if (localStorage.getItem("whatsnewSeen") === seen) return;
+    localStorage.setItem("whatsnewSeen", seen);
     if (!localStorage.getItem("introSeen")) return;
   } catch (e) {
     return; // Хранилище недоступно — не настаиваем.

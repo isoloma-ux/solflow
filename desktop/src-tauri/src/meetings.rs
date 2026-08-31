@@ -108,6 +108,11 @@ pub struct MeetingState {
     rec_stop: Mutex<Option<Arc<AtomicBool>>>,
     rec_samples: Arc<AtomicU64>,
     rec_level: Arc<AtomicU32>,
+    /// Запись на паузе: звук читается, но мимо файла.
+    rec_paused: Arc<AtomicBool>,
+    /// Движок один, и две расшифровки одновременно только мешают друг другу:
+    /// по очереди суммарно быстрее. Ждущие висят «в очереди» — как на Android.
+    engine_gate: Arc<Mutex<()>>,
 }
 
 impl MeetingState {
@@ -121,6 +126,8 @@ impl MeetingState {
             rec_stop: Mutex::new(None),
             rec_samples: Arc::new(AtomicU64::new(0)),
             rec_level: Arc::new(AtomicU32::new(0)),
+            rec_paused: Arc::new(AtomicBool::new(false)),
+            engine_gate: Arc::new(Mutex::new(())),
         }
     }
 }
@@ -426,17 +433,25 @@ struct RecEvent {
     active: bool,
     seconds: u64,
     level: f32,
+    paused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
 fn emit_rec(app: &AppHandle, active: bool, seconds: u64, level: f32, error: Option<String>) {
+    let paused = app
+        .state::<MeetingState>()
+        .rec_paused
+        .load(Ordering::Relaxed);
     let _ = app.emit(
         "solflow-meetrec",
         RecEvent {
             active,
             seconds,
-            level,
+            // На паузе волна лежит: уровень из колбэка микрофона живой,
+            // но показывать его — врать, что звук пишется.
+            level: if paused { 0.0 } else { level },
+            paused,
             error,
         },
     );
@@ -454,6 +469,7 @@ pub fn record_start(app: &AppHandle) -> Result<()> {
     *state.rec_stop.lock().unwrap() = Some(stop.clone());
     state.rec_samples.store(0, Ordering::Relaxed);
     state.rec_level.store(0f32.to_bits(), Ordering::Relaxed);
+    state.rec_paused.store(false, Ordering::Relaxed);
 
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -508,6 +524,19 @@ pub fn record_stop(app: &AppHandle) {
     }
 }
 
+/// Пауза записи: микрофон продолжает читаться, но мимо файла — таймер и
+/// волна замирают сами, а в WAV не остаётся ни стыка, ни тишины.
+pub fn record_pause(app: &AppHandle) {
+    let state = app.state::<MeetingState>();
+    if state.recording_id.lock().unwrap().is_none() {
+        return;
+    }
+    let paused = !state.rec_paused.load(Ordering::Relaxed);
+    state.rec_paused.store(paused, Ordering::Relaxed);
+    let seconds = state.rec_samples.load(Ordering::Relaxed) / SAMPLE_RATE as u64;
+    emit_rec(app, true, seconds, 0.0, None);
+}
+
 /// Пишет с микрофона на диск, пока не попросят остановиться. Живёт в своём
 /// треде: cpal-поток не Send, а диктовка держит собственный поток — записи
 /// друг другу не мешают.
@@ -560,8 +589,11 @@ fn record_loop(app: &AppHandle, id: i64, stop: Arc<AtomicBool>) -> Result<()> {
     let mut resampler = Downsampler::new(src_rate, SAMPLE_RATE);
     let mut out = Vec::new();
 
+    let paused = state.rec_paused.clone();
     loop {
         match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            // На паузе куски выбрасываются: буфер не копится, файл не растёт.
+            Ok(_) if paused.load(Ordering::Relaxed) => {}
             Ok(chunk) => {
                 out.clear();
                 resampler.feed(&chunk, &mut out);
@@ -580,6 +612,9 @@ fn record_loop(app: &AppHandle, id: i64, stop: Arc<AtomicBool>) -> Result<()> {
     // чинится по длине файла при чтении. Здесь — штатный хвост.
     drop(stream);
     while let Ok(chunk) = rx.try_recv() {
+        if paused.load(Ordering::Relaxed) {
+            continue;
+        }
         out.clear();
         resampler.feed(&chunk, &mut out);
         wav.write(&out)?;
@@ -766,12 +801,31 @@ pub fn transcribe(app: &AppHandle, id: i64) {
         cancel.insert(id, Arc::new(AtomicBool::new(false)));
     }
     state.progress.lock().unwrap().insert(id, 0);
-    state.phase.lock().unwrap().insert(id, "transcribing");
+    state.phase.lock().unwrap().insert(id, "queued");
     notify(app);
 
     let app = app.clone();
     std::thread::spawn(move || {
-        let result = transcribe_job(&app, id);
+        // Очередь: движок отдаётся расшифровкам по одной. Пока чужая идёт,
+        // эта висит с подписью «в очереди», и её можно отменить.
+        let gate = app.state::<MeetingState>().engine_gate.clone();
+        let _turn = gate.lock().unwrap();
+
+        let state = app.state::<MeetingState>();
+        let cancelled_in_queue = state
+            .cancel
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|f| f.load(Ordering::Relaxed))
+            .unwrap_or(true);
+        let result = if cancelled_in_queue {
+            Ok(())
+        } else {
+            state.phase.lock().unwrap().insert(id, "transcribing");
+            notify(&app);
+            transcribe_job(&app, id)
+        };
         let state = app.state::<MeetingState>();
         let cancelled = state
             .cancel
@@ -1541,26 +1595,15 @@ pub enum Target {
     File(PathBuf),
 }
 
-/// `reveal` — показать ли файл в проводнике. При выгрузке пачкой его
-/// выключают: иначе на каждую встречу открылось бы своё окно.
-pub fn export(
-    app: &AppHandle,
-    id: i64,
-    format: &str,
-    title: &str,
-    reveal: bool,
-    target: Target,
-) -> Result<String> {
-    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
-    let segments = load_transcript(app, id);
-    if segments.is_empty() {
-        return Err(anyhow!("расшифровки ещё нет"));
-    }
-    let duration = duration_label(meta.seconds);
-
-    // Папка из настроек, а если её не выбирали — «Загрузки», как было
-    // раньше. Пропавшую папку (флешку вынули) молча заменяем «Загрузками»,
-    // иначе экспорт упал бы вместо того, чтобы сохраниться.
+/// Папка и свободное имя для файла экспорта — общее для одиночного и
+/// склееного: папка из настроек или «Загрузки», «имя 2» при занятом имени.
+/// Пропавшую папку (флешку вынули) молча заменяем «Загрузками», иначе
+/// экспорт упал бы вместо того, чтобы сохраниться.
+fn export_target_path(app: &AppHandle, target: Target, safe: &str, format: &str) -> Result<PathBuf> {
+    let ext = match format {
+        "md" | "docx" | "pdf" => format,
+        _ => "txt",
+    };
     let chosen = match &target {
         Target::Dir(dir) => Some(dir.clone()),
         _ => app
@@ -1579,11 +1622,6 @@ pub fn export(
             .path()
             .download_dir()
             .map_err(|_| anyhow!("папка Загрузки не нашлась"))?,
-    };
-    let safe = safe_file_name(title);
-    let ext = match format {
-        "md" | "docx" | "pdf" => format,
-        _ => "txt",
     };
 
     // Выбранный в диалоге файл берём как есть: человек уже решил и про имя,
@@ -1604,6 +1642,124 @@ pub fn export(
             counter += 1;
         }
     }
+    Ok(path)
+}
+
+/// Несколько встреч одним файлом: каждая начинается со своего заголовка,
+/// в PDF и Word — со своей страницы. Встречи без расшифровки пропускаются.
+pub fn export_combined(
+    app: &AppHandle,
+    items: &[(i64, String)],
+    format: &str,
+    title: &str,
+    target: Target,
+) -> Result<String> {
+    let mut parts: Vec<(String, String, Vec<Segment>, HashMap<String, String>)> = Vec::new();
+    for (id, item_title) in items {
+        let Some(meta) = load_meta(app, *id) else { continue };
+        let segments = load_transcript(app, *id);
+        if segments.is_empty() {
+            continue;
+        }
+        parts.push((
+            item_title.clone(),
+            duration_label(meta.seconds),
+            segments,
+            meta.names,
+        ));
+    }
+    if parts.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+
+    let path = export_target_path(app, target, &safe_file_name(title), format)?;
+
+    let bytes: Vec<u8> = match format {
+        "md" => {
+            let mut out = String::new();
+            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+                if n > 0 {
+                    out.push_str("---\n\n");
+                }
+                out.push_str(&as_markdown(t, d, segs, names));
+            }
+            out.into_bytes()
+        }
+        "docx" => {
+            let closures: Vec<Box<dyn Fn(usize) -> Option<String>>> = parts
+                .iter()
+                .map(|(_, _, segs, names)| {
+                    let segs = segs.clone();
+                    let names = names.clone();
+                    Box::new(move |i: usize| speaker_at(&segs, i, &names))
+                        as Box<dyn Fn(usize) -> Option<String>>
+                })
+                .collect();
+            let sections: Vec<crate::docx::Section> = parts
+                .iter()
+                .zip(&closures)
+                .map(|((t, d, segs, _), c)| crate::docx::Section {
+                    title: t,
+                    duration: d,
+                    segments: segs,
+                    speaker_at: c.as_ref(),
+                })
+                .collect();
+            crate::docx::build_many(&sections, &clock_label)
+        }
+        "pdf" => {
+            use crate::pdf::{Block, Document, Face};
+            let regular = crate::inter_regular();
+            let medium = crate::inter_medium();
+            let mut doc = Document::new(regular, medium);
+            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+                if n > 0 {
+                    doc.page_break();
+                }
+                doc.add(&Block::new(t.as_str(), Face::Medium, 18.0));
+                doc.add(&Block::new(d.as_str(), Face::Regular, 10.0).gray().gap(2.0));
+                for (i, s) in segs.iter().enumerate() {
+                    if let Some(name) = speaker_at(segs, i, names) {
+                        doc.add(&Block::new(name, Face::Medium, 12.0).gap(18.0));
+                    }
+                    doc.add_row(&clock_label(s.s), &s.text, 11.5, 62.0);
+                }
+            }
+            doc.finish()
+        }
+        _ => {
+            let mut out = String::new();
+            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+                if n > 0 {
+                    out.push_str("\n————————\n\n");
+                }
+                out.push_str(&as_text(t, d, segs, names));
+            }
+            out.into_bytes()
+        }
+    };
+    std::fs::write(&path, bytes)?;
+    crate::sys::reveal_file(&path);
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// `reveal` — показать ли файл в проводнике. При выгрузке пачкой его
+/// выключают: иначе на каждую встречу открылось бы своё окно.
+pub fn export(
+    app: &AppHandle,
+    id: i64,
+    format: &str,
+    title: &str,
+    reveal: bool,
+    target: Target,
+) -> Result<String> {
+    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    let segments = load_transcript(app, id);
+    if segments.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+    let duration = duration_label(meta.seconds);
+    let path = export_target_path(app, target, &safe_file_name(title), format)?;
 
     match format {
         "md" => std::fs::write(&path, as_markdown(title, &duration, &segments, &meta.names))?,

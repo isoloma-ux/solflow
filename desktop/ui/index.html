@@ -136,6 +136,7 @@
               <span class="meet-timer" id="meetTimer">00:00</span>
               <canvas id="meetWave" width="240" height="28"></canvas>
             </div>
+            <button class="pill-inset compact" id="meetPause" hidden>Пауза</button>
             <span class="meet-rec-hint" id="meetRecHint">Записать встречу</span>
             <span class="spacer"></span>
             <button class="pill-inset compact drop-target" id="meetImport">
@@ -199,6 +200,15 @@
                 </button>
                 <button class="lang-row" data-bulk-format="pdf">
                   <span class="lang-name">PDF</span><span class="lang-count">.pdf</span>
+                </button>
+              </div>
+              <!-- Второй шаг: несколько встреч — по файлам или одним. -->
+              <div id="bulkHowMenu" class="lang-panel menu" hidden>
+                <button class="lang-row" data-bulk-how="separate">
+                  <span class="lang-name">Отдельными файлами</span>
+                </button>
+                <button class="lang-row" data-bulk-how="single">
+                  <span class="lang-name">Одним файлом</span>
                 </button>
               </div>
             </div>
@@ -878,9 +888,10 @@
       <div class="intro-card">
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
-          <p class="intro-text">Sol Flow на Mac, Windows и Android теперь выходит одновременно — у всех трех одна версия.</p>
-          <p class="intro-text">Главное в этом выпуске — на Android: расшифровки идут по очереди и отменяются, у записи встречи появились пауза и тумблер «глушить фон», а несколько встреч экспортируются разом.</p>
-          <p class="intro-text">И это окно: после каждого обновления оно коротко расскажет, что изменилось.</p>
+          <p class="intro-text">Расшифровки больше не толкаются: они идут по очереди, ждущие помечены «в очереди».</p>
+          <p class="intro-text">Запись встречи можно поставить на паузу и продолжить — без шва в файле.</p>
+          <p class="intro-text">Несколько выбранных встреч выгружаются одним файлом — или, как раньше, по отдельности: приложение спросит.</p>
+          <p class="intro-text">И это окно: после каждого обновления оно коротко расскажет, что изменилось. Версия теперь общая для Mac, Windows и Android.</p>
         </div>
         <div class="intro-foot">
           <span class="spacer"></span>

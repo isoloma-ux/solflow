@@ -1001,6 +1001,11 @@ fn meeting_record_stop(app: AppHandle) {
     meetings::record_stop(&app);
 }
 
+#[tauri::command]
+fn meeting_record_pause(app: AppHandle) {
+    meetings::record_pause(&app);
+}
+
 /// Диалог выбора и конвертация — в фоне: команда возвращается сразу.
 #[tauri::command]
 fn meeting_import(app: AppHandle) {
@@ -1282,6 +1287,39 @@ async fn meetings_export(
     }
 }
 
+/// Выгрузка выбранных одним файлом. `title` приходит из окна («Встречи
+/// 31 августа») — там же, где собираются названия встреч без имени.
+#[tauri::command]
+async fn meetings_export_combined(
+    app: AppHandle,
+    ids: Vec<i64>,
+    format: String,
+    titles: Vec<String>,
+    title: String,
+) -> Result<String, String> {
+    let ask = app.state::<AppState>().settings.lock().unwrap().export_ask;
+    let target = if ask {
+        match app
+            .dialog()
+            .file()
+            .set_title("Куда сохранить выгрузку")
+            .blocking_pick_folder()
+            .and_then(|dir| dir.into_path().ok())
+        {
+            Some(dir) => meetings::Target::Dir(dir),
+            None => return Ok(String::new()),
+        }
+    } else {
+        meetings::Target::AsSettings
+    };
+    let items: Vec<(i64, String)> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, titles.get(i).cloned().unwrap_or_default()))
+        .collect();
+    meetings::export_combined(&app, &items, &format, &title, target).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn meetings_delete(app: AppHandle, ids: Vec<i64>) {
     for id in ids {
@@ -1413,6 +1451,8 @@ pub fn run() {
             meeting_segments,
             meeting_record_start,
             meeting_record_stop,
+            meeting_record_pause,
+            meetings_export_combined,
             meeting_import,
             meeting_import_paths,
             meeting_import_url,

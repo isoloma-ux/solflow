@@ -146,7 +146,7 @@ class DownloadService : Service() {
     private fun summaryNotification(): Notification =
         Notification.Builder(this, CHANNEL)
             .setContentTitle(getString(R.string.channel_downloads))
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(openApp())
             .setOngoing(true)
             .build()
@@ -164,7 +164,7 @@ class DownloadService : Service() {
             Notification.Builder(this, CHANNEL)
                 .setContentTitle(model.name)
                 .setContentText(getString(R.string.quant_row, file.quant, formatSize(file.sizeBytes)))
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setProgress(100, percent, false)
                 .setContentIntent(openApp())
                 .setOngoing(true)
@@ -186,10 +186,7 @@ class DownloadService : Service() {
                 .setContentText(
                     if (success) getString(R.string.download_ready) else reason
                 )
-                .setSmallIcon(
-                    if (success) android.R.drawable.stat_sys_download_done
-                    else android.R.drawable.stat_notify_error
-                )
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp())
                 .setAutoCancel(true)
                 .build(),

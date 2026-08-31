@@ -651,7 +651,7 @@ class MeetingService : Service() {
                     else R.string.meeting_recording_notif
                 )
             )
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(R.drawable.ic_notification)
             .apply {
                 // Хронометр честен только пока идёт запись: на паузе он бы
                 // продолжал тикать, поэтому вместо него — застывшее время.
@@ -689,7 +689,7 @@ class MeetingService : Service() {
         )
         return Notification.Builder(this, CHANNEL)
             .setContentTitle(getString(R.string.meeting_transcribing_notif))
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.ic_notification)
             .setProgress(100, percent, percent == 0)
             .setOngoing(true)
             .setContentIntent(openApp())
@@ -713,7 +713,7 @@ class MeetingService : Service() {
             Notification.Builder(this, CHANNEL)
                 .setContentTitle(MeetingStore.displayTitle(this, meeting))
                 .setContentText(getString(R.string.meeting_done_notif))
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp())
                 .setAutoCancel(true)
                 .build(),
@@ -728,7 +728,7 @@ class MeetingService : Service() {
                 .setContentText(
                     resources.getQuantityString(R.plurals.diarize_done_notif, speakers, speakers)
                 )
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp())
                 .setAutoCancel(true)
                 .build(),
@@ -741,7 +741,7 @@ class MeetingService : Service() {
             Notification.Builder(this, CHANNEL)
                 .setContentTitle(MeetingStore.displayTitle(this, meeting))
                 .setContentText(getString(R.string.diarize_failed))
-                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp())
                 .setAutoCancel(true)
                 .build(),
@@ -754,7 +754,7 @@ class MeetingService : Service() {
             Notification.Builder(this, CHANNEL)
                 .setContentTitle(getString(R.string.meeting_import_failed))
                 .apply { if (!reason.isNullOrBlank()) setContentText(reason) }
-                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp())
                 .setAutoCancel(true)
                 .build(),
