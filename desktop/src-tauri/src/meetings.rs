@@ -1601,7 +1601,7 @@ pub enum Target {
 /// экспорт упал бы вместо того, чтобы сохраниться.
 fn export_target_path(app: &AppHandle, target: Target, safe: &str, format: &str) -> Result<PathBuf> {
     let ext = match format {
-        "md" | "docx" | "pdf" => format,
+        "md" | "docx" | "pdf" | "wav" => format,
         _ => "txt",
     };
     let chosen = match &target {
@@ -1753,6 +1753,21 @@ pub fn export(
     reveal: bool,
     target: Target,
 ) -> Result<String> {
+    // Сам звук — отдельная ветка: он есть и у нерасшифрованной встречи,
+    // и собирать ему нечего — WAV копируется как лежит.
+    if format == "wav" {
+        let source = audio_file(app, id);
+        if !source.exists() {
+            return Err(anyhow!("звука нет"));
+        }
+        let path = export_target_path(app, target, &safe_file_name(title), "wav")?;
+        std::fs::copy(&source, &path)?;
+        if reveal {
+            crate::sys::reveal_file(&path);
+        }
+        return Ok(path.to_string_lossy().to_string());
+    }
+
     let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
     let segments = load_transcript(app, id);
     if segments.is_empty() {

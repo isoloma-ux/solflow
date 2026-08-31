@@ -578,6 +578,17 @@
                 android:text="@string/export_doc" />
         </LinearLayout>
 
+        <!-- Исходный звук встречи — WAV в Загрузки: изнутри приложения
+             его иначе не достать. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingSaveAudio"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            android:text="@string/meeting_save_audio" />
+
         <!-- Скопировать — главное действие готовой расшифровки, поэтому
              акцентная. Зелёная кнопка на экране одна. -->
         <com.google.android.material.button.MaterialButton

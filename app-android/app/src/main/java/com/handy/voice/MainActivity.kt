@@ -931,6 +931,7 @@ class MainActivity : AppCompatActivity() {
             renderMeetings()
         }
         m.meetingCopy.setOnClickListener { copyMeeting() }
+        m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
         m.meetingDelete.setOnClickListener { deleteMeeting() }
         m.meetingDiarize.setOnClickListener { chooseDiarize() }
         m.exportTxt.setOnClickListener { exportMeeting(ExportFormat.TXT) }
@@ -1158,21 +1159,35 @@ class MainActivity : AppCompatActivity() {
      * одним общим. Расшифровки нет — экспортировать нечего, такие пропускаются.
      */
     private fun exportSelected() {
-        val done = selection.toList()
+        val picked = selection.toList()
             .mapNotNull { MeetingStore.load(this, it) }
-            .filter { it.isDone }
             .sortedBy { it.at }
-        if (done.isEmpty()) {
-            Snackbar.make(ui.root, R.string.selection_export_none, Snackbar.LENGTH_LONG).show()
-            return
-        }
         val formats = listOf(
             "txt" to getString(R.string.export_txt),
             "md" to getString(R.string.export_md),
             "pdf" to getString(R.string.export_pdf),
             "docx" to getString(R.string.export_doc),
+            "wav" to getString(R.string.export_wav),
         )
         optionSheet(getString(R.string.selection_export), formats, null) { value ->
+            // Звук есть и у нерасшифрованных, и склеивать его не во что —
+            // всегда отдельными файлами, без второго вопроса.
+            if (value == "wav") {
+                val withAudio = picked.filter { MeetingStore.audioFile(this, it.id).exists() }
+                if (withAudio.isEmpty()) {
+                    Snackbar.make(ui.root, R.string.selection_audio_none, Snackbar.LENGTH_LONG)
+                        .show()
+                } else {
+                    runAudioExport(withAudio)
+                }
+                return@optionSheet
+            }
+            val done = picked.filter { it.isDone }
+            if (done.isEmpty()) {
+                Snackbar.make(ui.root, R.string.selection_export_none, Snackbar.LENGTH_LONG)
+                    .show()
+                return@optionSheet
+            }
             val format = when (value) {
                 "txt" -> ExportFormat.TXT
                 "md" -> ExportFormat.MD
@@ -1191,6 +1206,33 @@ class MainActivity : AppCompatActivity() {
                     null,
                 ) { how -> runExport(done, format, combined = how == "single") }
             }
+        }
+    }
+
+    private fun runAudioExport(meetings: List<Meeting>) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    meetings.map { MeetingExport.saveAudio(this@MainActivity, it) }
+                }
+            }
+            result.fold(
+                onSuccess = { exports ->
+                    clearSelection()
+                    Snackbar.make(
+                        ui.root,
+                        if (exports.size == 1) {
+                            getString(R.string.export_done, exports.first().name)
+                        } else {
+                            getString(R.string.export_done_many, exports.size)
+                        },
+                        Snackbar.LENGTH_LONG,
+                    ).show()
+                },
+                onFailure = {
+                    Snackbar.make(ui.root, R.string.export_failed, Snackbar.LENGTH_LONG).show()
+                },
+            )
         }
     }
 
@@ -1220,6 +1262,28 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             getString(R.string.export_done_many, exports.size)
                         },
+                        Snackbar.LENGTH_LONG,
+                    ).show()
+                },
+                onFailure = {
+                    Snackbar.make(ui.root, R.string.export_failed, Snackbar.LENGTH_LONG).show()
+                },
+            )
+        }
+    }
+
+    /** WAV открытой встречи — в Загрузки, тем же снекбаром, что экспорт. */
+    private fun saveMeetingAudio() {
+        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { MeetingExport.saveAudio(this@MainActivity, meeting) }
+            }
+            result.fold(
+                onSuccess = { export ->
+                    Snackbar.make(
+                        ui.root,
+                        getString(R.string.export_done, export.name),
                         Snackbar.LENGTH_LONG,
                     ).show()
                 },
@@ -1421,6 +1485,12 @@ class MainActivity : AppCompatActivity() {
         m.meetingCancelWork.visibility = visibility(working)
         m.meetingDiarize.visibility = visibility(open.isDone && !working)
         m.meetingExportRow.visibility = visibility(open.isDone)
+        // Звук есть и у нерасшифрованной встречи — лишь бы работа по ней
+        // не шла и файл был на месте.
+        m.meetingSaveAudio.visibility = visibility(
+            !working && open.id != MeetingService.recordingId &&
+                MeetingStore.audioFile(this, open.id).exists()
+        )
         m.meetingCopy.visibility = visibility(open.isDone)
         // Пока по встрече идёт работа, удалять её из-под неё нельзя.
         m.meetingDelete.visibility = visibility(!working)

@@ -108,6 +108,36 @@ object MeetingExport {
     private fun safeName(title: String) =
         title.replace(":", ".").replace(Regex("[\\\\/*?\"<>|,]"), "")
 
+    /**
+     * Сам звук встречи — WAV как есть, в Загрузки. Запись лежит во
+     * внутреннем хранилище, куда с компьютера не добраться, а исходник
+     * бывает нужен: переслать, разобрать в другом инструменте.
+     */
+    fun saveAudio(context: Context, meeting: Meeting): ExportResult {
+        val source = MeetingStore.audioFile(context, meeting.id)
+        require(source.exists()) { "звука нет" }
+        val name = "${safeName(MeetingStore.displayTitle(context, meeting))}.wav"
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+            ) ?: error("не удалось создать файл")
+            context.contentResolver.openOutputStream(uri)!!.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            }
+            ExportResult(name, uri)
+        } else {
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)!!
+            val target = File(dir, name)
+            source.copyTo(target, overwrite = true)
+            ExportResult(name, null)
+        }
+    }
+
     private fun write(
         context: Context,
         name: String,

@@ -317,6 +317,9 @@
     <string name="export_single">As one file</string>
     <string name="export_combined_name">Meetings %1$s</string>
     <string name="export_done_many">Saved to Downloads, files: %1$d</string>
+    <string name="meeting_save_audio">Save audio (WAV)</string>
+    <string name="export_wav">Audio (WAV)</string>
+    <string name="selection_audio_none">None of the selected meetings have audio</string>
     <string name="selection_hint">Long press to select several</string>
     <string name="about_hint">Who makes this, what it\'s built from, where the new version is</string>
     <string name="about_pitch">Your voice becomes text right on the phone. Nothing goes to the internet: not the meeting recordings, not the dictations, not people\'s names.</string>

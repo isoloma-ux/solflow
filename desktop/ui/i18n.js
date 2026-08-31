@@ -191,6 +191,7 @@ const EN = {
   "Одним файлом": "As one file",
   "Встречи {0}": "Meetings {0}",
   "Сохранено одним файлом: {0}": "Saved as one file: {0}",
+  "Звук": "Audio",
   "Обновить до {0}": "Update to {0}",
   "Вышла версия {0} — можно поставить": "Version {0} is out — you can install it",
   "Обновить": "Update",

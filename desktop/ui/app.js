@@ -1389,7 +1389,8 @@ el("bulkMenu").addEventListener("click", async (e) => {
   const format = e.target.closest("[data-bulk-format]")?.dataset.bulkFormat;
   if (!format) return;
   el("bulkMenu").hidden = true;
-  if (selected.size > 1) {
+  // Звук склеивать не во что — всегда отдельными файлами, без вопроса.
+  if (selected.size > 1 && format !== "wav") {
     bulkFormat = format;
     el("bulkHowMenu").hidden = false;
     return;
@@ -1522,6 +1523,7 @@ function openRowMenu(meeting, button) {
   item(t("Экспорт"), ".md", () => exportAs("md"));
   item(t("Экспорт"), ".docx", () => exportAs("docx"));
   item(t("Экспорт"), ".pdf", () => exportAs("pdf"));
+  item(t("Экспорт"), ".wav", () => exportAs("wav"));
   item(t("Расшифровать заново"), null, () =>
     invoke("meeting_transcribe", { id: meeting.id })
   );

@@ -328,6 +328,9 @@
     <string name="export_single">Одним файлом</string>
     <string name="export_combined_name">Встречи %1$s</string>
     <string name="export_done_many">Сохранено в Загрузки, файлов: %1$d</string>
+    <string name="meeting_save_audio">Сохранить звук (WAV)</string>
+    <string name="export_wav">Звук (WAV)</string>
+    <string name="selection_audio_none">Среди выбранных нет встреч со звуком</string>
     <string name="selection_hint">Долгое нажатие — выбрать несколько</string>
 
     <!-- ===== О проекте и вводный экран ================================= -->
