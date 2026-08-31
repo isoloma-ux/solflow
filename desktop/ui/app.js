@@ -2650,6 +2650,26 @@ el("introNext").addEventListener("click", () => {
 el("introSkip").addEventListener("click", closeIntro);
 el("showIntro").addEventListener("click", showIntro);
 
+// --- что нового ------------------------------------------------------------
+
+// Показывается один раз после смены версии. На первом запуске хватает
+// вводного экрана, поэтому окно молча помечает версию как увиденную.
+function maybeShowWhatsNew(version) {
+  try {
+    if (localStorage.getItem("whatsnewSeen") === version) return;
+    localStorage.setItem("whatsnewSeen", version);
+    if (!localStorage.getItem("introSeen")) return;
+  } catch (e) {
+    return; // Хранилище недоступно — не настаиваем.
+  }
+  el("whatsnewTitle").textContent = t("Что нового в {0}", version);
+  el("whatsnew").hidden = false;
+}
+
+el("whatsnewOk").addEventListener("click", () => {
+  el("whatsnew").hidden = true;
+});
+
 // --- отчёт о проблеме ------------------------------------------------------
 
 el("bugSend").addEventListener("click", () => {
@@ -2806,6 +2826,7 @@ invoke("app_version").then((version) => {
   appVersion = version;
   el("appVersion").textContent = version;
   showVersionInFoot();
+  maybeShowWhatsNew(version);
 });
 languageReady.then(() => {
   refreshModels();

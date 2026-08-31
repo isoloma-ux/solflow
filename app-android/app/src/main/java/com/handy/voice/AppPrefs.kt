@@ -46,6 +46,16 @@ object AppPrefs {
 
     fun setRoomMode(context: Context, room: Boolean) = setFlag(context, "room_mode", room)
 
+    /**
+     * Показывать уведомление записи встречи на заблокированном экране.
+     * Некоторым запись лучше не афишировать — тогда она видна только в
+     * шторке разблокированного телефона.
+     */
+    fun recordOnLockScreen(context: Context): Boolean = flag(context, "record_lock_screen", true)
+
+    fun setRecordOnLockScreen(context: Context, on: Boolean) =
+        setFlag(context, "record_lock_screen", on)
+
     /** Короткий сигнал в начале записи — чтобы не гадать, слышит ли она. */
     fun startSound(context: Context): Boolean = flag(context, "start_sound", true)
 
@@ -160,6 +170,16 @@ object AppPrefs {
     fun introShown(context: Context): Boolean = flag(context, "intro_shown", false)
 
     fun setIntroShown(context: Context, shown: Boolean) = setFlag(context, "intro_shown", shown)
+
+    /**
+     * versionCode, для которого уже показали «Что нового». Ноль у тех, кто
+     * обновился со старой версии, — им окно показывается один раз.
+     */
+    fun lastSeenVersion(context: Context): Int = prefs(context).getInt("last_seen_version", 0)
+
+    fun setLastSeenVersion(context: Context, code: Int) {
+        prefs(context).edit().putInt("last_seen_version", code).apply()
+    }
 
     // --- служебное --------------------------------------------------------
 

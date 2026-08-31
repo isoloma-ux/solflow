@@ -228,11 +228,29 @@ class MainActivity : AppCompatActivity() {
         // Вводный экран идёт первым: просить микрофон раньше, чем человек
         // понял, зачем приложение, — верный способ получить отказ.
         if (!AppPrefs.introShown(this)) {
+            // Свежая установка: вводного экрана достаточно, «Что нового»
+            // человеку без «старого» показывать не с чего.
+            AppPrefs.setLastSeenVersion(this, BuildConfig.VERSION_CODE)
             startActivity(Intent(this, IntroActivity::class.java))
-        } else if (!hasMic()) {
-            micAsked = true
-            askMic.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            if (AppPrefs.lastSeenVersion(this) < BuildConfig.VERSION_CODE) {
+                AppPrefs.setLastSeenVersion(this, BuildConfig.VERSION_CODE)
+                showWhatsNew()
+            }
+            if (!hasMic()) {
+                micAsked = true
+                askMic.launch(Manifest.permission.RECORD_AUDIO)
+            }
         }
+    }
+
+    /** Один раз после обновления: что изменилось в этой версии. */
+    private fun showWhatsNew() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.whatsnew_title, BuildConfig.VERSION_NAME))
+            .setMessage(getString(R.string.whatsnew_body))
+            .setPositiveButton(R.string.whatsnew_ok, null)
+            .show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -838,6 +856,10 @@ class MainActivity : AppCompatActivity() {
             onQuoteTap = { meeting, quote ->
                 openMeeting(meeting.id, meetingQuery.trim(), quote.index)
             },
+            onCancelWork = { meeting ->
+                MeetingService.cancelWork(this, meeting.id)
+                Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
+            },
         )
         segments = SegmentAdapter { renameSpeaker(it) }
         val m = ui.pageMeetings
@@ -847,6 +869,16 @@ class MainActivity : AppCompatActivity() {
         m.meetingTimeline.adapter = segments
 
         m.meetingRecord.setOnClickListener { toggleMeetingRecording() }
+        m.meetingPause.setOnClickListener {
+            haptic(m.meetingPause)
+            MeetingService.togglePause(this)
+            renderMeetings()
+        }
+        // Тумблер живёт на время записи: комната по умолчанию, глушение
+        // включают руками и только когда фон реально мешает.
+        m.meetingSuppressSwitch.setOnCheckedChangeListener { _, on ->
+            MeetingService.suppressNoise = on
+        }
         m.meetingImport.setOnClickListener {
             pickAudio.launch(arrayOf("audio/*", "video/*"))
         }
@@ -858,6 +890,11 @@ class MainActivity : AppCompatActivity() {
         m.meetingTitle.setOnClickListener { renameMeeting() }
         m.meetingTranscribe.setOnClickListener {
             openMeetingId?.let { MeetingService.transcribe(this, it) }
+            renderMeetings()
+        }
+        m.meetingCancelWork.setOnClickListener {
+            openMeetingId?.let { MeetingService.cancelWork(this, it) }
+            Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             renderMeetings()
         }
         m.meetingCopy.setOnClickListener { copyMeeting() }
@@ -896,6 +933,7 @@ class MainActivity : AppCompatActivity() {
         m.selectionDelete.setOnClickListener { deleteSelected() }
         m.selectionTranscribe.setOnClickListener { transcribeSelected() }
         m.selectionProject.setOnClickListener { moveSelected() }
+        m.selectionExport.setOnClickListener { exportSelected() }
     }
 
     /**
@@ -1082,6 +1120,83 @@ class MainActivity : AppCompatActivity() {
         renderMeetings()
     }
 
+    /**
+     * Экспорт выбранных встреч: формат, потом — отдельными файлами или
+     * одним общим. Расшифровки нет — экспортировать нечего, такие пропускаются.
+     */
+    private fun exportSelected() {
+        val done = selection.toList()
+            .mapNotNull { MeetingStore.load(this, it) }
+            .filter { it.isDone }
+            .sortedBy { it.at }
+        if (done.isEmpty()) {
+            Snackbar.make(ui.root, R.string.selection_export_none, Snackbar.LENGTH_LONG).show()
+            return
+        }
+        val formats = listOf(
+            "txt" to getString(R.string.export_txt),
+            "md" to getString(R.string.export_md),
+            "pdf" to getString(R.string.export_pdf),
+            "docx" to getString(R.string.export_doc),
+        )
+        optionSheet(getString(R.string.selection_export), formats, null) { value ->
+            val format = when (value) {
+                "txt" -> ExportFormat.TXT
+                "md" -> ExportFormat.MD
+                "pdf" -> ExportFormat.PDF
+                else -> ExportFormat.DOCX
+            }
+            if (done.size == 1) {
+                runExport(done, format, combined = false)
+            } else {
+                optionSheet(
+                    getString(R.string.export_how),
+                    listOf(
+                        "separate" to getString(R.string.export_separate),
+                        "single" to getString(R.string.export_single),
+                    ),
+                    null,
+                ) { how -> runExport(done, format, combined = how == "single") }
+            }
+        }
+    }
+
+    private fun runExport(meetings: List<Meeting>, format: ExportFormat, combined: Boolean) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val loaded = meetings.map {
+                        it to MeetingStore.loadTranscript(this@MainActivity, it.id)
+                    }
+                    if (combined) {
+                        listOf(MeetingExport.saveCombined(this@MainActivity, loaded, format))
+                    } else {
+                        loaded.map { (m, segments) ->
+                            MeetingExport.save(this@MainActivity, m, segments, format)
+                        }
+                    }
+                }
+            }
+            result.fold(
+                onSuccess = { exports ->
+                    clearSelection()
+                    Snackbar.make(
+                        ui.root,
+                        if (exports.size == 1) {
+                            getString(R.string.export_done, exports.first().name)
+                        } else {
+                            getString(R.string.export_done_many, exports.size)
+                        },
+                        Snackbar.LENGTH_LONG,
+                    ).show()
+                },
+                onFailure = {
+                    Snackbar.make(ui.root, R.string.export_failed, Snackbar.LENGTH_LONG).show()
+                },
+            )
+        }
+    }
+
     private fun deleteSelected() {
         val ids = selection.toList()
         if (ids.isEmpty()) return
@@ -1210,14 +1325,30 @@ class MainActivity : AppCompatActivity() {
             detailSegments = emptyList()
             shownTranscript = null
             val recording = MeetingService.recordingId != null
+            val paused = MeetingService.recordingPaused
             m.meetingRecord.setIconResource(
                 if (recording) R.drawable.ic_stop else R.drawable.ic_mic
             )
             m.meetingRecord.contentDescription =
                 getString(if (recording) R.string.meeting_stop else R.string.meeting_record)
-            m.meetingImport.isEnabled = !recording
+            // На время записи импорт уступает место паузе и «глушить фон»:
+            // загружать файлы всё равно нельзя, пока микрофон занят.
+            m.meetingImport.visibility = visibility(!recording)
+            m.meetingLink.visibility = visibility(!recording)
+            m.meetingPause.visibility = visibility(recording)
+            m.meetingPause.setText(
+                if (paused) R.string.meeting_resume else R.string.meeting_pause
+            )
+            m.meetingSuppressRow.visibility = visibility(recording)
+            if (m.meetingSuppressSwitch.isChecked != MeetingService.suppressNoise) {
+                m.meetingSuppressSwitch.isChecked = MeetingService.suppressNoise
+            }
             m.meetingStatus.text = getString(
-                if (recording) R.string.meeting_state_recording else R.string.meeting_idle
+                when {
+                    paused -> R.string.meeting_state_paused
+                    recording -> R.string.meeting_state_recording
+                    else -> R.string.meeting_idle
+                }
             )
             m.meetingTimer.visibility = visibility(recording)
             m.meetingWave.visibility = visibility(recording)
@@ -1225,7 +1356,7 @@ class MainActivity : AppCompatActivity() {
                 m.meetingTimer.text =
                     MeetingStore.clockLabel(MeetingService.recordingSeconds.toFloat())
             }
-            syncMeetingRecordingMotion(recording)
+            syncMeetingRecordingMotion(recording && !paused)
 
             renderMeetingList()
             return
@@ -1254,6 +1385,7 @@ class MainActivity : AppCompatActivity() {
         )
         m.meetingProgress.visibility = visibility(working)
         m.meetingProgress.setProgress(percent ?: 0, working && motionOn())
+        m.meetingCancelWork.visibility = visibility(working)
         m.meetingDiarize.visibility = visibility(open.isDone && !working)
         m.meetingExportRow.visibility = visibility(open.isDone)
         m.meetingCopy.visibility = visibility(open.isDone)
@@ -1843,6 +1975,14 @@ class MainActivity : AppCompatActivity() {
         ui.pageModels.modelList.layoutManager = LinearLayoutManager(this)
         ui.pageModels.modelList.adapter = models
 
+        // Отмена всех идущих загрузок прямо со страницы, не только из шторки.
+        ui.pageModels.progressCancel.setOnClickListener {
+            DownloadService.progress.keys.toList().forEach {
+                DownloadService.cancel(this, it)
+            }
+            Toast.makeText(this, R.string.download_cancelled, Toast.LENGTH_SHORT).show()
+            renderDownloadSummary()
+        }
         ui.pageModels.filterLanguage.setOnClickListener { chooseLanguage() }
         ui.pageModels.filterDownloaded.setOnClickListener {
             onlyDownloaded = !onlyDownloaded
@@ -2116,12 +2256,12 @@ class MainActivity : AppCompatActivity() {
             // пока идёт загрузка. Иначе она застревала на «0%» после того,
             // как модель докачалась в фоне.
             bar.visibility = View.GONE
-            label.visibility = View.GONE
+            ui.pageModels.progressRow.visibility = View.GONE
             return
         }
         bar.visibility = View.VISIBLE
         bar.progress = active.sumOf { it.value } / active.size
-        label.visibility = View.VISIBLE
+        ui.pageModels.progressRow.visibility = View.VISIBLE
         label.text = if (active.size == 1) {
             val name = Catalog.findByFilename(this, active.first().key)?.first?.name.orEmpty()
             getString(R.string.downloading, name, active.first().value)

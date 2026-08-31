@@ -25,6 +25,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Всё долгое по встречам живёт здесь: запись, импорт чужого файла и
@@ -42,6 +44,12 @@ class MeetingService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val jobs = mutableMapOf<Long, Job>()
+
+    /**
+     * Движок один, и две расшифровки одновременно только мешают друг другу:
+     * суммарно по очереди быстрее, чем параллельно. Ждущие висят «в очереди».
+     */
+    private val engineGate = Mutex()
 
     private var recorder: AudioRecord? = null
     private var recordThread: Thread? = null
@@ -64,6 +72,12 @@ class MeetingService : Service() {
         when (intent?.action) {
             ACTION_RECORD_START -> startRecording()
             ACTION_RECORD_STOP -> stopRecording()
+            ACTION_RECORD_PAUSE -> togglePauseInternal()
+            ACTION_CANCEL_WORK -> {
+                val id = intent.getLongExtra(EXTRA_ID, 0)
+                if (id == 0L) jobs.values.toList().forEach { it.cancel() }
+                else jobs[id]?.cancel()
+            }
             // startForeground — сразу, до проверок: сервис подняли через
             // startForegroundService, и не показать уведомление нельзя.
             ACTION_TRANSCRIBE -> {
@@ -116,7 +130,7 @@ class MeetingService : Service() {
         ServiceCompat.startForeground(
             this,
             NOTIF_RECORDING,
-            recordingNotification(System.currentTimeMillis()),
+            recordingNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
         )
 
@@ -126,41 +140,53 @@ class MeetingService : Service() {
         )
         if (minBuffer <= 0) return
 
-        // Всегда «комната»: источник для распознавания давит дальние голоса,
-        // а на встрече они и есть главное.
-        val r = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            AudioRecorder.SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            minBuffer * 4,
-        )
-        // Микрофон, закреплённый в настройках: на встрече чаще всего это
-        // как раз внешний, а система по своей воле берёт встроенный.
-        MicDevices.preferred(this)?.let { runCatching { r.setPreferredDevice(it) } }
-
-        if (r.state != AudioRecord.STATE_INITIALIZED) {
-            r.release()
-            return
-        }
+        suppressNoise = false
+        val r = openRecorder(minBuffer, suppress = false) ?: return
 
         val meeting = MeetingStore.create(this, imported = false)
         val wav = WavWriter(MeetingStore.audioFile(this, meeting.id))
 
         recordingId = meeting.id
+        recordingPaused = false
         recorder = r
         holdWakeLock()
-        manager().notify(NOTIF_RECORDING, recordingNotification(meeting.at))
+        manager().notify(NOTIF_RECORDING, recordingNotification())
         r.startRecording()
 
         recordThread = Thread {
+            var rec = r
+            var suppress = false
             val buf = ByteArray(minBuffer)
             while (recordingId != null) {
-                val n = r.read(buf, 0, buf.size)
-                if (n > 0) {
+                // Тумблер «глушить фон» переключили на ходу: источник у
+                // AudioRecord не меняется, поэтому пересоздаём его, не
+                // закрывая WAV, — в файле стыка не слышно.
+                if (suppress != suppressNoise) {
+                    suppress = suppressNoise
+                    runCatching { rec.stop() }
+                    rec.release()
+                    val next = openRecorder(minBuffer, suppress)
+                    if (next == null) {
+                        // Микрофон не открылся заново — честно завершаем
+                        // запись, всё записанное уже на диске.
+                        recorder = null
+                        recordingId = null
+                        manager().cancel(NOTIF_RECORDING)
+                        break
+                    }
+                    rec = next
+                    recorder = rec
+                    rec.startRecording()
+                }
+                val n = rec.read(buf, 0, buf.size)
+                // На паузе микрофон продолжает читаться, но мимо файла:
+                // так буфер не переполняется, а таймер и волна замирают сами.
+                if (n > 0 && !recordingPaused) {
                     wav.write(buf, n)
                     recordingSeconds = (wav.samplesWritten / AudioRecorder.SAMPLE_RATE).toInt()
                     recordingLevel = levelOf(buf, n)
+                } else if (recordingPaused) {
+                    recordingLevel = 0f
                 }
             }
             recordingLevel = 0f
@@ -179,6 +205,38 @@ class MeetingService : Service() {
 
     private fun stopRecording() {
         finishRecording()
+        notifyChange()
+    }
+
+    /**
+     * По умолчанию — «комната»: сырой MIC, чтобы дальние голоса не резались.
+     * С тумблером «глушить фон» берётся источник для распознавания — он
+     * давит всё, кроме голоса у самого микрофона.
+     */
+    @SuppressLint("MissingPermission")
+    private fun openRecorder(minBuffer: Int, suppress: Boolean): AudioRecord? {
+        val r = AudioRecord(
+            if (suppress) MediaRecorder.AudioSource.VOICE_RECOGNITION
+            else MediaRecorder.AudioSource.MIC,
+            AudioRecorder.SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            minBuffer * 4,
+        )
+        // Микрофон, закреплённый в настройках: на встрече чаще всего это
+        // как раз внешний, а система по своей воле берёт встроенный.
+        MicDevices.preferred(this)?.let { runCatching { r.setPreferredDevice(it) } }
+        if (r.state != AudioRecord.STATE_INITIALIZED) {
+            r.release()
+            return null
+        }
+        return r
+    }
+
+    private fun togglePauseInternal() {
+        if (recordingId == null) return
+        recordingPaused = !recordingPaused
+        manager().notify(NOTIF_RECORDING, recordingNotification())
         notifyChange()
     }
 
@@ -201,6 +259,7 @@ class MeetingService : Service() {
     private fun finishRecording() {
         if (recordingId == null) return
         recordingId = null
+        recordingPaused = false
         recordingSeconds = 0
         recorder?.let {
             runCatching { it.stop() }
@@ -219,27 +278,51 @@ class MeetingService : Service() {
         val meeting = MeetingStore.load(this, id) ?: return
 
         progress[id] = 0
-        phase[id] = R.string.meeting_state_transcribing
+        phase[id] = R.string.meeting_state_queued
         notifyChange()
         foregroundForWork()
 
-        jobs[id] = scope.launch {
-            val result = runCatching { transcribe(meeting) }
+        // LAZY: сначала кладём job в карту, потом стартуем — иначе мгновенно
+        // завершившаяся корутина убрала бы себя из карты раньше записи.
+        lateinit var job: Job
+        job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+            val result = runCatching {
+                engineGate.withLock {
+                    phase[id] = R.string.meeting_state_transcribing
+                    notifyChange()
+                    transcribe(meeting)
+                }
+            }
+            val cancelled = job.isCancelled
             jobs.remove(id)
             progress.remove(id)
             phase.remove(id)
             manager().cancel(id.toInt())
 
-            result.exceptionOrNull()?.let { e ->
-                Log.e(TAG, "расшифровка не удалась", e)
-                MeetingStore.save(
-                    this@MeetingService,
-                    meeting.copy(state = Meeting.STATE_FAILED),
-                )
+            when {
+                // Отменили — вернуть «ждёт расшифровки», чтобы кнопка
+                // «Расшифровать» появилась снова. Частичный текст остаётся.
+                cancelled -> MeetingStore.load(this@MeetingService, id)?.let {
+                    if (it.state == Meeting.STATE_TRANSCRIBING) {
+                        MeetingStore.save(
+                            this@MeetingService,
+                            it.copy(state = Meeting.STATE_RECORDED),
+                        )
+                    }
+                }
+                else -> result.exceptionOrNull()?.let { e ->
+                    Log.e(TAG, "расшифровка не удалась", e)
+                    MeetingStore.save(
+                        this@MeetingService,
+                        meeting.copy(state = Meeting.STATE_FAILED),
+                    )
+                }
             }
             notifyChange()
             stopIfIdle()
         }
+        jobs[id] = job
+        job.start()
     }
 
     private suspend fun transcribe(meeting: Meeting) {
@@ -357,6 +440,7 @@ class MeetingService : Service() {
             }
             runCatching { wav.finish() }
             temp.delete()
+            val cancelled = jobs[meeting.id]?.isCancelled == true
             jobs.remove(meeting.id)
             progress.remove(meeting.id)
             phase.remove(meeting.id)
@@ -370,7 +454,8 @@ class MeetingService : Service() {
                 onFailure = { e ->
                     Log.e(TAG, "ссылка не скачалась", e)
                     MeetingStore.delete(this@MeetingService, meeting.id)
-                    notifyImportFailed(e.message)
+                    // Отменили сами — упрёк «не удалось» не заслужен.
+                    if (!cancelled) notifyImportFailed(e.message)
                     notifyChange()
                     stopIfIdle()
                 },
@@ -408,6 +493,7 @@ class MeetingService : Service() {
             }
             runCatching { fd?.close() }
             runCatching { wav.finish() }
+            val cancelled = jobs[meeting.id]?.isCancelled == true
             jobs.remove(meeting.id)
             progress.remove(meeting.id)
             phase.remove(meeting.id)
@@ -422,7 +508,7 @@ class MeetingService : Service() {
                     Log.e(TAG, "импорт не удался", e)
                     // Встреча без звука в списке бессмысленна — убираем след.
                     MeetingStore.delete(this@MeetingService, meeting.id)
-                    notifyImportFailed()
+                    if (!cancelled) notifyImportFailed()
                     notifyChange()
                 },
             )
@@ -477,6 +563,7 @@ class MeetingService : Service() {
                     isCancelled = { jobs[id]?.isCancelled == true },
                 )
             }
+            val cancelled = jobs[id]?.isCancelled == true
             jobs.remove(id)
             progress.remove(id)
             phase.remove(id)
@@ -491,7 +578,7 @@ class MeetingService : Service() {
                 },
                 onFailure = { e ->
                     Log.e(TAG, "диаризация не удалась", e)
-                    notifyDiarizeFailed(meeting)
+                    if (!cancelled) notifyDiarizeFailed(meeting)
                 },
             )
             notifyChange()
@@ -545,31 +632,74 @@ class MeetingService : Service() {
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun recordingNotification(startedAt: Long): Notification {
+    private fun recordingNotification(): Notification {
         val stop = PendingIntent.getService(
             this, 1,
             Intent(this, MeetingService::class.java).setAction(ACTION_RECORD_STOP),
             PendingIntent.FLAG_IMMUTABLE,
         )
+        val pause = PendingIntent.getService(
+            this, 2,
+            Intent(this, MeetingService::class.java).setAction(ACTION_RECORD_PAUSE),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val paused = recordingPaused
         return Notification.Builder(this, CHANNEL)
-            .setContentTitle(getString(R.string.meeting_recording_notif))
+            .setContentTitle(
+                getString(
+                    if (paused) R.string.meeting_state_paused
+                    else R.string.meeting_recording_notif
+                )
+            )
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setWhen(startedAt)
-            .setUsesChronometer(true)
+            .apply {
+                // Хронометр честен только пока идёт запись: на паузе он бы
+                // продолжал тикать, поэтому вместо него — застывшее время.
+                if (paused) {
+                    setContentText(MeetingStore.clockLabel(recordingSeconds.toFloat()))
+                } else {
+                    setWhen(System.currentTimeMillis() - recordingSeconds * 1000L)
+                    setUsesChronometer(true)
+                }
+            }
             .setOngoing(true)
+            // По настройке уведомление можно спрятать с заблокированного
+            // экрана — запись встречи не всем хочется афишировать.
+            .setVisibility(
+                if (AppPrefs.recordOnLockScreen(this)) Notification.VISIBILITY_PUBLIC
+                else Notification.VISIBILITY_SECRET
+            )
             .setContentIntent(openApp())
+            .addAction(
+                Notification.Action.Builder(
+                    null,
+                    getString(if (paused) R.string.meeting_resume else R.string.meeting_pause),
+                    pause,
+                ).build()
+            )
             .addAction(Notification.Action.Builder(null, getString(R.string.stop), stop).build())
             .build()
     }
 
-    private fun workNotification(percent: Int = 0): Notification =
-        Notification.Builder(this, CHANNEL)
+    private fun workNotification(percent: Int = 0): Notification {
+        val cancel = PendingIntent.getService(
+            this, 3,
+            Intent(this, MeetingService::class.java).setAction(ACTION_CANCEL_WORK),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        return Notification.Builder(this, CHANNEL)
             .setContentTitle(getString(R.string.meeting_transcribing_notif))
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setProgress(100, percent, percent == 0)
             .setOngoing(true)
             .setContentIntent(openApp())
+            .addAction(
+                Notification.Action.Builder(
+                    null, getString(R.string.download_cancel), cancel,
+                ).build()
+            )
             .build()
+    }
 
     private fun notifyProgress(meeting: Meeting, percent: Int) {
         if (recordingId == null) {
@@ -641,6 +771,8 @@ class MeetingService : Service() {
         private const val NOTIF_IMPORT_FAILED = 22
         private const val ACTION_RECORD_START = "com.handy.voice.MEETING_RECORD_START"
         private const val ACTION_RECORD_STOP = "com.handy.voice.MEETING_RECORD_STOP"
+        private const val ACTION_RECORD_PAUSE = "com.handy.voice.MEETING_RECORD_PAUSE"
+        private const val ACTION_CANCEL_WORK = "com.handy.voice.MEETING_CANCEL_WORK"
         private const val ACTION_TRANSCRIBE = "com.handy.voice.MEETING_TRANSCRIBE"
         private const val ACTION_IMPORT = "com.handy.voice.MEETING_IMPORT"
         private const val ACTION_IMPORT_URL = "com.handy.voice.MEETING_IMPORT_URL"
@@ -654,6 +786,19 @@ class MeetingService : Service() {
         @Volatile
         var recordingId: Long? = null
             private set
+
+        /** Запись стоит на паузе: звук читается, но мимо файла. */
+        @Volatile
+        var recordingPaused: Boolean = false
+            private set
+
+        /**
+         * Глушить фон: VOICE_RECOGNITION вместо сырого MIC. Живёт только на
+         * время записи и всегда начинается выключенным — комната по
+         * умолчанию, дальние голоса важнее тишины.
+         */
+        @Volatile
+        var suppressNoise: Boolean = false
 
         /** Сколько секунд уже записано — для таймера на экране. */
         @Volatile
@@ -684,6 +829,21 @@ class MeetingService : Service() {
         fun stopRecording(context: Context) {
             context.startService(
                 Intent(context, MeetingService::class.java).setAction(ACTION_RECORD_STOP)
+            )
+        }
+
+        fun togglePause(context: Context) {
+            context.startService(
+                Intent(context, MeetingService::class.java).setAction(ACTION_RECORD_PAUSE)
+            )
+        }
+
+        /** Отмена работы по встрече; id == 0 — отменить всё, что идёт. */
+        fun cancelWork(context: Context, id: Long = 0) {
+            context.startService(
+                Intent(context, MeetingService::class.java)
+                    .setAction(ACTION_CANCEL_WORK)
+                    .putExtra(EXTRA_ID, id)
             )
         }
 

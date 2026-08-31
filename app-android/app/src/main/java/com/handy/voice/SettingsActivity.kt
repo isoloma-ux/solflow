@@ -101,6 +101,12 @@ class SettingsActivity : AppCompatActivity() {
         switch(R.string.setting_room, R.string.setting_room_hint, AppPrefs.roomMode(this)) {
             AppPrefs.setRoomMode(this, it)
         }
+        switch(
+            R.string.set_lock_screen, R.string.set_lock_screen_hint,
+            AppPrefs.recordOnLockScreen(this),
+        ) {
+            AppPrefs.setRecordOnLockScreen(this, it)
+        }
 
         group(R.string.group_dictation)
         choice(

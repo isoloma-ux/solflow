@@ -21,6 +21,8 @@ class MeetingAdapter(
     private val onLongTap: (Meeting) -> Unit = {},
     /** Тап по найденному месту: открыть встречу на этой реплике. */
     private val onQuoteTap: (Meeting, MeetingStore.Quote) -> Unit = { _, _ -> },
+    /** Крестик у полосы прогресса: отменить работу по этой встрече. */
+    private val onCancelWork: (Meeting) -> Unit = {},
 ) : RecyclerView.Adapter<MeetingAdapter.Holder>() {
 
     private var items: List<Meeting> = emptyList()
@@ -85,6 +87,10 @@ class MeetingAdapter(
         // Полоса ползёт к новому значению, а не прыгает.
         holder.bar.setProgress(percent ?: 0, percent != null)
 
+        holder.cancel.visibility =
+            if (percent != null && phase != null) View.VISIBLE else View.GONE
+        holder.cancel.setOnClickListener { onCancelWork(meeting) }
+
         // Найденные места: до трёх строк со временем, каждая ведёт к своей
         // реплике. Если совпадений больше, последняя строка говорит сколько.
         val hit = hits[meeting.id]
@@ -128,6 +134,7 @@ class MeetingAdapter(
         val title: TextView = v.findViewById(R.id.meetingItemTitle)
         val state: TextView = v.findViewById(R.id.meetingItemState)
         val bar: ProgressBar = v.findViewById(R.id.meetingItemProgress)
+        val cancel: View = v.findViewById(R.id.meetingItemCancel)
         val quotes: LinearLayout = v.findViewById(R.id.meetingItemQuotes)
         val card: View = v.findViewById(R.id.meetingItemCard)
     }

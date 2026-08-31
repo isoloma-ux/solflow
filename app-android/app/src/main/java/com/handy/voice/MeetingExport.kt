@@ -37,14 +37,19 @@ data class ExportResult(val name: String, val uri: android.net.Uri?)
  */
 object MeetingExport {
 
-    fun save(
+    /** Одна встреча внутри файла: экспорт нескольких — это те же куски. */
+    private class Section(
+        val title: String,
+        val duration: String,
+        val segments: List<MeetingSegment>,
+        val speakerAt: (Int) -> String?,
+    )
+
+    private fun section(
         context: Context,
         meeting: Meeting,
         segments: List<MeetingSegment>,
-        format: ExportFormat,
-    ): ExportResult {
-        val title = MeetingStore.displayTitle(context, meeting)
-        val duration = MeetingStore.durationLabel(context, meeting.seconds)
+    ): Section {
         // Подпись говорящего идёт заголовком на смене голоса, как в пьесе.
         // Если пользователь дал людям имена — в файл идут имена.
         val speakerAt: (Int) -> String? = { index ->
@@ -53,17 +58,55 @@ object MeetingExport {
                 MeetingStore.speakerLabel(context, meeting, s.speaker)
             } else null
         }
-        val bytes = when (format) {
-            ExportFormat.TXT -> text(title, duration, segments, speakerAt).toByteArray()
-            ExportFormat.MD -> markdown(title, duration, segments, speakerAt).toByteArray()
-            ExportFormat.PDF -> pdf(context, title, duration, segments, speakerAt)
-            ExportFormat.DOCX -> docx(title, duration, segments, speakerAt)
-        }
+        return Section(
+            MeetingStore.displayTitle(context, meeting),
+            MeetingStore.durationLabel(context, meeting.seconds),
+            segments,
+            speakerAt,
+        )
+    }
 
-        val safeTitle = title.replace(":", ".").replace(Regex("[\\\\/*?\"<>|,]"), "")
-        val name = "$safeTitle.${format.extension}"
+    private fun render(
+        context: Context,
+        sections: List<Section>,
+        format: ExportFormat,
+    ): ByteArray = when (format) {
+        ExportFormat.TXT -> text(sections).toByteArray()
+        ExportFormat.MD -> markdown(sections).toByteArray()
+        ExportFormat.PDF -> pdf(context, sections)
+        ExportFormat.DOCX -> docx(sections)
+    }
+
+    fun save(
+        context: Context,
+        meeting: Meeting,
+        segments: List<MeetingSegment>,
+        format: ExportFormat,
+    ): ExportResult {
+        val s = section(context, meeting, segments)
+        val bytes = render(context, listOf(s), format)
+        val name = "${safeName(s.title)}.${format.extension}"
         return ExportResult(name, write(context, name, format.mime, bytes))
     }
+
+    /** Несколько встреч одним файлом; каждая начинается со своего заголовка. */
+    fun saveCombined(
+        context: Context,
+        meetings: List<Pair<Meeting, List<MeetingSegment>>>,
+        format: ExportFormat,
+    ): ExportResult {
+        val sections = meetings.map { (m, segments) -> section(context, m, segments) }
+        val bytes = render(context, sections, format)
+        val date = java.text.SimpleDateFormat(
+            "d MMMM yyyy, HH.mm", java.util.Locale.getDefault(),
+        ).format(java.util.Date())
+        val title = context.getString(R.string.export_combined_name, date)
+        val name = "${safeName(title)}.${format.extension}"
+        return ExportResult(name, write(context, name, format.mime, bytes))
+    }
+
+    private fun safeName(title: String) =
+        title.replace(":", ".").replace(Regex("[\\\\/*?\"<>|,]"), "")
 
     private fun write(
         context: Context,
@@ -91,41 +134,44 @@ object MeetingExport {
 
     // --- текстовые форматы ------------------------------------------------
 
-    private fun text(
-        title: String,
-        duration: String,
-        segments: List<MeetingSegment>,
-        speakerAt: (Int) -> String?,
-    ) = buildString {
-        appendLine(title)
-        appendLine(duration)
-        appendLine()
-        for ((i, s) in segments.withIndex()) {
-            speakerAt(i)?.let {
-                if (i > 0) appendLine()
-                appendLine(it)
+    private fun text(sections: List<Section>) = buildString {
+        for ((n, sec) in sections.withIndex()) {
+            if (n > 0) {
+                appendLine()
+                appendLine("————————")
+                appendLine()
             }
-            appendLine("${MeetingStore.clockLabel(s.start)}  ${s.text}")
+            appendLine(sec.title)
+            appendLine(sec.duration)
+            appendLine()
+            for ((i, s) in sec.segments.withIndex()) {
+                sec.speakerAt(i)?.let {
+                    if (i > 0) appendLine()
+                    appendLine(it)
+                }
+                appendLine("${MeetingStore.clockLabel(s.start)}  ${s.text}")
+            }
         }
     }
 
-    private fun markdown(
-        title: String,
-        duration: String,
-        segments: List<MeetingSegment>,
-        speakerAt: (Int) -> String?,
-    ) = buildString {
-        appendLine("# $title")
-        appendLine()
-        appendLine("*$duration*")
-        appendLine()
-        for ((i, s) in segments.withIndex()) {
-            speakerAt(i)?.let {
-                appendLine("## $it")
+    private fun markdown(sections: List<Section>) = buildString {
+        for ((n, sec) in sections.withIndex()) {
+            if (n > 0) {
+                appendLine("---")
                 appendLine()
             }
-            appendLine("**${MeetingStore.clockLabel(s.start)}** ${s.text}")
+            appendLine("# ${sec.title}")
             appendLine()
+            appendLine("*${sec.duration}*")
+            appendLine()
+            for ((i, s) in sec.segments.withIndex()) {
+                sec.speakerAt(i)?.let {
+                    appendLine("## $it")
+                    appendLine()
+                }
+                appendLine("**${MeetingStore.clockLabel(s.start)}** ${s.text}")
+                appendLine()
+            }
         }
     }
 
@@ -135,13 +181,7 @@ object MeetingExport {
     private const val PAGE_H = 842
     private const val MARGIN = 56f
 
-    private fun pdf(
-        context: Context,
-        title: String,
-        duration: String,
-        segments: List<MeetingSegment>,
-        speakerAt: (Int) -> String?,
-    ): ByteArray {
+    private fun pdf(context: Context, sections: List<Section>): ByteArray {
         val regular = ResourcesCompat.getFont(context, R.font.inter_regular)
             ?: Typeface.DEFAULT
         val medium = ResourcesCompat.getFont(context, R.font.inter_medium)
@@ -194,13 +234,17 @@ object MeetingExport {
             y += l.height + gapAfter
         }
 
-        newPage()
-        draw(layout(title, titlePaint), 4f)
-        draw(layout(duration, mutedPaint), 18f)
-        for ((i, s) in segments.withIndex()) {
-            speakerAt(i)?.let { draw(layout(it, speakerPaint), 6f) }
-            draw(layout(MeetingStore.clockLabel(s.start), mutedPaint), 2f)
-            draw(layout(s.text, bodyPaint), 12f)
+        // Каждая встреча начинается со своей страницы: склееный экспорт
+        // читается как подшивка, а не как один бесконечный поток.
+        for (sec in sections) {
+            newPage()
+            draw(layout(sec.title, titlePaint), 4f)
+            draw(layout(sec.duration, mutedPaint), 18f)
+            for ((i, s) in sec.segments.withIndex()) {
+                sec.speakerAt(i)?.let { draw(layout(it, speakerPaint), 6f) }
+                draw(layout(MeetingStore.clockLabel(s.start), mutedPaint), 2f)
+                draw(layout(s.text, bodyPaint), 12f)
+            }
         }
         page?.let { doc.finishPage(it) }
 
@@ -212,22 +256,21 @@ object MeetingExport {
 
     // --- DOCX -------------------------------------------------------------
 
-    private fun docx(
-        title: String,
-        duration: String,
-        segments: List<MeetingSegment>,
-        speakerAt: (Int) -> String?,
-    ): ByteArray {
+    private fun docx(sections: List<Section>): ByteArray {
         val body = buildString {
-            append(paragraph(esc(title), size = 32, medium = true))
-            append(paragraph(esc(duration), color = "8A8A8A"))
-            for ((i, s) in segments.withIndex()) {
-                speakerAt(i)?.let { append(paragraph(esc(it), size = 24, medium = true)) }
-                append(
-                    "<w:p><w:r><w:rPr><w:color w:val=\"8A8A8A\"/><w:sz w:val=\"18\"/></w:rPr>" +
-                        "<w:t xml:space=\"preserve\">${esc(MeetingStore.clockLabel(s.start))}  </w:t></w:r>" +
-                        "<w:r><w:t xml:space=\"preserve\">${esc(s.text)}</w:t></w:r></w:p>"
-                )
+            for ((n, sec) in sections.withIndex()) {
+                // Разрыв страницы между встречами — как в PDF.
+                if (n > 0) append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
+                append(paragraph(esc(sec.title), size = 32, medium = true))
+                append(paragraph(esc(sec.duration), color = "8A8A8A"))
+                for ((i, s) in sec.segments.withIndex()) {
+                    sec.speakerAt(i)?.let { append(paragraph(esc(it), size = 24, medium = true)) }
+                    append(
+                        "<w:p><w:r><w:rPr><w:color w:val=\"8A8A8A\"/><w:sz w:val=\"18\"/></w:rPr>" +
+                            "<w:t xml:space=\"preserve\">${esc(MeetingStore.clockLabel(s.start))}  </w:t></w:r>" +
+                            "<w:r><w:t xml:space=\"preserve\">${esc(s.text)}</w:t></w:r></w:p>"
+                    )
+                }
             }
         }
 

@@ -35,6 +35,10 @@
     <string name="meeting_transcribe">Transcribe</string>
     <string name="meeting_delete">Delete</string>
     <string name="export_open">Open</string>
+
+    <string name="whatsnew_title">What\'s new in %1$s</string>
+    <string name="whatsnew_ok">Got it</string>
+    <string name="whatsnew_body">• Transcriptions no longer run at once — they line up in a queue\n\n• Cancel is back: model downloads and transcriptions can be stopped\n\n• Meeting recording can be paused — on screen and from the notification, and the notification can be hidden from the lock screen\n\n• A “Suppress background” toggle right during a meeting recording\n\n• Export several meetings at once — as separate files or one combined</string>
     <string name="diarize_two">Two</string>
     <string name="diarize_three">Three</string>
     <string name="diarize_four">Four</string>
@@ -188,6 +192,8 @@
     <string name="setting_snap">Snap the button to the screen edge</string>
     <string name="setting_room">Room mode</string>
     <string name="setting_room_hint">The microphone stops suppressing distant voices. Use it to record a conversation, not just yourself</string>
+    <string name="set_lock_screen">Recording on the lock screen</string>
+    <string name="set_lock_screen_hint">Show the meeting recording notification while the phone is locked</string>
     <string name="model_search">Search by model name</string>
     <string name="channel_downloads">Model downloads</string>
     <string name="download_ready">Ready to work</string>
@@ -212,6 +218,7 @@
     <string name="duration_seconds">%1$d s</string>
     <string name="meeting_state_fetching">Downloading by link — %1$d%%</string>
     <string name="meeting_state_importing">Reading the file — %1$d%%</string>
+    <string name="meeting_state_queued">Queued for transcription</string>
     <string name="meeting_state_transcribing">Transcribing — %1$d%%</string>
     <string name="meeting_state_downloading">Downloading the separation model — %1$d%%</string>
     <string name="meeting_state_diarizing">Separating speakers — %1$d%%</string>
@@ -232,6 +239,12 @@
     <string name="export_failed">Couldn\'t save the file</string>
     <string name="channel_meetings">Meeting recording</string>
     <string name="meeting_recording_notif">Recording a meeting</string>
+    <string name="meeting_state_paused">Recording paused</string>
+    <string name="meeting_pause">Pause</string>
+    <string name="meeting_resume">Resume</string>
+    <string name="meeting_suppress">Suppress background</string>
+    <string name="meeting_suppress_hint">The microphone focuses on the voice nearby and mutes noise. Distant voices get quieter too</string>
+    <string name="transcribe_cancelled">Transcription cancelled</string>
     <string name="meeting_transcribing_notif">Transcribing the meeting</string>
     <string name="meeting_done_notif">The transcript is ready</string>
     <string name="meeting_import_failed">Couldn\'t read the audio file</string>
@@ -297,6 +310,13 @@
     <string name="selection_delete_message">The meetings go along with their recordings and transcripts. Selected: %1$d</string>
     <string name="selection_transcribe">Transcribe the selected</string>
     <string name="selection_project">To a project…</string>
+    <string name="selection_export">Export selected</string>
+    <string name="selection_export_none">None of the selected meetings are transcribed</string>
+    <string name="export_how">How should they be saved?</string>
+    <string name="export_separate">As separate files</string>
+    <string name="export_single">As one file</string>
+    <string name="export_combined_name">Meetings %1$s</string>
+    <string name="export_done_many">Saved to Downloads, files: %1$d</string>
     <string name="selection_hint">Long press to select several</string>
     <string name="about_hint">Who makes this, what it\'s built from, where the new version is</string>
     <string name="about_pitch">Your voice becomes text right on the phone. Nothing goes to the internet: not the meeting recordings, not the dictations, not people\'s names.</string>

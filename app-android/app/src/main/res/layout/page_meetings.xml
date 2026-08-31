@@ -105,6 +105,43 @@
             android:layout_marginEnd="44dp"
             android:visibility="gone" />
 
+        <!-- Пауза и «глушить фон» живут только во время записи и занимают
+             место кнопок импорта, которые в этот момент всё равно ни к чему. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingPause"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginStart="44dp"
+            android:layout_marginEnd="44dp"
+            android:visibility="gone"
+            android:text="@string/meeting_pause" />
+
+        <LinearLayout
+            android:id="@+id/meetingSuppressRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginStart="44dp"
+            android:layout_marginEnd="44dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/Text.Body"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/meeting_suppress" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/meetingSuppressSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/meetingImport"
             style="@style/Pill.Inset"
@@ -231,7 +268,7 @@
                 android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/selectionDelete"
+                    android:id="@+id/selectionExport"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -240,10 +277,10 @@
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:textSize="13sp"
-                    android:text="@string/selection_delete" />
+                    android:text="@string/selection_export" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/selectionCancel"
+                    android:id="@+id/selectionDelete"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -253,8 +290,20 @@
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:textSize="13sp"
-                    android:text="@string/select_cancel" />
+                    android:text="@string/selection_delete" />
             </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/selectionCancel"
+                style="@style/Pill.Inset"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:layout_marginTop="8dp"
+                android:minWidth="0dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:textSize="13sp"
+                android:text="@string/select_cancel" />
         </LinearLayout>
 
         <LinearLayout
@@ -436,6 +485,18 @@
             android:layout_marginEnd="44dp"
             android:visibility="gone"
             android:text="@string/meeting_transcribe" />
+
+        <!-- Отмена идущей работы: расшифровки, импорта или разделения. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingCancelWork"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="44dp"
+            android:layout_marginEnd="44dp"
+            android:visibility="gone"
+            android:text="@string/download_cancel" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/meetingTimeline"

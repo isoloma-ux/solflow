@@ -106,6 +106,8 @@
     <string name="setting_snap">Притягивать кнопку к краю экрана</string>
     <string name="setting_room">Режим комнаты</string>
     <string name="setting_room_hint">Микрофон перестанет давить дальние голоса. Нужен, чтобы записать разговор, а не только себя</string>
+    <string name="set_lock_screen">Запись на заблокированном экране</string>
+    <string name="set_lock_screen_hint">Показывать уведомление записи встречи, пока телефон заблокирован</string>
     <string name="model_search">Поиск по названию модели</string>
     <string name="download_cancel">Отмена</string>
     <string name="channel_downloads">Загрузка моделей</string>
@@ -140,6 +142,7 @@
     <string name="meeting_state_recording">Идет запись</string>
     <string name="meeting_state_fetching">Качаю по ссылке — %1$d%%</string>
     <string name="meeting_state_importing">Читаю файл — %1$d%%</string>
+    <string name="meeting_state_queued">В очереди на расшифровку</string>
     <string name="meeting_state_transcribing">Расшифровываю — %1$d%%</string>
     <string name="meeting_state_downloading">Скачиваю модель разделения — %1$d%%</string>
     <string name="meeting_state_diarizing">Разделяю говорящих — %1$d%%</string>
@@ -162,6 +165,12 @@
     <string name="export_failed">Не удалось сохранить файл</string>
     <string name="channel_meetings">Запись встреч</string>
     <string name="meeting_recording_notif">Идет запись встречи</string>
+    <string name="meeting_state_paused">Запись на паузе</string>
+    <string name="meeting_pause">Пауза</string>
+    <string name="meeting_resume">Продолжить</string>
+    <string name="meeting_suppress">Глушить фон</string>
+    <string name="meeting_suppress_hint">Микрофон сосредоточится на голосе рядом и придавит шум. Дальние голоса тоже станут тише</string>
+    <string name="transcribe_cancelled">Расшифровка отменена</string>
     <string name="meeting_transcribing_notif">Расшифровываю встречу</string>
     <string name="meeting_done_notif">Расшифровка готова</string>
     <string name="meeting_import_failed">Не удалось прочитать аудиофайл</string>
@@ -169,6 +178,11 @@
     <string name="diarize_dialog_title">Сколько человек говорило?</string>
     <string name="diarize_download_hint">При первом запуске скачается модель, 27 МБ</string>
     <string name="export_open">Открыть</string>
+
+    <!-- Что нового: показывается один раз после обновления версии -->
+    <string name="whatsnew_title">Что нового в %1$s</string>
+    <string name="whatsnew_ok">Понятно</string>
+    <string name="whatsnew_body">• Расшифровки больше не идут одновременно — выстраиваются в очередь\n\n• Вернулась отмена: загрузку модели и расшифровку можно остановить\n\n• У записи встречи появилась пауза — на экране и в уведомлении, а уведомление можно скрыть с заблокированного экрана\n\n• Тумблер «Глушить фон» прямо во время записи встречи\n\n• Экспорт нескольких встреч сразу — отдельными файлами или одним общим</string>
     <string name="diarize_auto">Определить автоматически</string>
     <string name="diarize_two">Двое</string>
     <string name="diarize_three">Трое</string>
@@ -307,6 +321,13 @@
     <string name="selection_delete_message">Встречи уйдут вместе с записями и расшифровками. Выбрано: %1$d</string>
     <string name="selection_transcribe">Расшифровать выбранные</string>
     <string name="selection_project">В проект…</string>
+    <string name="selection_export">Экспорт выбранных</string>
+    <string name="selection_export_none">Среди выбранных нет расшифрованных встреч</string>
+    <string name="export_how">Как сохранить?</string>
+    <string name="export_separate">Отдельными файлами</string>
+    <string name="export_single">Одним файлом</string>
+    <string name="export_combined_name">Встречи %1$s</string>
+    <string name="export_done_many">Сохранено в Загрузки, файлов: %1$d</string>
     <string name="selection_hint">Долгое нажатие — выбрать несколько</string>
 
     <!-- ===== О проекте и вводный экран ================================= -->
