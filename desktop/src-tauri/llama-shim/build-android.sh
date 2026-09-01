@@ -25,6 +25,7 @@ cmake_bin="$HOME/android-toolchain/sdk/cmake/3.31.6/bin/cmake"
     -DBUILD_SHARED_LIBS=OFF \
     -DGGML_NATIVE=OFF \
     -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 \
+    -DGGML_CPU_KLEIDIAI=ON \
     -DGGML_OPENMP=OFF \
     -DLLAMA_CURL=OFF \
     -DLLAMA_BUILD_TESTS=OFF \

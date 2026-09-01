@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "llama.h"
 
@@ -25,10 +26,16 @@ void * sf_llm_load(const char * model_path, int n_ctx, int n_threads) {
     cp.n_ctx = (unsigned) n_ctx;
     /* Промпт кормится кусками этого размера — так виден прогресс. */
     cp.n_batch = 1024;
-    if (n_threads > 0) {
-        cp.n_threads = n_threads;
-        cp.n_threads_batch = n_threads;
+    if (n_threads <= 0) {
+        /* Умолчание llama — 4 потока, и на восьмиядерном телефоне это
+         * оставляет половину процессора без дела. Берём все ядра минус
+         * два — системе и интерфейсу тоже надо дышать. */
+        long cores = sysconf(_SC_NPROCESSORS_ONLN);
+        n_threads = (int) cores - 2;
+        if (n_threads < 4) n_threads = 4;
     }
+    cp.n_threads = n_threads;
+    cp.n_threads_batch = n_threads;
     struct llama_context * ctx = llama_init_from_model(model, cp);
     if (!ctx) {
         llama_model_free(model);
