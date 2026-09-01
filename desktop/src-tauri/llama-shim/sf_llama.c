@@ -4,7 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#if defined(_WIN32)
+#    include <windows.h>
+#else
+#    include <unistd.h>
+#endif
 
 #include "llama.h"
 
@@ -30,7 +34,13 @@ void * sf_llm_load(const char * model_path, int n_ctx, int n_threads) {
         /* Умолчание llama — 4 потока, и на восьмиядерном телефоне это
          * оставляет половину процессора без дела. Берём все ядра минус
          * два — системе и интерфейсу тоже надо дышать. */
+#if defined(_WIN32)
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        long cores = (long) si.dwNumberOfProcessors;
+#else
         long cores = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
         n_threads = (int) cores - 2;
         if (n_threads < 4) n_threads = 4;
     }

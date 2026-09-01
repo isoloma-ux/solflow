@@ -205,7 +205,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: "Sol Flow Signing"
         run: |
           rm -rf target/release/bundle/macos
-          tauri build --bundles app
+          tauri build --bundles app --config tauri.macos.conf.json
           # Проверяем, что подпись «на месте» действительно легла: без неё
           # система объявляет скачанный бандл повреждённым (проверено).
           codesign --verify --verbose=1 "target/release/bundle/macos/Sol Flow.app"

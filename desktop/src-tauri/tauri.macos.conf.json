@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "macOS": {
+      "frameworks": ["llama/lib/libsolflow_llama.dylib"]
+    }
+  }
+}
