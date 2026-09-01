@@ -62,8 +62,6 @@ jobs:
           mkdir -p llama/lib
           cp shim-build/Release/solflow_llama.dll llama/lib/
           cp shim-build/Release/solflow_llama.lib llama/lib/
-          # DLL — рядом с экзешником и в бандл через *.dll в ресурсах.
-          cp shim-build/Release/solflow_llama.dll .
 
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
@@ -80,6 +78,11 @@ jobs:
           cargo build --release --locked --features gpu
           cp target/release/*.dll .
           cp sherpa/win/lib/*.dll .
+          # Свежая DLL саммери — ПОСЛЕ target: в кэшированном target/release
+          # лежит её прошлогодняя копия от упаковки, и она перетирала новую
+          # (проверено md5 установщиков 0.5.1 и 0.5.2 — байт в байт).
+          cp llama/lib/solflow_llama.dll .
+          ls -la solflow_llama.dll
           tauri build --config tauri.gpu.conf.json --bundles nsis -- --features gpu
 
       # Релиз создаётся, если его ещё нет, и в него кладётся установщик.
