@@ -25,6 +25,7 @@ const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 pub struct Section<'a> {
     pub title: &'a str,
     pub duration: &'a str,
+    pub summary: &'a str,
     pub segments: &'a [Segment],
     pub speaker_at: &'a dyn Fn(usize) -> Option<String>,
 }
@@ -33,6 +34,7 @@ pub struct Section<'a> {
 pub fn build(
     title: &str,
     duration: &str,
+    summary: &str,
     segments: &[Segment],
     names: &HashMap<String, String>,
     speaker_at: &dyn Fn(usize) -> Option<String>,
@@ -40,7 +42,7 @@ pub fn build(
 ) -> Vec<u8> {
     let _ = names;
     build_many(
-        &[Section { title, duration, segments, speaker_at }],
+        &[Section { title, duration, summary, segments, speaker_at }],
         clock,
     )
 }
@@ -56,6 +58,13 @@ pub fn build_many(sections: &[Section], clock: &dyn Fn(f32) -> String) -> Vec<u8
         // Размеры шрифта в OOXML — в половинах пункта: 18pt это 36.
         body.push_str(&paragraph(sec.title, 36, true, None, 0));
         body.push_str(&paragraph(sec.duration, 20, false, Some("8A8A8A"), 0));
+        for (head, line) in crate::meetings::summary_lines(sec.summary) {
+            if head {
+                body.push_str(&paragraph(&line, 24, true, None, 240));
+            } else {
+                body.push_str(&paragraph(&line, 22, false, None, 0));
+            }
+        }
 
         for (i, s) in sec.segments.iter().enumerate() {
             if let Some(name) = (sec.speaker_at)(i) {

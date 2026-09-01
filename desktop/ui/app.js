@@ -771,6 +771,8 @@ function stateLabel(m) {
   if (m.phase === "downloading") return t("Качаю модель голосов{0}", pct);
   if (m.phase === "diarizing") return t("Разделяю говорящих{0}", pct);
   if (m.phase === "queued") return t("В очереди на расшифровку");
+  if (m.phase === "llm_downloading") return t("Качаю модель саммери{0}", pct);
+  if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
   // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
@@ -1742,6 +1744,68 @@ function closeMeeting() {
   el("meetHome").hidden = false;
 }
 
+// --- саммери ---------------------------------------------------------------
+
+/** Текст саммери — простая разметка: «## Заголовок» и «- пункт». */
+function renderSummary(m) {
+  const busy = !!m.phase;
+  const done = m.state === "done";
+  const button = el("meetSummary");
+  button.hidden = !done && !m.summary;
+  button.disabled = busy;
+  if (!summaryArmed) {
+    button.textContent = m.summary ? t("Обновить саммери") : t("Саммери");
+  }
+
+  const box = el("meetSummaryBox");
+  box.hidden = !m.summary;
+  if (!m.summary) return;
+  const target = el("meetSummaryText");
+  target.textContent = "";
+  for (const raw of m.summary.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const p = document.createElement("p");
+    if (line.startsWith("##")) {
+      p.className = "summary-head";
+      p.textContent = line.replace(/^#+\s*/, "");
+    } else if (/^[-•]/.test(line)) {
+      p.className = "summary-item";
+      p.textContent = line.replace(/^[-•]\s*/, "");
+    } else {
+      p.textContent = line;
+    }
+    target.appendChild(p);
+  }
+}
+
+// Модель тяжёлая, поэтому без неё кнопка сначала честно спрашивает про
+// скачивание, и только второе нажатие запускает работу.
+let summaryArmed = null;
+el("meetSummary").addEventListener("click", async () => {
+  if (detailId === null) return;
+  const [ready, mb] = await invoke("summary_state");
+  if (!ready && !summaryArmed) {
+    el("meetSummary").textContent = t("Скачать модель ~{0} ГБ?", (mb / 1024).toFixed(1));
+    summaryArmed = setTimeout(() => {
+      summaryArmed = null;
+      const m = meetRows.find((r) => r.id === detailId);
+      if (m) renderSummary(m);
+    }, 5000);
+    return;
+  }
+  if (summaryArmed) {
+    clearTimeout(summaryArmed);
+    summaryArmed = null;
+  }
+  invoke("meeting_summarize", { id: detailId });
+});
+
+listen("solflow-summary-error", (e) => {
+  el("meetDetailStatus").textContent = t("Саммери: {0}", e.payload);
+  el("meetDetailStatus").hidden = false;
+});
+
 async function renderDetail() {
   if (detailId === null) return;
   const m = meetRows.find((r) => r.id === detailId);
@@ -1774,6 +1838,8 @@ async function renderDetail() {
     select.appendChild(option);
   }
   select.value = m.project || "";
+
+  renderSummary(m);
 
   detailSegments = await invoke("meeting_segments", { id: detailId });
   renderSpeakersPanel(m, detailSegments);

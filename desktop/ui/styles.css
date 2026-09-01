@@ -1486,3 +1486,30 @@ textarea {
   left: 2px;
   color: var(--accent-solid);
 }
+
+/* Блок саммери в детали встречи. */
+.meet-summary {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+}
+.meet-summary .summary-head {
+  font-weight: 500;
+  margin: 12px 0 4px;
+}
+.meet-summary .summary-head:first-child { margin-top: 0; }
+.meet-summary .summary-item {
+  position: relative;
+  padding-left: 16px;
+  margin-top: 6px;
+  color: var(--fog);
+  font-size: 14px;
+}
+.meet-summary .summary-item::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--accent-solid);
+}
+.meet-summary p { font-size: 14px; }

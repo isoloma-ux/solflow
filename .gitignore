@@ -43,3 +43,7 @@ tcpp/
 .DS_Store
 # Локальные настройки и скиллы Claude Code — инструмент, а не продукт
 .claude/
+
+# Стенд саммери: клон llama.cpp для прототипов, в сборку не входит
+/llama.cpp/
+/desktop/src-tauri/llama/

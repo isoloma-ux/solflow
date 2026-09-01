@@ -26,6 +26,42 @@ mod paste;
 mod pdf;
 mod report;
 mod segmenter;
+#[cfg(has_summary)]
+mod summary;
+/// Без libsolflow_llama (llama-shim/build-macos.sh не гоняли) саммери
+/// выключено, но всё остальное собирается и работает.
+#[cfg(not(has_summary))]
+mod summary {
+    use anyhow::{anyhow, Result};
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use tauri::AppHandle;
+
+    pub const MODEL_MB: u64 = 2440;
+
+    pub fn model_path(_app: &AppHandle) -> PathBuf {
+        PathBuf::new()
+    }
+    pub fn model_ready(_app: &AppHandle) -> bool {
+        false
+    }
+    pub fn download(
+        _app: &AppHandle,
+        _on_progress: &dyn Fn(u8),
+        _cancelled: &dyn Fn() -> bool,
+    ) -> Result<()> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
+    pub fn summarize(
+        _app: &AppHandle,
+        _transcript: &str,
+        _progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+        _cancelled: Arc<AtomicBool>,
+    ) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
+}
 mod ttf;
 mod settings;
 mod sys;
@@ -79,12 +115,12 @@ pub fn inter_medium() -> &'static ttf::Font {
 
 /// Сборка PDF для примера export_check.
 pub fn export_pdf(title: &str, duration: &str, segments: &[MeetingSegment]) -> Vec<u8> {
-    meetings::as_pdf(title, duration, segments, &Default::default()).expect("pdf не собрался")
+    meetings::as_pdf(title, duration, "", segments, &Default::default()).expect("pdf не собрался")
 }
 
 /// Сборка docx для примера export_check.
 pub fn export_docx(title: &str, duration: &str, segments: &[MeetingSegment]) -> Vec<u8> {
-    meetings::as_docx(title, duration, segments, &Default::default())
+    meetings::as_docx(title, duration, "", segments, &Default::default())
 }
 
 /// Сборка текста экспорта для примера export_check.
@@ -94,9 +130,9 @@ pub fn export_bodies(
     segments: &[meetings::Segment],
 ) -> (String, String, String) {
     (
-        meetings::as_text(title, duration, segments, &Default::default()),
-        meetings::as_markdown(title, duration, segments, &Default::default()),
-        meetings::as_html(title, duration, segments, &Default::default()),
+        meetings::as_text(title, duration, "", segments, &Default::default()),
+        meetings::as_markdown(title, duration, "", segments, &Default::default()),
+        meetings::as_html(title, duration, "", segments, &Default::default()),
     )
 }
 
@@ -1045,6 +1081,19 @@ fn meeting_cancel(app: AppHandle, id: i64) {
     meetings::cancel(&app, id);
 }
 
+/// Саммери встречи локальной моделью; модель докачается сама, интерфейс
+/// предупреждает о её размере до запуска.
+#[tauri::command]
+fn meeting_summarize(app: AppHandle, id: i64) {
+    meetings::summarize(&app, id);
+}
+
+/// Скачана ли модель саммери и сколько она весит — для предупреждения.
+#[tauri::command]
+fn summary_state(app: AppHandle) -> (bool, u64) {
+    (summary::model_ready(&app), summary::MODEL_MB)
+}
+
 /// Папка для скачанного по ссылке; пустая строка — не оставлять исходник.
 #[tauri::command]
 fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
@@ -1453,6 +1502,8 @@ pub fn run() {
             meeting_record_stop,
             meeting_record_pause,
             meetings_export_combined,
+            meeting_summarize,
+            summary_state,
             meeting_import,
             meeting_import_paths,
             meeting_import_url,

@@ -287,6 +287,7 @@
                 <p class="lang-empty" id="speakersHint"></p>
               </div>
             </div>
+            <button class="pill-inset compact" id="meetSummary" hidden>Саммери</button>
             <button class="pill-inset compact" id="meetAgain">Расшифровать заново</button>
             <button class="danger-text push-right icon-button" id="meetDelete"
                     title="Удалить встречу">
@@ -298,6 +299,13 @@
             </button>
           </div>
           <p class="muted small" id="meetDetailStatus" hidden></p>
+
+          <!-- Саммери от локальной модели: черновик, а не истина. -->
+          <section class="meet-summary" id="meetSummaryBox" hidden>
+            <p class="kicker">Саммери</p>
+            <div id="meetSummaryText"></div>
+            <p class="muted small">Сделано локальной моделью — проверяйте факты по расшифровке</p>
+          </section>
 
           <div class="search-box find-box">
             <input id="meetFind" class="search" type="text"

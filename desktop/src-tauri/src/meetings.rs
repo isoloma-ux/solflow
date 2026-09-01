@@ -51,6 +51,9 @@ pub struct Meta {
     /// Имена, которые пользователь дал говорящим, по их номерам.
     #[serde(default)]
     pub names: HashMap<String, String>,
+    /// Саммери от локальной языковой модели; пустая строка — не делали.
+    #[serde(default)]
+    pub summary: String,
     /// Почему не вышло, если не вышло: строку показывает список встреч.
     /// Молчаливая неудача — худшее, что может случиться с импортом.
     #[serde(default)]
@@ -94,6 +97,8 @@ pub struct MeetingRow {
     pub fetched: Option<(u64, u64)>,
     /// Что за работа идёт: "transcribing" или "importing".
     pub phase: Option<String>,
+    /// Саммери локальной модели; пустая строка — его ещё не делали.
+    pub summary: String,
 }
 
 // --- состояние -------------------------------------------------------------
@@ -193,6 +198,7 @@ fn create(app: &AppHandle, imported: bool) -> Result<(i64, Meta)> {
         project: None,
         speakers: 0,
         names: HashMap::new(),
+        summary: String::new(),
         error: None,
     };
     std::fs::create_dir_all(dir(app, now))?;
@@ -240,6 +246,7 @@ pub fn rows(app: &AppHandle) -> Vec<MeetingRow> {
                 progress: progress.get(&id).copied(),
                 fetched: fetched.get(&id).copied(),
                 phase: phase.get(&id).map(|p| p.to_string()),
+                summary: m.summary,
             })
         })
         .collect();
@@ -981,6 +988,110 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     Ok(())
 }
 
+// --- саммери ----------------------------------------------------------------
+
+/// Саммери готовой встречи локальной моделью. Если модель ещё не скачана,
+/// сначала тянем её (интерфейс предупреждает о размере заранее). Очередь
+/// та же, что у расшифровок: движки тяжёлые, пусть ходят по одному.
+pub fn summarize(app: &AppHandle, id: i64) {
+    let state = app.state::<MeetingState>();
+    {
+        let mut cancel = state.cancel.lock().unwrap();
+        if cancel.contains_key(&id) {
+            return;
+        }
+        cancel.insert(id, Arc::new(AtomicBool::new(false)));
+    }
+    state.progress.lock().unwrap().insert(id, 0);
+    state.phase.lock().unwrap().insert(id, "queued");
+    notify(app);
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let gate = app.state::<MeetingState>().engine_gate.clone();
+        let _turn = gate.lock().unwrap();
+
+        let state = app.state::<MeetingState>();
+        let flag = state
+            .cancel
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
+
+        let result = if flag.load(Ordering::Relaxed) {
+            Ok(())
+        } else {
+            summarize_job(&app, id, flag.clone())
+        };
+
+        let state = app.state::<MeetingState>();
+        let cancelled = flag.load(Ordering::Relaxed);
+        state.cancel.lock().unwrap().remove(&id);
+        state.progress.lock().unwrap().remove(&id);
+        state.phase.lock().unwrap().remove(&id);
+
+        if let Err(e) = result {
+            log::error!("саммери не удалось: {e}");
+            if !cancelled {
+                use tauri::Emitter;
+                let _ = app.emit("solflow-summary-error", format!("{e}"));
+            }
+        }
+        notify(&app);
+    });
+}
+
+fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> {
+    let state = app.state::<MeetingState>();
+
+    if !crate::summary::model_ready(app) {
+        state.phase.lock().unwrap().insert(id, "llm_downloading");
+        notify(app);
+        crate::summary::download(
+            app,
+            &|pct| {
+                let state = app.state::<MeetingState>();
+                state.progress.lock().unwrap().insert(id, pct);
+                notify(app);
+            },
+            &|| flag.load(Ordering::Relaxed),
+        )?;
+    }
+
+    state.phase.lock().unwrap().insert(id, "summarizing");
+    state.progress.lock().unwrap().insert(id, 0);
+    notify(app);
+
+    let segments = load_transcript(app, id);
+    if segments.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+    let text: String = segments
+        .iter()
+        .map(|s| s.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let progress_app = app.clone();
+    let summary = crate::summary::summarize(
+        app,
+        &text,
+        move |pct| {
+            let state = progress_app.state::<MeetingState>();
+            state.progress.lock().unwrap().insert(id, pct);
+            notify(&progress_app);
+        },
+        flag,
+    )?;
+
+    let mut meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    meta.summary = summary;
+    save_meta(app, id, &meta);
+    Ok(())
+}
+
 // --- разделение говорящих --------------------------------------------------
 
 /// Диаризация готовой встречи: если модель голосов ещё не скачана, сначала
@@ -1469,8 +1580,38 @@ fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-pub fn as_text(title: &str, duration: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
+/// Строки саммери для экспорта: (это заголовок?, текст) без markdown-меток.
+pub fn summary_lines(summary: &str) -> Vec<(bool, String)> {
+    summary
+        .lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            if l.is_empty() {
+                return None;
+            }
+            if let Some(h) = l.strip_prefix("##") {
+                Some((true, h.trim_start_matches('#').trim().to_string()))
+            } else if let Some(b) = l.strip_prefix("- ").or_else(|| l.strip_prefix("• ")) {
+                Some((false, format!("• {b}")))
+            } else {
+                Some((false, l.to_string()))
+            }
+        })
+        .collect()
+}
+
+pub fn as_text(title: &str, duration: &str, summary: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
     let mut out = format!("{title}\n{duration}\n\n");
+    for (head, line) in summary_lines(summary) {
+        if head {
+            out.push('\n');
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    if !summary.is_empty() {
+        out.push('\n');
+    }
     for (i, s) in segments.iter().enumerate() {
         if let Some(name) = speaker_at(segments, i, names) {
             if i > 0 {
@@ -1484,8 +1625,12 @@ pub fn as_text(title: &str, duration: &str, segments: &[Segment], names: &HashMa
     out
 }
 
-pub fn as_markdown(title: &str, duration: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
+pub fn as_markdown(title: &str, duration: &str, summary: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
     let mut out = format!("# {title}\n\n*{duration}*\n\n");
+    if !summary.is_empty() {
+        out.push_str(summary.trim());
+        out.push_str("\n\n---\n\n");
+    }
     for (i, s) in segments.iter().enumerate() {
         if let Some(name) = speaker_at(segments, i, names) {
             out.push_str(&format!("## {name}\n\n"));
@@ -1498,7 +1643,7 @@ pub fn as_markdown(title: &str, duration: &str, segments: &[Segment], names: &Ha
 /// HTML — промежуточный формат для docx: textutil переносит из него
 /// размеры, начертания и цвета, так что документ выходит свёрстанным,
 /// а не голым текстом.
-pub fn as_html(title: &str, duration: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
+pub fn as_html(title: &str, duration: &str, summary: &str, segments: &[Segment], names: &HashMap<String, String>) -> String {
     let mut out = String::from(
         "<html><head><meta charset=\"utf-8\"></head>\
          <body style=\"font-family:Helvetica,Arial,sans-serif\">",
@@ -1509,6 +1654,16 @@ pub fn as_html(title: &str, duration: &str, segments: &[Segment], names: &HashMa
         esc(title),
         esc(duration)
     ));
+    for (head, line) in summary_lines(summary) {
+        if head {
+            out.push_str(&format!(
+                "<p style=\"font-size:12pt;font-weight:500;margin-top:14pt\">{}</p>",
+                esc(&line)
+            ));
+        } else {
+            out.push_str(&format!("<p style=\"font-size:11pt\">{}</p>", esc(&line)));
+        }
+    }
     for (i, s) in segments.iter().enumerate() {
         if let Some(name) = speaker_at(segments, i, names) {
             out.push_str(&format!(
@@ -1532,12 +1687,14 @@ pub fn as_html(title: &str, duration: &str, segments: &[Segment], names: &HashMa
 pub fn as_docx(
     title: &str,
     duration: &str,
+    summary: &str,
     segments: &[Segment],
     names: &HashMap<String, String>,
 ) -> Vec<u8> {
     crate::docx::build(
         title,
         duration,
+        summary,
         segments,
         names,
         &|i| speaker_at(segments, i, names),
@@ -1547,7 +1704,7 @@ pub fn as_docx(
 
 /// PDF собирается своим генератором со встроенным Inter — вид тот же, что
 /// в окне приложения и в экспорте на Android.
-pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap<String, String>) -> Result<Vec<u8>> {
+pub fn as_pdf(title: &str, duration: &str, summary: &str, segments: &[Segment], names: &HashMap<String, String>) -> Result<Vec<u8>> {
     use crate::pdf::{Block, Document, Face};
 
     let regular = crate::inter_regular();
@@ -1556,6 +1713,13 @@ pub fn as_pdf(title: &str, duration: &str, segments: &[Segment], names: &HashMap
 
     doc.add(&Block::new(title, Face::Medium, 18.0));
     doc.add(&Block::new(duration, Face::Regular, 10.0).gray().gap(2.0));
+    for (head, line) in summary_lines(summary) {
+        if head {
+            doc.add(&Block::new(line, Face::Medium, 12.0).gap(14.0));
+        } else {
+            doc.add(&Block::new(line, Face::Regular, 11.0).gap(4.0));
+        }
+    }
 
     for (i, s) in segments.iter().enumerate() {
         if let Some(name) = speaker_at(segments, i, names) {
@@ -1654,7 +1818,8 @@ pub fn export_combined(
     title: &str,
     target: Target,
 ) -> Result<String> {
-    let mut parts: Vec<(String, String, Vec<Segment>, HashMap<String, String>)> = Vec::new();
+    let mut parts: Vec<(String, String, String, Vec<Segment>, HashMap<String, String>)> =
+        Vec::new();
     for (id, item_title) in items {
         let Some(meta) = load_meta(app, *id) else { continue };
         let segments = load_transcript(app, *id);
@@ -1664,6 +1829,7 @@ pub fn export_combined(
         parts.push((
             item_title.clone(),
             duration_label(meta.seconds),
+            meta.summary,
             segments,
             meta.names,
         ));
@@ -1677,18 +1843,18 @@ pub fn export_combined(
     let bytes: Vec<u8> = match format {
         "md" => {
             let mut out = String::new();
-            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+            for (n, (t, d, summary, segs, names)) in parts.iter().enumerate() {
                 if n > 0 {
                     out.push_str("---\n\n");
                 }
-                out.push_str(&as_markdown(t, d, segs, names));
+                out.push_str(&as_markdown(t, d, summary, segs, names));
             }
             out.into_bytes()
         }
         "docx" => {
             let closures: Vec<Box<dyn Fn(usize) -> Option<String>>> = parts
                 .iter()
-                .map(|(_, _, segs, names)| {
+                .map(|(_, _, _, segs, names)| {
                     let segs = segs.clone();
                     let names = names.clone();
                     Box::new(move |i: usize| speaker_at(&segs, i, &names))
@@ -1698,9 +1864,10 @@ pub fn export_combined(
             let sections: Vec<crate::docx::Section> = parts
                 .iter()
                 .zip(&closures)
-                .map(|((t, d, segs, _), c)| crate::docx::Section {
+                .map(|((t, d, summary, segs, _), c)| crate::docx::Section {
                     title: t,
                     duration: d,
+                    summary,
                     segments: segs,
                     speaker_at: c.as_ref(),
                 })
@@ -1712,12 +1879,19 @@ pub fn export_combined(
             let regular = crate::inter_regular();
             let medium = crate::inter_medium();
             let mut doc = Document::new(regular, medium);
-            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+            for (n, (t, d, summary, segs, names)) in parts.iter().enumerate() {
                 if n > 0 {
                     doc.page_break();
                 }
                 doc.add(&Block::new(t.as_str(), Face::Medium, 18.0));
                 doc.add(&Block::new(d.as_str(), Face::Regular, 10.0).gray().gap(2.0));
+                for (head, line) in summary_lines(summary) {
+                    if head {
+                        doc.add(&Block::new(line, Face::Medium, 12.0).gap(14.0));
+                    } else {
+                        doc.add(&Block::new(line, Face::Regular, 11.0).gap(4.0));
+                    }
+                }
                 for (i, s) in segs.iter().enumerate() {
                     if let Some(name) = speaker_at(segs, i, names) {
                         doc.add(&Block::new(name, Face::Medium, 12.0).gap(18.0));
@@ -1729,11 +1903,11 @@ pub fn export_combined(
         }
         _ => {
             let mut out = String::new();
-            for (n, (t, d, segs, names)) in parts.iter().enumerate() {
+            for (n, (t, d, summary, segs, names)) in parts.iter().enumerate() {
                 if n > 0 {
                     out.push_str("\n————————\n\n");
                 }
-                out.push_str(&as_text(t, d, segs, names));
+                out.push_str(&as_text(t, d, summary, segs, names));
             }
             out.into_bytes()
         }
@@ -1777,10 +1951,22 @@ pub fn export(
     let path = export_target_path(app, target, &safe_file_name(title), format)?;
 
     match format {
-        "md" => std::fs::write(&path, as_markdown(title, &duration, &segments, &meta.names))?,
-        "docx" => std::fs::write(&path, as_docx(title, &duration, &segments, &meta.names))?,
-        "pdf" => std::fs::write(&path, as_pdf(title, &duration, &segments, &meta.names)?)?,
-        _ => std::fs::write(&path, as_text(title, &duration, &segments, &meta.names))?,
+        "md" => std::fs::write(
+            &path,
+            as_markdown(title, &duration, &meta.summary, &segments, &meta.names),
+        )?,
+        "docx" => std::fs::write(
+            &path,
+            as_docx(title, &duration, &meta.summary, &segments, &meta.names),
+        )?,
+        "pdf" => std::fs::write(
+            &path,
+            as_pdf(title, &duration, &meta.summary, &segments, &meta.names)?,
+        )?,
+        _ => std::fs::write(
+            &path,
+            as_text(title, &duration, &meta.summary, &segments, &meta.names),
+        )?,
     }
 
     // Показать файл в Finder или проводнике — та же роль, что «Открыть» в
