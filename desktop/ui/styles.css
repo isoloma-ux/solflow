@@ -1513,3 +1513,13 @@ textarea {
   color: var(--accent-solid);
 }
 .meet-summary p { font-size: 14px; }
+
+/* Строка идущей работы в детали встречи. */
+.meet-work {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.meet-work .model-progress { flex: 1; margin: 0; }
+.meet-work .muted { white-space: nowrap; }

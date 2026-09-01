@@ -221,7 +221,7 @@ fn model_path(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 /// Поднимает модель, если её выгрузили по таймеру. Делает это в фоне:
 /// GGUF грузится секунды, а человек в этот момент уже говорит.
-fn ensure_model_loaded(app: AppHandle) {
+pub(crate) fn ensure_model_loaded(app: AppHandle) {
     let state = app.state::<AppState>();
     *state.last_used.lock().unwrap() = Instant::now();
     if state.engine.is_loaded() {

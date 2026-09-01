@@ -300,6 +300,13 @@
           </div>
           <p class="muted small" id="meetDetailStatus" hidden></p>
 
+          <!-- Идущая работа: полоса, проценты и отмена — как в списке. -->
+          <div class="meet-work" id="meetWorkRow" hidden>
+            <div class="model-progress" id="meetWorkBar"><div id="meetWorkFill"></div></div>
+            <span class="muted small" id="meetWorkLabel"></span>
+            <button class="model-remove" id="meetWorkCancel">Отмена</button>
+          </div>
+
           <!-- Саммери от локальной модели: черновик, а не истина. -->
           <section class="meet-summary" id="meetSummaryBox" hidden>
             <p class="kicker">Саммери</p>

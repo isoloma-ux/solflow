@@ -863,7 +863,11 @@ pub fn transcribe(app: &AppHandle, id: i64) {
 
 fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     let engine = app.state::<crate::AppState>().engine.clone();
-    // Модель может ещё грузиться после старта приложения — подождём её.
+    // Модель могла быть выгружена по таймеру простоя — расшифровка обязана
+    // поднять её сама, а не ждать, пока это сделает диктовка (проверено
+    // падением «модель не загружена» после долгой работы без диктовки).
+    crate::ensure_model_loaded(app.clone());
+    // Загрузка идёт в фоне — подождём её.
     for _ in 0..60 {
         if engine.is_loaded() {
             break;

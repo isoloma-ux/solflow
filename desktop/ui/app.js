@@ -1801,6 +1801,10 @@ el("meetSummary").addEventListener("click", async () => {
   invoke("meeting_summarize", { id: detailId });
 });
 
+el("meetWorkCancel").addEventListener("click", () => {
+  if (detailId !== null) invoke("meeting_cancel", { id: detailId });
+});
+
 listen("solflow-summary-error", (e) => {
   el("meetDetailStatus").textContent = t("Саммери: {0}", e.payload);
   el("meetDetailStatus").hidden = false;
@@ -1838,6 +1842,16 @@ async function renderDetail() {
     select.appendChild(option);
   }
   select.value = m.project || "";
+
+  // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
+  const working = !!m.phase;
+  el("meetWorkRow").hidden = !working;
+  if (working) {
+    el("meetWorkBar").className =
+      "model-progress" + (m.progress == null ? " busy" : "");
+    el("meetWorkFill").style.width = `${m.progress ?? 100}%`;
+    el("meetWorkLabel").textContent = stateLabel(m);
+  }
 
   renderSummary(m);
 
