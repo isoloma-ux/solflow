@@ -150,8 +150,6 @@
     <string name="meeting_state_done_speakers">Расшифрована · говорящих: %1$d</string>
     <string name="meeting_state_recorded">Записана, ждет расшифровки</string>
     <string name="meeting_state_failed">Расшифровка не удалась</string>
-    <string name="meeting_state_llm_downloading">Качаю модель саммери — %1$d%%</string>
-    <string name="meeting_state_titling">Придумываю название</string>
     <string name="meeting_back">← Назад</string>
     <string name="meeting_meta">%1$s · %2$s</string>
     <string name="meeting_transcribe">Расшифровать</string>
@@ -333,11 +331,7 @@
     <string name="meeting_save_audio">Сохранить звук (WAV)</string>
     <string name="meeting_summary">Саммери</string>
     <string name="meeting_share_text">Поделиться текстом</string>
-    <string name="meeting_autotitle">Придумать название</string>
     <string name="summary_hint">Сделано локальной моделью — проверяйте факты по расшифровке</string>
-    <string name="summary_download_title">Модель для названий</string>
-    <string name="summary_download_message">Названия придумывает локальная языковая модель — она займет примерно 2.4 ГБ на телефоне и скачается один раз. Все считается прямо на устройстве, без интернета.</string>
-    <string name="summary_download_go">Скачать и придумать</string>
     <string name="export_wav">Звук (WAV)</string>
     <string name="selection_audio_none">Среди выбранных нет встреч со звуком</string>
     <string name="selection_hint">Долгое нажатие — выбрать несколько</string>

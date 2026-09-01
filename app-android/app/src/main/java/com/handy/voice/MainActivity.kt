@@ -931,7 +931,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             renderMeetings()
         }
-        m.meetingAutotitle.setOnClickListener { startAutotitle() }
         m.meetingCopy.setOnClickListener { copyMeeting() }
         m.meetingShareText.setOnClickListener { shareMeetingText() }
         m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
@@ -1275,10 +1274,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Саммери: без модели — честное предупреждение о 2.4 ГБ до старта,
-     * дальше сервис сам докачает и посчитает.
-     */
     /** Markdown-метки саммери — в читаемый текст с точками и жирными темами. */
     private fun renderSummaryText(summary: String): CharSequence {
         val builder = android.text.SpannableStringBuilder()
@@ -1304,28 +1299,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return builder
-    }
-
-    /**
-     * Название по кнопке: без модели — честное предупреждение о 2.4 ГБ до
-     * старта, дальше сервис сам докачает и придумает.
-     */
-    private fun startAutotitle() {
-        val id = openMeetingId ?: return
-        if (SummaryEngine.modelReady(this)) {
-            MeetingService.autotitle(this, id)
-            renderMeetings()
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.summary_download_title)
-            .setMessage(R.string.summary_download_message)
-            .setPositiveButton(R.string.summary_download_go) { _, _ ->
-                MeetingService.autotitle(this, id)
-                renderMeetings()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
     }
 
     /** WAV открытой встречи — в Загрузки, тем же снекбаром, что экспорт. */
@@ -1540,9 +1513,8 @@ class MainActivity : AppCompatActivity() {
         m.meetingProgress.setProgress(percent ?: 0, working && motionOn())
         m.meetingCancelWork.visibility = visibility(working)
 
-        // Название — для готовой расшифровки. Карточка саммери показывается,
-        // если оно есть (пока — со старых сборок, потом принесёт синхронизация).
-        m.meetingAutotitle.visibility = visibility(open.isDone && !working)
+        // Карточка саммери показывается, если оно есть у встречи: на
+        // телефоне саммери не считается — его принесёт синхронизация.
         m.meetingSummaryBox.visibility = visibility(open.summary.isNotEmpty())
         if (open.summary.isNotEmpty()) {
             val rendered = renderSummaryText(open.summary)

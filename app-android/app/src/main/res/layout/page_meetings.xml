@@ -500,18 +500,6 @@
             app:strokeColor="@color/danger"
             android:text="@string/download_cancel" />
 
-        <!-- Название — локальной моделью. Саммери на телефоне нет: замер
-             показал, что счёт 4B-модели кладёт телефон, — саммери живёт на
-             ПК, а сюда его когда-нибудь принесёт синхронизация. -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingAutotitle"
-            style="@style/Pill.Inset"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:layout_marginTop="12dp"
-            android:visibility="gone"
-            android:text="@string/meeting_autotitle" />
-
         <!-- Карточка саммери над таймлайном: черновик от модели. -->
         <LinearLayout
             android:id="@+id/meetingSummaryBox"
