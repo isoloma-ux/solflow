@@ -1523,3 +1523,16 @@ textarea {
 }
 .meet-work .model-progress { flex: 1; margin: 0; }
 .meet-work .muted { white-space: nowrap; }
+
+/* Отмена идущей работы: опасное действие, а не обычная кнопка. */
+.danger-pill {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--danger);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 999px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+.danger-pill:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }

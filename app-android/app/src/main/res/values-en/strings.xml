@@ -226,6 +226,9 @@
     <string name="meeting_state_done_speakers">Transcribed · speakers: %1$d</string>
     <string name="meeting_state_recorded">Recorded, waiting to be transcribed</string>
     <string name="meeting_state_failed">Transcription failed</string>
+    <string name="meeting_state_llm_downloading">Downloading the summary model — %1$d%%</string>
+    <string name="meeting_state_summarizing">Summarizing — %1$d%%</string>
+    <string name="meeting_state_titling">Thinking of a title</string>
     <string name="meeting_back">← Back</string>
     <string name="meeting_meta">%1$s · %2$s</string>
     <string name="meeting_delete_confirm">Delete the meeting along with the recording and transcript?</string>
@@ -318,6 +321,14 @@
     <string name="export_combined_name">Meetings %1$s</string>
     <string name="export_done_many">Saved to Downloads, files: %1$d</string>
     <string name="meeting_save_audio">Save audio (WAV)</string>
+    <string name="meeting_summary">Summary</string>
+    <string name="meeting_summary_redo">Redo the summary</string>
+    <string name="meeting_autotitle">Suggest a title</string>
+    <string name="summary_hint">Made by a local model — check the facts against the transcript</string>
+    <string name="summary_download_title">Summary model</string>
+    <string name="summary_download_message">Summaries are made by a local language model — it takes about 2.4 GB on the phone and downloads once. Everything runs on the device, no internet involved.</string>
+    <string name="summary_download_go">Download and summarize</string>
+    <string name="summary_need_model">Download the model first — via the Summary button</string>
     <string name="export_wav">Audio (WAV)</string>
     <string name="selection_audio_none">None of the selected meetings have audio</string>
     <string name="selection_hint">Long press to select several</string>

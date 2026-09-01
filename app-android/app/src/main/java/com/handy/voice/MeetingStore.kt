@@ -32,6 +32,8 @@ data class Meeting(
     val speakerNames: Map<Int, String> = emptyMap(),
     /** Проект, в котором лежит встреча; null — вне проектов. */
     val project: String? = null,
+    /** Саммери от локальной языковой модели; пусто — его ещё не делали. */
+    val summary: String = "",
 ) {
     val isDone: Boolean get() = state == STATE_DONE
 
@@ -91,6 +93,7 @@ object MeetingStore {
                     for ((index, name) in meeting.speakerNames) put(index.toString(), name)
                 })
                 meeting.project?.let { put("project", it) }
+                if (meeting.summary.isNotEmpty()) put("summary", meeting.summary)
             }.toString()
         )
     }
@@ -114,6 +117,7 @@ object MeetingStore {
                         .toMap()
                 } ?: emptyMap(),
                 project = o.optString("project").takeIf { it.isNotBlank() },
+                summary = o.optString("summary"),
             )
         }.getOrNull()
     }

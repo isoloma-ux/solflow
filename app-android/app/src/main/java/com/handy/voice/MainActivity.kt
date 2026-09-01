@@ -930,6 +930,16 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             renderMeetings()
         }
+        m.meetingSummary.setOnClickListener { startSummary() }
+        m.meetingAutotitle.setOnClickListener {
+            val id = openMeetingId ?: return@setOnClickListener
+            if (!SummaryEngine.modelReady(this)) {
+                Snackbar.make(ui.root, R.string.summary_need_model, Snackbar.LENGTH_LONG).show()
+            } else {
+                MeetingService.autotitle(this, id)
+                renderMeetings()
+            }
+        }
         m.meetingCopy.setOnClickListener { copyMeeting() }
         m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
         m.meetingDelete.setOnClickListener { deleteMeeting() }
@@ -1272,6 +1282,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Саммери: без модели — честное предупреждение о 2.4 ГБ до старта,
+     * дальше сервис сам докачает и посчитает.
+     */
+    /** Markdown-метки саммери — в читаемый текст с точками и жирными темами. */
+    private fun renderSummaryText(summary: String): CharSequence {
+        val builder = android.text.SpannableStringBuilder()
+        for (raw in summary.lines()) {
+            val line = raw.trim()
+            if (line.isEmpty()) continue
+            if (builder.isNotEmpty()) builder.append("\n")
+            when {
+                line.startsWith("#") -> {
+                    val text = line.trimStart('#').trim()
+                    if (builder.isNotEmpty()) builder.append("\n")
+                    val start = builder.length
+                    builder.append(text)
+                    builder.setSpan(
+                        android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                        start, builder.length,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+                line.startsWith("- ") || line.startsWith("• ") ->
+                    builder.append("•  ").append(line.substring(2).trim())
+                else -> builder.append(line)
+            }
+        }
+        return builder
+    }
+
+    private fun startSummary() {
+        val id = openMeetingId ?: return
+        if (SummaryEngine.modelReady(this)) {
+            MeetingService.summarize(this, id)
+            renderMeetings()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.summary_download_title)
+            .setMessage(R.string.summary_download_message)
+            .setPositiveButton(R.string.summary_download_go) { _, _ ->
+                MeetingService.summarize(this, id)
+                renderMeetings()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     /** WAV открытой встречи — в Загрузки, тем же снекбаром, что экспорт. */
     private fun saveMeetingAudio() {
         val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
@@ -1483,6 +1542,17 @@ class MainActivity : AppCompatActivity() {
         m.meetingProgress.visibility = visibility(working)
         m.meetingProgress.setProgress(percent ?: 0, working && motionOn())
         m.meetingCancelWork.visibility = visibility(working)
+
+        // Саммери и название — для готовой расшифровки.
+        m.meetingSummaryRow.visibility = visibility(open.isDone && !working)
+        m.meetingSummary.setText(
+            if (open.summary.isEmpty()) R.string.meeting_summary
+            else R.string.meeting_summary_redo
+        )
+        m.meetingSummaryBox.visibility = visibility(open.summary.isNotEmpty())
+        if (open.summary.isNotEmpty()) {
+            m.meetingSummaryText.text = renderSummaryText(open.summary)
+        }
         m.meetingDiarize.visibility = visibility(open.isDone && !working)
         m.meetingExportRow.visibility = visibility(open.isDone)
         // Звук есть и у нерасшифрованной встречи — лишь бы работа по ней

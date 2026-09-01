@@ -17,6 +17,8 @@
     <color name="accent_solid">#7bc72e</color>
     <color name="accent_deep">#2f5708</color>
     <color name="on_accent">#16171a</color>
+    <!-- Опасные действия: отмена работы, удаление. Как на десктопе. -->
+    <color name="danger">#c2352b</color>
 
     <!--
       Цвета говорящих во встречах. Приглушённые, чтобы не спорить с зелёным

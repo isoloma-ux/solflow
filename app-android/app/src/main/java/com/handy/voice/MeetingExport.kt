@@ -41,9 +41,22 @@ object MeetingExport {
     private class Section(
         val title: String,
         val duration: String,
+        val summary: String,
         val segments: List<MeetingSegment>,
         val speakerAt: (Int) -> String?,
     )
+
+    /** Строки саммери для экспорта: (это заголовок?, текст) без markdown-меток. */
+    private fun summaryLines(summary: String): List<Pair<Boolean, String>> =
+        summary.lines().mapNotNull { raw ->
+            val l = raw.trim()
+            when {
+                l.isEmpty() -> null
+                l.startsWith("#") -> true to l.trimStart('#').trim()
+                l.startsWith("- ") || l.startsWith("• ") -> false to "• " + l.substring(2).trim()
+                else -> false to l
+            }
+        }
 
     private fun section(
         context: Context,
@@ -61,6 +74,7 @@ object MeetingExport {
         return Section(
             MeetingStore.displayTitle(context, meeting),
             MeetingStore.durationLabel(context, meeting.seconds),
+            meeting.summary,
             segments,
             speakerAt,
         )
@@ -174,6 +188,11 @@ object MeetingExport {
             appendLine(sec.title)
             appendLine(sec.duration)
             appendLine()
+            for ((head, line) in summaryLines(sec.summary)) {
+                if (head) appendLine()
+                appendLine(line)
+            }
+            if (sec.summary.isNotEmpty()) appendLine()
             for ((i, s) in sec.segments.withIndex()) {
                 sec.speakerAt(i)?.let {
                     if (i > 0) appendLine()
@@ -194,6 +213,12 @@ object MeetingExport {
             appendLine()
             appendLine("*${sec.duration}*")
             appendLine()
+            if (sec.summary.isNotEmpty()) {
+                appendLine(sec.summary.trim())
+                appendLine()
+                appendLine("---")
+                appendLine()
+            }
             for ((i, s) in sec.segments.withIndex()) {
                 sec.speakerAt(i)?.let {
                     appendLine("## $it")
@@ -270,6 +295,10 @@ object MeetingExport {
             newPage()
             draw(layout(sec.title, titlePaint), 4f)
             draw(layout(sec.duration, mutedPaint), 18f)
+            for ((head, line) in summaryLines(sec.summary)) {
+                if (head) draw(layout(line, speakerPaint), 6f)
+                else draw(layout(line, bodyPaint), 4f)
+            }
             for ((i, s) in sec.segments.withIndex()) {
                 sec.speakerAt(i)?.let { draw(layout(it, speakerPaint), 6f) }
                 draw(layout(MeetingStore.clockLabel(s.start), mutedPaint), 2f)
@@ -293,6 +322,10 @@ object MeetingExport {
                 if (n > 0) append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
                 append(paragraph(esc(sec.title), size = 32, medium = true))
                 append(paragraph(esc(sec.duration), color = "8A8A8A"))
+                for ((head, line) in summaryLines(sec.summary)) {
+                    if (head) append(paragraph(esc(line), size = 24, medium = true))
+                    else append(paragraph(esc(line)))
+                }
                 for ((i, s) in sec.segments.withIndex()) {
                     sec.speakerAt(i)?.let { append(paragraph(esc(it), size = 24, medium = true)) }
                     append(
