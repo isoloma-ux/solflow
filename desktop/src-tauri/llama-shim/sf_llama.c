@@ -143,7 +143,9 @@ int sf_llm_generate(
         if (on_progress) on_progress(done * 100 / n_tok, userdata);
     }
 
-    /* Генерация. Блок размышлений придерживаем и наружу не отдаём. */
+    /* Генерация. Блок размышлений придерживаем и наружу не отдаём.
+     * Прогресс генерации уходит тем же колбэком со сдвигом: 100 + номер
+     * токена — вызывающий сам решает, как это показать. */
     bool in_think = false;
     bool think_checked = false;
     char hold[64];
@@ -154,6 +156,7 @@ int sf_llm_generate(
             rc = -5;
             goto out;
         }
+        if (on_progress && i % 8 == 0) on_progress(100 + i, userdata);
         llama_token next = llama_sampler_sample(chain, h->ctx, -1);
         if (llama_vocab_is_eog(h->vocab, next)) break;
 

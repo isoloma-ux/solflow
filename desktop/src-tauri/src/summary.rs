@@ -30,12 +30,23 @@ const SYSTEM_PROMPT: &str = "Ты помощник, который делает 
 то, что есть в расшифровке; не выдумывай имена, цифры и факты; не цитируй длинные куски; \
 после раздела «Задачи» ничего не добавляй.";
 
-const N_CTX: c_int = 32768;
-const MAX_TOKENS: c_int = 2500;
+/// Контекст умеренный: KV-кэш на 32k токенов занимал ~5 ГБ и душил машины
+/// с 16 ГБ; на 16k — вдвое меньше, а длинные встречи и так режутся на куски.
+const N_CTX: c_int = 16384;
+const MAX_TOKENS: c_int = 2000;
+
+/// Сколько токенов расшифровки кладём в один кусок: остальное место
+/// контекста — промпту и ответу.
+const PART_BUDGET: usize = 12000;
+
+/// Ответ обычно 300–1500 токенов вместе с размышлениями — по этой оценке
+/// рисуется прогресс генерации.
+const EXPECTED_ANSWER: f32 = 1500.0;
 
 extern "C" {
     fn sf_llm_load(model_path: *const c_char, n_ctx: c_int, n_threads: c_int) -> *mut c_void;
     fn sf_llm_free(handle: *mut c_void);
+    fn sf_llm_count_tokens(handle: *mut c_void, text: *const c_char) -> c_int;
     fn sf_llm_generate(
         handle: *mut c_void,
         system_prompt: *const c_char,
@@ -52,7 +63,8 @@ extern "C" {
 
 struct GenState {
     out: Mutex<String>,
-    progress: Box<dyn Fn(u8) + Send + Sync>,
+    /// Сырой прогресс шима: 0–100 — чтение текста, 100+N — токены ответа.
+    progress: Box<dyn Fn(i32) + Send + Sync>,
     cancelled: Arc<AtomicBool>,
 }
 
@@ -74,7 +86,7 @@ extern "C" fn on_piece(piece: *const c_char, len: c_int, ud: *mut c_void) {
 
 extern "C" fn on_progress(percent: c_int, ud: *mut c_void) {
     let state = unsafe { &*(ud as *const GenState) };
-    (state.progress)(percent.clamp(0, 100) as u8);
+    (state.progress)(percent);
 }
 
 extern "C" fn should_stop(ud: *mut c_void) -> bool {
@@ -116,32 +128,49 @@ pub fn download(
     Ok(())
 }
 
-/// Саммери одним проходом. Расшифровка длиннее контекста режется на куски
-/// в [summarize] — сюда приходит уже влезающий текст.
+/// Загруженная модель: держится один раз на весь заход — перезагрузка
+/// 2.4 ГБ с диска на каждый кусок съедала бы десятки секунд.
+struct Llm(*mut c_void);
+
+impl Drop for Llm {
+    fn drop(&mut self) {
+        unsafe { sf_llm_free(self.0) };
+    }
+}
+
+/// Один проход по уже влезающему в контекст тексту. `slice` — доля общего
+/// прогресса этого куска (from..to из 100): чтение текста занимает первые
+/// 60% доли, генерация — остальное.
 fn generate(
-    model: &PathBuf,
+    llm: &Llm,
     transcript: &str,
     system: &str,
+    slice: (u8, u8),
     progress: impl Fn(u8) + Send + Sync + 'static,
     cancelled: Arc<AtomicBool>,
 ) -> Result<String> {
-    let path = CString::new(model.to_string_lossy().as_bytes())?;
-    let handle = unsafe { sf_llm_load(path.as_ptr(), N_CTX, 0) };
-    if handle.is_null() {
-        return Err(anyhow!("модель саммери не загрузилась"));
-    }
-
     let sys = CString::new(system)?;
     let user = CString::new(format!("Расшифровка встречи:\n\n{transcript}"))?;
+    let (from, to) = slice;
+    let span = (to - from) as f32;
     let state = GenState {
         out: Mutex::new(String::new()),
-        progress: Box::new(progress),
+        progress: Box::new(move |raw: i32| {
+            let pct = if raw > 100 {
+                // Генерация: оцениваем по ожидаемой длине ответа.
+                let g = ((raw - 100) as f32 / EXPECTED_ANSWER).min(1.0);
+                from + (span * (0.6 + 0.4 * g)) as u8
+            } else {
+                from + (raw.clamp(0, 100) as f32 / 100.0 * span * 0.6) as u8
+            };
+            progress(pct.min(99));
+        }),
         cancelled,
     };
 
     let rc = unsafe {
         sf_llm_generate(
-            handle,
+            llm.0,
             sys.as_ptr(),
             user.as_ptr(),
             MAX_TOKENS,
@@ -153,7 +182,6 @@ fn generate(
             &state as *const GenState as *mut c_void,
         )
     };
-    unsafe { sf_llm_free(handle) };
 
     match rc {
         0 => Ok(state.out.into_inner().unwrap().trim().to_string()),
@@ -163,8 +191,8 @@ fn generate(
     }
 }
 
-/// Полное саммери: если расшифровка не влезает в контекст целиком, режем
-/// пополам по границе реплик и сводим саммери кусков вторым проходом.
+/// Полное саммери: длинная расшифровка режется на куски по бюджету токенов,
+/// куски сводятся финальным проходом. Модель грузится один раз.
 pub fn summarize(
     app: &AppHandle,
     transcript: &str,
@@ -176,51 +204,74 @@ pub fn summarize(
         return Err(anyhow!("модель саммери не скачана"));
     }
 
-    match generate(&model, transcript, SYSTEM_PROMPT, progress.clone(), cancelled.clone()) {
-        Err(e) if e.to_string().contains("не влезла") => {
-            // Двухчасовые встречи: куски по половине, потом свод.
-            let parts = split_in_half(transcript);
-            let mut partials = Vec::new();
-            for (i, part) in parts.iter().enumerate() {
-                let base = (i as u8) * 45;
-                let p = progress.clone();
-                let sub =
-                    move |pct: u8| p(base + (pct as u16 * 45 / 100) as u8);
-                partials.push(generate(
-                    &model,
-                    part,
-                    SYSTEM_PROMPT,
-                    sub,
-                    cancelled.clone(),
-                )?);
-            }
-            let merged = partials.join("\n\n---\n\n");
-            let p = progress.clone();
-            generate(
-                &model,
-                &merged,
-                "Ниже — саммери частей одной встречи. Сведи их в одно общее саммери \
-                 в том же формате: «## О чем говорили» (до пяти пунктов), «## Решения», \
-                 «## Задачи». Не повторяйся и ничего не добавляй от себя.",
-                move |pct| p(90 + (pct as u16 / 10) as u8),
-                cancelled,
-            )
-        }
-        other => other,
+    let path = CString::new(model.to_string_lossy().as_bytes())?;
+    let handle = unsafe { sf_llm_load(path.as_ptr(), N_CTX, 0) };
+    if handle.is_null() {
+        return Err(anyhow!("модель саммери не загрузилась"));
     }
+    let llm = Llm(handle);
+
+    let text_c = CString::new(transcript)?;
+    let tokens = unsafe { sf_llm_count_tokens(llm.0, text_c.as_ptr()) };
+    if tokens < 0 {
+        return Err(anyhow!("текст не токенизировался"));
+    }
+    let parts_n = ((tokens as usize).div_ceil(PART_BUDGET)).max(1);
+
+    if parts_n == 1 {
+        return generate(&llm, transcript, SYSTEM_PROMPT, (0, 100), progress, cancelled);
+    }
+
+    // Куски + финальный свод делят полосу прогресса поровну.
+    let parts = split_into(transcript, parts_n);
+    let slice = 100 / (parts_n + 1) as u8;
+    let mut partials = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        let from = slice * i as u8;
+        partials.push(generate(
+            &llm,
+            part,
+            SYSTEM_PROMPT,
+            (from, from + slice),
+            progress.clone(),
+            cancelled.clone(),
+        )?);
+    }
+    let merged = partials.join("\n\n---\n\n");
+    generate(
+        &llm,
+        &merged,
+        "Ниже — саммери частей одной встречи. Сведи их в одно общее саммери \
+         в том же формате: «## О чем говорили» (до пяти пунктов), «## Решения», \
+         «## Задачи». Не повторяйся и ничего не добавляй от себя.",
+        (slice * parts_n as u8, 100),
+        progress,
+        cancelled,
+    )
 }
 
-/// Режет текст примерно пополам по границе предложения.
-fn split_in_half(text: &str) -> Vec<String> {
-    let mid = text.len() / 2;
-    let cut = text[mid..]
-        .find(". ")
-        .map(|i| mid + i + 1)
-        .unwrap_or(mid.min(text.len()));
-    // Граница могла попасть внутрь многобайтового символа — двигаемся к ней.
-    let mut cut = cut;
-    while !text.is_char_boundary(cut) {
-        cut += 1;
+/// Режет текст на n примерно равных кусков по границам предложений.
+fn split_into(text: &str, n: usize) -> Vec<String> {
+    let mut parts = Vec::new();
+    let step = text.len() / n;
+    let mut start = 0;
+    for i in 1..n {
+        let mut cut = (step * i).max(start + 1).min(text.len());
+        while !text.is_char_boundary(cut) {
+            cut += 1;
+        }
+        // К ближайшей границе предложения справа, чтобы не рвать мысль.
+        if let Some(dot) = text[cut..].find(". ") {
+            cut += dot + 1;
+        }
+        while !text.is_char_boundary(cut) {
+            cut += 1;
+        }
+        if cut > start && cut < text.len() {
+            parts.push(text[start..cut].to_string());
+            start = cut;
+        }
     }
-    vec![text[..cut].to_string(), text[cut..].to_string()]
+    parts.push(text[start..].to_string());
+    parts
 }
