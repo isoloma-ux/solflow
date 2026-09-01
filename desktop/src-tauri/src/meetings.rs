@@ -1120,6 +1120,56 @@ fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> 
     Ok(())
 }
 
+/// Название по кнопке: для уже готовых встреч и когда автоназвание не
+/// сработало. В отличие от авто, перезаписывает и данное руками имя —
+/// кнопку нажали осознанно.
+pub fn autotitle(app: &AppHandle, id: i64) {
+    let state = app.state::<MeetingState>();
+    if state.phase.lock().unwrap().contains_key(&id) {
+        return;
+    }
+    state.phase.lock().unwrap().insert(id, "titling");
+    notify(app);
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let gate = app.state::<MeetingState>().engine_gate.clone();
+        let _turn = gate.lock().unwrap();
+
+        let result = (|| -> Result<()> {
+            let segments = load_transcript(&app, id);
+            if segments.is_empty() {
+                return Err(anyhow!("расшифровки ещё нет"));
+            }
+            let mut head = String::new();
+            for s in &segments {
+                head.push_str(&s.text);
+                head.push(' ');
+                if head.len() > 6000 {
+                    break;
+                }
+            }
+            let title = crate::summary::title(&app, &head)?;
+            if title.is_empty() {
+                return Err(anyhow!("название не придумалось"));
+            }
+            let mut meta = load_meta(&app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+            meta.title = title;
+            save_meta(&app, id, &meta);
+            Ok(())
+        })();
+
+        let state = app.state::<MeetingState>();
+        state.phase.lock().unwrap().remove(&id);
+        if let Err(e) = result {
+            log::warn!("название по кнопке не удалось: {e}");
+            use tauri::Emitter;
+            let _ = app.emit("solflow-summary-error", format!("{e}"));
+        }
+        notify(&app);
+    });
+}
+
 // --- разделение говорящих --------------------------------------------------
 
 /// Диаризация готовой встречи: если модель голосов ещё не скачана, сначала

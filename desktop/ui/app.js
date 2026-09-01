@@ -773,6 +773,7 @@ function stateLabel(m) {
   if (m.phase === "queued") return t("В очереди на расшифровку");
   if (m.phase === "llm_downloading") return t("Качаю модель саммери{0}", pct);
   if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
+  if (m.phase === "titling") return t("Придумываю название");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
   // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
@@ -1753,6 +1754,8 @@ function renderSummary(m) {
   const button = el("meetSummary");
   button.hidden = !done && !m.summary;
   button.disabled = busy;
+  el("meetAutoTitle").hidden = !done;
+  el("meetAutoTitle").disabled = busy;
   if (!summaryArmed) {
     button.textContent = m.summary ? t("Обновить саммери") : t("Саммери");
   }
@@ -1799,6 +1802,20 @@ el("meetSummary").addEventListener("click", async () => {
     summaryArmed = null;
   }
   invoke("meeting_summarize", { id: detailId });
+});
+
+// Ради названия гигабайты не качаются: без модели кнопка отправляет к
+// «Саммери» — там и предупреждение о размере, и загрузка.
+el("meetAutoTitle").addEventListener("click", async () => {
+  if (detailId === null) return;
+  const [ready] = await invoke("summary_state");
+  if (!ready) {
+    el("meetDetailStatus").textContent =
+      t("Сначала скачайте модель кнопкой «Саммери»");
+    el("meetDetailStatus").hidden = false;
+    return;
+  }
+  invoke("meeting_autotitle", { id: detailId });
 });
 
 el("meetWorkCancel").addEventListener("click", () => {

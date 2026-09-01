@@ -1097,6 +1097,12 @@ fn summary_state(app: AppHandle) -> (bool, u64) {
     (summary::model_ready(&app), summary::MODEL_MB)
 }
 
+/// Придумать название по кнопке — для готовых встреч.
+#[tauri::command]
+fn meeting_autotitle(app: AppHandle, id: i64) {
+    meetings::autotitle(&app, id);
+}
+
 /// Папка для скачанного по ссылке; пустая строка — не оставлять исходник.
 #[tauri::command]
 fn set_downloads_dir(app: AppHandle, dir: Option<String>) {
@@ -1507,6 +1513,7 @@ pub fn run() {
             meetings_export_combined,
             meeting_summarize,
             summary_state,
+            meeting_autotitle,
             meeting_import,
             meeting_import_paths,
             meeting_import_url,
