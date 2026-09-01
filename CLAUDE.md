@@ -32,6 +32,11 @@ Sol Flow живет на трех платформах: Android (`app-android/`)
   без «это только на Android»: пользователь Windows читает про свою
   платформу.
 - Пункты оформляются **списком с точками**, не абзацами через перенос.
+- Окно ведет **историю версий**: перепрыгнувшему через релиз показываются
+  и пропущенные разделы. При каждом релизе новая версия дописывается в
+  начало истории: Android — список `history` в showWhatsNew
+  (MainActivity) + строка `whatsnew_body_XYZ`; десктоп — блок
+  `data-whatsnew-version` в index.html + переводы в i18n.js.
 - Android: текст в `whatsnew_body` (values/ и values-en/), показ по
   versionCode в prefs. Десктоп: разметка в `ui/index.html`, показ по
   ключу `версия + WHATSNEW_REV` в localStorage — суффикс поднимается,

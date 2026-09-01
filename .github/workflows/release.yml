@@ -49,6 +49,22 @@ jobs:
         env:
           SHERPA: 1.13.6
 
+      # Библиотека саммери: llama.cpp со своим ggml одной DLL за узким
+      # шимом. Версия закреплена коммитом — сборка должна повторяться.
+      - name: Библиотека саммери (llama)
+        shell: bash
+        run: |
+          git clone https://github.com/ggml-org/llama.cpp ../../llama.cpp
+          git -C ../../llama.cpp checkout 0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0
+          cmake -S llama-shim -B shim-build -A x64 \
+            -DLLAMA_DIR="$PWD/../../llama.cpp"
+          cmake --build shim-build --config Release -j 4
+          mkdir -p llama/lib
+          cp shim-build/Release/solflow_llama.dll llama/lib/
+          cp shim-build/Release/solflow_llama.lib llama/lib/
+          # DLL — рядом с экзешником и в бандл через *.dll в ресурсах.
+          cp shim-build/Release/solflow_llama.dll .
+
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
@@ -151,6 +167,14 @@ jobs:
       # удостоверению приложения. С подписью «на месте» удостоверением был
       # отпечаток файла — каждая сборка выглядела новым приложением, и права
       # приходилось выдавать заново.
+      # Библиотека саммери: llama.cpp + шим одним dylib, Metal вшит.
+      # Версия закреплена коммитом — сборка должна повторяться.
+      - name: Библиотека саммери (llama)
+        run: |
+          git clone https://github.com/ggml-org/llama.cpp ../../llama.cpp
+          git -C ../../llama.cpp checkout 0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0
+          sh llama-shim/build-macos.sh
+
       - name: Сертификат подписи
         env:
           CERT_P12: ${{ secrets.MACOS_CERT_P12 }}

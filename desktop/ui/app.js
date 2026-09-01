@@ -2812,14 +2812,33 @@ el("showIntro").addEventListener("click", showIntro);
 // Суффикс поднимают, когда текст обновился внутри той же версии.
 const WHATSNEW_REV = "-3";
 
+/** «1.2.3» новее «1.2.2»? Пустая или кривая строка считается древней. */
+function versionNewer(a, b) {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  }
+  return false;
+}
+
 function maybeShowWhatsNew(version) {
   const seen = version + WHATSNEW_REV;
+  let previous = "";
   try {
-    if (localStorage.getItem("whatsnewSeen") === seen) return;
+    const stored = localStorage.getItem("whatsnewSeen") || "";
+    if (stored === seen) return;
+    // Что человек видел в прошлый раз — чтобы показать и пропущенные
+    // версии, если он перепрыгнул через релиз.
+    previous = stored.split("-")[0];
     localStorage.setItem("whatsnewSeen", seen);
     if (!localStorage.getItem("introSeen")) return;
   } catch (e) {
     return; // Хранилище недоступно — не настаиваем.
+  }
+  for (const block of document.querySelectorAll("[data-whatsnew-version]")) {
+    const v = block.dataset.whatsnewVersion;
+    block.hidden = previous !== "" && !versionNewer(v, previous);
   }
   el("whatsnewTitle").textContent = t("Что нового в {0}", version);
   el("whatsnew").hidden = false;

@@ -1536,3 +1536,16 @@ textarea {
   cursor: pointer;
 }
 .danger-pill:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* Окно «Что нового»: история версий листается внутри. */
+.whatsnew-scroll {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.whatsnew-prev-title {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+  font-weight: 500;
+}

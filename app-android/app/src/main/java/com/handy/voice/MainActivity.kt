@@ -234,9 +234,10 @@ class MainActivity : AppCompatActivity() {
             AppPrefs.setLastSeenVersion(this, BuildConfig.VERSION_CODE)
             startActivity(Intent(this, IntroActivity::class.java))
         } else {
-            if (AppPrefs.lastSeenVersion(this) < BuildConfig.VERSION_CODE) {
+            val lastSeen = AppPrefs.lastSeenVersion(this)
+            if (lastSeen < BuildConfig.VERSION_CODE) {
                 AppPrefs.setLastSeenVersion(this, BuildConfig.VERSION_CODE)
-                showWhatsNew()
+                showWhatsNew(lastSeen)
             }
             if (!hasMic()) {
                 micAsked = true
@@ -245,11 +246,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Один раз после обновления: что изменилось в этой версии. */
-    private fun showWhatsNew() {
+    /**
+     * Один раз после обновления: что изменилось. Перепрыгнувшим через
+     * версию показываются и пропущенные разделы — историю ведет список
+     * ниже, новые версии дописываются в его начало.
+     */
+    private fun showWhatsNew(lastSeenCode: Int) {
+        val history = listOf(
+            Triple(27, "0.5.0", R.string.whatsnew_body),
+            Triple(26, "0.4.0", R.string.whatsnew_body_040),
+        )
+        val message = buildString {
+            for ((code, name, body) in history) {
+                if (code <= lastSeenCode && lastSeenCode != 0) continue
+                if (isNotEmpty()) {
+                    append("\n\n")
+                    append(getString(R.string.whatsnew_earlier, name))
+                    append("\n\n")
+                }
+                append(getString(body))
+            }
+        }
+        if (message.isBlank()) return
         MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.whatsnew_title, BuildConfig.VERSION_NAME))
-            .setMessage(getString(R.string.whatsnew_body))
+            .setMessage(message)
             .setPositiveButton(R.string.whatsnew_ok, null)
             .show()
     }

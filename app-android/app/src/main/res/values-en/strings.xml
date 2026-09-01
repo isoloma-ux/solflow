@@ -38,7 +38,9 @@
 
     <string name="whatsnew_title">What\'s new in %1$s</string>
     <string name="whatsnew_ok">Got it</string>
-    <string name="whatsnew_body">• Transcriptions no longer run at once — they line up in a queue\n\n• Cancel is back: model downloads and transcriptions can be stopped\n\n• Meeting recording can be paused — on screen and from the notification, and the notification can be hidden from the lock screen\n\n• A “Suppress background” toggle right during a meeting recording\n\n• Export several meetings at once — as separate files or one combined</string>
+    <string name="whatsnew_earlier">Earlier, in %1$s</string>
+    <string name="whatsnew_body_040">• Transcriptions run one after another, not at once\n\n• Cancelling model downloads and transcriptions — from the app and the notification\n\n• Meeting recording pause — on screen and in the shade; the notification can be hidden from the lock screen\n\n• A “Suppress background” toggle during a meeting recording\n\n• Export several meetings — as separate files or one combined</string>
+    <string name="whatsnew_body">• Speaker count detection got more accurate — a rare voice no longer sticks to its neighbour\n\n• Meeting audio can be saved as WAV — from an open meeting or in a batch\n\n• “Share the text”: title, summary and transcript go to any app — a person or an online model\n\n• Cancel buttons are now red and visible\n\n• A summary computed on the desktop shows as a card and joins the export</string>
     <string name="diarize_two">Two</string>
     <string name="diarize_three">Three</string>
     <string name="diarize_four">Four</string>
