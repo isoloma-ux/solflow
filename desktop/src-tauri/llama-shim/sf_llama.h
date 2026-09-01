@@ -28,6 +28,10 @@ SF_API void * sf_llm_load(const char * model_path, int n_ctx, int n_threads);
 
 SF_API void sf_llm_free(void * handle);
 
+/* Список вычислителей через запятую («NVIDIA ... (Vulkan), CPU») — в буфер;
+ * возвращает длину или -1. Для диагностики «кто считает». */
+SF_API int sf_llm_devices(char * out, int cap);
+
 /* Сколько токенов займет текст — чтобы решить, влезает ли в контекст. */
 SF_API int sf_llm_count_tokens(void * handle, const char * text);
 

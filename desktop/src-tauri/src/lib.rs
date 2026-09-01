@@ -46,6 +46,9 @@ mod summary {
     pub fn model_ready(_app: &AppHandle) -> bool {
         false
     }
+    pub fn devices() -> String {
+        String::new()
+    }
     pub fn download(
         _app: &AppHandle,
         _on_progress: &dyn Fn(u8),

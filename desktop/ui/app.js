@@ -1822,6 +1822,11 @@ el("meetWorkCancel").addEventListener("click", () => {
   if (detailId !== null) invoke("meeting_cancel", { id: detailId });
 });
 
+listen("solflow-summary-device", (e) => {
+  el("meetDetailStatus").textContent = t("Саммери считает: {0}", e.payload);
+  el("meetDetailStatus").hidden = false;
+});
+
 listen("solflow-summary-error", (e) => {
   el("meetDetailStatus").textContent = t("Саммери: {0}", e.payload);
   el("meetDetailStatus").hidden = false;

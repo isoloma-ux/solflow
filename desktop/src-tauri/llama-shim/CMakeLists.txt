@@ -36,3 +36,9 @@ target_include_directories(solflow_llama PRIVATE
     ${LLAMA_DIR}/include
     ${LLAMA_DIR}/ggml/include)
 target_link_libraries(solflow_llama PRIVATE llama)
+if(SF_VULKAN)
+    # Явная ссылка: иначе MSVC выбрасывает «неиспользуемый» статический
+    # бэкенд, и DLL молча считает на процессоре.
+    target_compile_definitions(solflow_llama PRIVATE SF_WITH_VULKAN)
+    target_link_libraries(solflow_llama PRIVATE ggml-vulkan)
+endif()

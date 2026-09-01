@@ -1092,6 +1092,15 @@ fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> 
     state.progress.lock().unwrap().insert(id, 0);
     notify(app);
 
+    // Кто считает — в лог и в окно: пользователь с видеокартой должен
+    // видеть, что она в деле (и мы — если вдруг нет).
+    let devices = crate::summary::devices();
+    if !devices.is_empty() {
+        log::info!("саммери считают: {devices}");
+        use tauri::Emitter;
+        let _ = app.emit("solflow-summary-device", devices);
+    }
+
     let segments = load_transcript(app, id);
     if segments.is_empty() {
         return Err(anyhow!("расшифровки ещё нет"));

@@ -72,6 +72,7 @@ extern "C" {
     fn sf_llm_load(model_path: *const c_char, n_ctx: c_int, n_threads: c_int) -> *mut c_void;
     fn sf_llm_free(handle: *mut c_void);
     fn sf_llm_count_tokens(handle: *mut c_void, text: *const c_char) -> c_int;
+    fn sf_llm_devices(out: *mut c_char, cap: c_int) -> c_int;
     fn sf_llm_generate(
         handle: *mut c_void,
         system_prompt: *const c_char,
@@ -128,6 +129,17 @@ pub fn model_path(app: &AppHandle) -> PathBuf {
 
 pub fn model_ready(app: &AppHandle) -> bool {
     model_path(app).exists()
+}
+
+/// Какие вычислители видит llama — «NVIDIA ... (Vulkan), CPU». Пустая
+/// строка, если библиотека не смогла ответить.
+pub fn devices() -> String {
+    let mut buf = vec![0u8; 512];
+    let n = unsafe { sf_llm_devices(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) };
+    if n <= 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(&buf[..n as usize]).to_string()
 }
 
 /// Скачивание модели саммери — тем же способом, что эмбеддинги диаризации.

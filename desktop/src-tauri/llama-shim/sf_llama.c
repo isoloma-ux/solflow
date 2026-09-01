@@ -11,6 +11,27 @@
 #endif
 
 #include "llama.h"
+#include "ggml-backend.h"
+
+/*
+ * Vulkan приходится тянуть за уши: статический ggml-vulkan.lib ни на что
+ * не ссылается из реестра, и линковщик MSVC его выбрасывал — DLL «с
+ * Vulkan» считала на процессоре (проверено размером установщика: +7 КБ
+ * вместо мегабайтов шейдеров). Явная ссылка + регистрация решают обе
+ * беды: код не выбрасывается и бэкенд попадает в реестр.
+ */
+#if defined(SF_WITH_VULKAN)
+#    include "ggml-vulkan.h"
+
+static void sf_ensure_vulkan(void) {
+    for (size_t i = 0; i < ggml_backend_reg_count(); i++) {
+        const char * name = ggml_backend_reg_name(ggml_backend_reg_get(i));
+        if (name && strstr(name, "Vulkan")) return;
+    }
+    ggml_backend_reg_t reg = ggml_backend_vk_reg();
+    if (reg) ggml_backend_register(reg);
+}
+#endif
 
 typedef struct {
     struct llama_model *   model;
@@ -25,6 +46,9 @@ static sf_llm * load_once(const char * model_path, int n_ctx, int n_threads, int
 
 void * sf_llm_load(const char * model_path, int n_ctx, int n_threads) {
     llama_backend_init();
+#if defined(SF_WITH_VULKAN)
+    sf_ensure_vulkan();
+#endif
     /* Сначала видеокарта; не вышло (нет её или не хватило видеопамяти) —
      * честный запасной путь на процессоре. */
     sf_llm * h = load_once(model_path, n_ctx, n_threads, 99);
@@ -78,6 +102,21 @@ void sf_llm_free(void * handle) {
     if (h->ctx) llama_free(h->ctx);
     if (h->model) llama_model_free(h->model);
     free(h);
+}
+
+/* Какие вычислители видит библиотека — «NVIDIA GeForce RTX 4090 (Vulkan), CPU». */
+int sf_llm_devices(char * out, int cap) {
+    if (!out || cap < 8) return -1;
+    out[0] = 0;
+    int used = 0;
+    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+        const char * desc = ggml_backend_dev_description(ggml_backend_dev_get(i));
+        if (!desc) continue;
+        int n = snprintf(out + used, cap - used, "%s%s", used ? ", " : "", desc);
+        if (n < 0 || n >= cap - used) break;
+        used += n;
+    }
+    return used;
 }
 
 int sf_llm_count_tokens(void * handle, const char * text) {
