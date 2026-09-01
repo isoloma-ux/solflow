@@ -99,10 +99,6 @@ class MeetingService : Service() {
                     intent.getIntExtra(EXTRA_SPEAKERS, 0),
                 )
             }
-            ACTION_SUMMARIZE -> {
-                foregroundForWork()
-                beginSummarize(intent.getLongExtra(EXTRA_ID, 0))
-            }
             ACTION_AUTOTITLE -> {
                 foregroundForWork()
                 beginAutotitle(intent.getLongExtra(EXTRA_ID, 0))
@@ -548,80 +544,9 @@ class MeetingService : Service() {
     // --- саммери и название -----------------------------------------------
 
     /**
-     * Саммери готовой встречи: докачивает модель, если её нет (интерфейс
-     * предупреждает о размере заранее), и идёт в общей очереди с
-     * расшифровками — движки тяжёлые, пусть ходят по одному.
+     * Название по кнопке: перезаписывает и имя, данное руками. Если модели
+     * ещё нет — сначала докачивает её (интерфейс предупредил о размере).
      */
-    private fun beginSummarize(id: Long) {
-        if (id == 0L || jobs.containsKey(id)) return
-        val meeting = MeetingStore.load(this, id) ?: return
-
-        progress[id] = 0
-        phase[id] = R.string.meeting_state_queued
-        notifyChange()
-        foregroundForWork()
-
-        lateinit var job: Job
-        job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            val result = runCatching {
-                engineGate.withLock {
-                    if (!SummaryEngine.modelReady(this@MeetingService)) {
-                        phase[id] = R.string.meeting_state_llm_downloading
-                        notifyChange()
-                        SummaryEngine.download(
-                            this@MeetingService,
-                            onProgress = { pct ->
-                                progress[id] = pct
-                                notifyChange()
-                            },
-                            isCancelled = { job.isCancelled },
-                        )
-                    }
-                    phase[id] = R.string.meeting_state_summarizing
-                    progress[id] = 0
-                    notifyChange()
-
-                    val segments = MeetingStore.loadTranscript(this@MeetingService, id)
-                    if (segments.isEmpty()) error("расшифровки ещё нет")
-                    val text = segments.joinToString(" ") { it.text }
-                    SummaryEngine.summarize(
-                        this@MeetingService, text,
-                        onProgress = { pct ->
-                            if (progress[id] != pct) {
-                                progress[id] = pct
-                                notifyProgress(meeting, pct)
-                                notifyChange()
-                            }
-                        },
-                        isCancelled = { job.isCancelled },
-                    )
-                }
-            }
-            val cancelled = job.isCancelled
-            jobs.remove(id)
-            progress.remove(id)
-            phase.remove(id)
-            manager().cancel(id.toInt())
-
-            result.fold(
-                onSuccess = { summary ->
-                    MeetingStore.load(this@MeetingService, id)?.let {
-                        MeetingStore.save(this@MeetingService, it.copy(summary = summary))
-                    }
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "саммери не удалось", e)
-                    if (!cancelled) notifyImportFailed(e.message)
-                },
-            )
-            notifyChange()
-            stopIfIdle()
-        }
-        jobs[id] = job
-        job.start()
-    }
-
-    /** Название по кнопке: перезаписывает и имя, данное руками. */
     private fun beginAutotitle(id: Long) {
         if (id == 0L || jobs.containsKey(id)) return
 
@@ -633,6 +558,22 @@ class MeetingService : Service() {
         job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             val result = runCatching {
                 engineGate.withLock {
+                    if (!SummaryEngine.modelReady(this@MeetingService)) {
+                        phase[id] = R.string.meeting_state_llm_downloading
+                        progress[id] = 0
+                        notifyChange()
+                        SummaryEngine.download(
+                            this@MeetingService,
+                            onProgress = { pct ->
+                                progress[id] = pct
+                                notifyChange()
+                            },
+                            isCancelled = { job.isCancelled },
+                        )
+                        phase[id] = R.string.meeting_state_titling
+                        progress.remove(id)
+                        notifyChange()
+                    }
                     val segments = MeetingStore.loadTranscript(this@MeetingService, id)
                     if (segments.isEmpty()) error("расшифровки ещё нет")
                     val head = buildString {
@@ -646,6 +587,7 @@ class MeetingService : Service() {
             }
             val cancelled = job.isCancelled
             jobs.remove(id)
+            progress.remove(id)
             phase.remove(id)
 
             result.fold(
@@ -929,7 +871,6 @@ class MeetingService : Service() {
         private const val ACTION_IMPORT = "com.handy.voice.MEETING_IMPORT"
         private const val ACTION_IMPORT_URL = "com.handy.voice.MEETING_IMPORT_URL"
         private const val ACTION_DIARIZE = "com.handy.voice.MEETING_DIARIZE"
-        private const val ACTION_SUMMARIZE = "com.handy.voice.MEETING_SUMMARIZE"
         private const val ACTION_AUTOTITLE = "com.handy.voice.MEETING_AUTOTITLE"
         private const val EXTRA_ID = "id"
         private const val EXTRA_URI = "uri"
@@ -1035,14 +976,6 @@ class MeetingService : Service() {
                 Intent(context, MeetingService::class.java)
                     .setAction(ACTION_IMPORT)
                     .putExtra(EXTRA_URI, uri.toString())
-            )
-        }
-
-        fun summarize(context: Context, id: Long) {
-            context.startForegroundService(
-                Intent(context, MeetingService::class.java)
-                    .setAction(ACTION_SUMMARIZE)
-                    .putExtra(EXTRA_ID, id)
             )
         }
 

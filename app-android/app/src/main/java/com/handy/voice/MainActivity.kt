@@ -931,16 +931,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             renderMeetings()
         }
-        m.meetingSummary.setOnClickListener { startSummary() }
-        m.meetingAutotitle.setOnClickListener {
-            val id = openMeetingId ?: return@setOnClickListener
-            if (!SummaryEngine.modelReady(this)) {
-                Snackbar.make(ui.root, R.string.summary_need_model, Snackbar.LENGTH_LONG).show()
-            } else {
-                MeetingService.autotitle(this, id)
-                renderMeetings()
-            }
-        }
+        m.meetingAutotitle.setOnClickListener { startAutotitle() }
         m.meetingCopy.setOnClickListener { copyMeeting() }
         m.meetingShareText.setOnClickListener { shareMeetingText() }
         m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
@@ -1315,10 +1306,14 @@ class MainActivity : AppCompatActivity() {
         return builder
     }
 
-    private fun startSummary() {
+    /**
+     * Название по кнопке: без модели — честное предупреждение о 2.4 ГБ до
+     * старта, дальше сервис сам докачает и придумает.
+     */
+    private fun startAutotitle() {
         val id = openMeetingId ?: return
         if (SummaryEngine.modelReady(this)) {
-            MeetingService.summarize(this, id)
+            MeetingService.autotitle(this, id)
             renderMeetings()
             return
         }
@@ -1326,7 +1321,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.summary_download_title)
             .setMessage(R.string.summary_download_message)
             .setPositiveButton(R.string.summary_download_go) { _, _ ->
-                MeetingService.summarize(this, id)
+                MeetingService.autotitle(this, id)
                 renderMeetings()
             }
             .setNegativeButton(R.string.cancel, null)
@@ -1545,12 +1540,9 @@ class MainActivity : AppCompatActivity() {
         m.meetingProgress.setProgress(percent ?: 0, working && motionOn())
         m.meetingCancelWork.visibility = visibility(working)
 
-        // Саммери и название — для готовой расшифровки.
-        m.meetingSummaryRow.visibility = visibility(open.isDone && !working)
-        m.meetingSummary.setText(
-            if (open.summary.isEmpty()) R.string.meeting_summary
-            else R.string.meeting_summary_redo
-        )
+        // Название — для готовой расшифровки. Карточка саммери показывается,
+        // если оно есть (пока — со старых сборок, потом принесёт синхронизация).
+        m.meetingAutotitle.visibility = visibility(open.isDone && !working)
         m.meetingSummaryBox.visibility = visibility(open.summary.isNotEmpty())
         if (open.summary.isNotEmpty()) {
             val rendered = renderSummaryText(open.summary)
