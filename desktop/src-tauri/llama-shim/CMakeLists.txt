@@ -12,6 +12,13 @@ if(NOT LLAMA_DIR)
     message(FATAL_ERROR "нужен -DLLAMA_DIR=путь/к/llama.cpp")
 endif()
 
+# Видеокарта через Vulkan: работает на NVIDIA и AMD, CUDA не нужна.
+# Без видеокарты или без флага DLL честно считает на процессоре.
+option(SF_VULKAN "Собрать с Vulkan-бэкендом" OFF)
+if(SF_VULKAN)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+endif()
+
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)

@@ -182,6 +182,8 @@ const EN = {
   "Понятно": "Got it",
   "В очереди на расшифровку": "Queued for transcription",
   "Раньше, в 0.4.0": "Earlier, in 0.4.0",
+  "Раньше, в 0.5.0": "Earlier, in 0.5.0",
+  "Саммери на Windows теперь считает видеокарта — NVIDIA и AMD, через Vulkan; без неё всё работает на процессоре, как раньше.": "Summaries on Windows now run on the graphics card — NVIDIA and AMD, via Vulkan; without one everything works on the CPU as before.",
   "Расшифровки идут по очереди, ждущие помечены «в очереди».": "Transcriptions run one after another, the waiting ones are marked “queued”.",
   "Запись встречи ставится на паузу и продолжается — без шва в файле.": "Meeting recording pauses and resumes — with no seam in the file.",
   "Несколько выбранных встреч выгружаются одним файлом или по отдельности — приложение спросит.": "Several selected meetings export as one file or separately — the app will ask.",

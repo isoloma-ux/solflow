@@ -119,7 +119,7 @@ jobs:
           git clone https://github.com/ggml-org/llama.cpp ../../llama.cpp
           git -C ../../llama.cpp checkout 0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0
           cmake -S llama-shim -B shim-build -A x64 \
-            -DLLAMA_DIR="$PWD/../../llama.cpp"
+            -DLLAMA_DIR="$PWD/../../llama.cpp" -DSF_VULKAN=ON
           cmake --build shim-build --config Release -j 4
           mkdir -p llama/lib
           cp shim-build/Release/solflow_llama.dll llama/lib/

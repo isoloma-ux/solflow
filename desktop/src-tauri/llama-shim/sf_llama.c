@@ -19,10 +19,22 @@ typedef struct {
     int n_ctx;
 } sf_llm;
 
+/* Одна попытка загрузки: gpu_layers > 0 — модель и кэш едут на видеокарту
+ * (если бэкенд собран: Metal на Маке, Vulkan на Windows). */
+static sf_llm * load_once(const char * model_path, int n_ctx, int n_threads, int gpu_layers);
+
 void * sf_llm_load(const char * model_path, int n_ctx, int n_threads) {
     llama_backend_init();
+    /* Сначала видеокарта; не вышло (нет её или не хватило видеопамяти) —
+     * честный запасной путь на процессоре. */
+    sf_llm * h = load_once(model_path, n_ctx, n_threads, 99);
+    if (!h) h = load_once(model_path, n_ctx, n_threads, 0);
+    return h;
+}
 
+static sf_llm * load_once(const char * model_path, int n_ctx, int n_threads, int gpu_layers) {
     struct llama_model_params mp = llama_model_default_params();
+    mp.n_gpu_layers = gpu_layers;
     struct llama_model * model = llama_model_load_from_file(model_path, mp);
     if (!model) return NULL;
 
