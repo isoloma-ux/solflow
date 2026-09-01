@@ -184,6 +184,7 @@
     <string name="whatsnew_ok">Понятно</string>
     <string name="whatsnew_earlier">Раньше, в %1$s</string>
     <string name="whatsnew_body_040">• Расшифровки идут по очереди, а не одновременно\n\n• Отмена загрузки модели и расшифровки — из приложения и уведомления\n\n• Пауза записи встречи — на экране и в шторке; уведомление можно скрыть с заблокированного экрана\n\n• Тумблер «Глушить фон» во время записи встречи\n\n• Экспорт нескольких встреч — отдельными файлами или одним общим</string>
+    <string name="whatsnew_body_060">• Синхронизация через Яндекс.Диск: встречи и проекты одинаковы на телефоне и компьютере. Вход по коду — в настройках, данные лежат в папке приложения на вашем Диске\n\n• Записали на телефоне — компьютер сам посчитает саммери, придумает название и отправит их обратно\n\n• Переименования, проекты и удаления расходятся по всем устройствам; звук записей передается по желанию — отдельным переключателем\n\n• Как часто проверять Диск — настройка; синхронизировать сразу — потянуть список встреч вниз или строкой в боковом меню</string>
     <string name="whatsnew_body">• Автоопределение числа говорящих стало точнее — редкий голос больше не приклеивается к соседнему\n\n• Исходный звук встречи сохраняется в WAV — кнопкой в открытой встрече или пачкой через выбор нескольких\n\n• «Поделиться текстом»: название, саммери и расшифровка уходят в любое приложение — хоть человеку, хоть нейросети\n\n• Кнопки отмены стали красными и заметными\n\n• Саммери встречи, посчитанное на компьютере, показывается карточкой и уходит в экспорт</string>
     <string name="diarize_auto">Определить автоматически</string>
     <string name="diarize_two">Двое</string>
@@ -283,6 +284,48 @@
     <string name="retention_never">Не хранить</string>
     <string name="set_keep_audio">Хранить звук диктовок</string>
     <string name="set_keep_audio_hint">Без него история останется только текстом. Минута — около двух мегабайт</string>
+
+    <!-- ===== Синхронизация через Яндекс.Диск ============================= -->
+
+    <string name="group_sync">Синхронизация</string>
+    <string name="set_sync_account">Яндекс.Диск</string>
+    <string name="sync_hint_off">Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске. Нажмите, чтобы подключить</string>
+    <string name="sync_hint_unconfigured">В этой сборке нет ключей Яндекс OAuth — синхронизация недоступна</string>
+    <string name="sync_hint_waiting">Введите код %1$s на странице Яндекса и разрешите доступ. Жду подтверждения</string>
+    <string name="sync_hint_connected">Аккаунт %1$s. Синхронизировано: %2$s</string>
+    <string name="sync_hint_connected_never">Аккаунт %1$s. Еще не синхронизировалось</string>
+    <string name="sync_hint_running">Аккаунт %1$s. Синхронизирую…</string>
+    <string name="sync_hint_error">Аккаунт %1$s. Не вышло: %2$s</string>
+    <string name="sync_hint_error_short">Не вышло: %1$s</string>
+    <string name="sync_account_unknown">подключен</string>
+    <string name="sync_code_title">Код для страницы Яндекса</string>
+    <string name="sync_code_message">Откройте страницу Яндекса, введите код и разрешите доступ к папке приложения.\n\nКод: %1$s</string>
+    <string name="sync_open_page">Открыть страницу</string>
+    <string name="sync_copy_code">Скопировать код</string>
+    <string name="sync_copied">Код скопирован</string>
+    <string name="sync_cancel">Отмена</string>
+    <string name="sync_action_now">Синхронизировать сейчас</string>
+    <string name="sync_action_disconnect">Отключить</string>
+    <string name="sync_disconnect_confirm">Встречи останутся и на телефоне, и на Диске — просто перестанут обновляться. Подключить можно снова в любой момент</string>
+    <string name="set_sync_audio">Передавать звук записей</string>
+    <string name="set_sync_audio_hint">Нужно, чтобы расшифровывать на другом устройстве. Час записи — больше ста мегабайт на Диске</string>
+    <string name="sync_progress_upload_audio">Отправляю звук: %1$s</string>
+    <string name="sync_progress_download_audio">Скачиваю звук: %1$s</string>
+    <string name="set_sync_interval">Как часто проверять Диск</string>
+    <string name="set_sync_interval_hint">За изменениями с других устройств. Свои уезжают всегда — через 20 секунд после правки</string>
+    <string name="sync_interval_min1">Каждую минуту</string>
+    <string name="sync_interval_min2">Каждые 2 минуты</string>
+    <string name="sync_interval_min5">Каждые 5 минут</string>
+    <string name="sync_interval_min15">Каждые 15 минут</string>
+    <string name="sync_interval_hour1">Раз в час</string>
+    <string name="sync_interval_manual">Только вручную</string>
+    <string name="drawer_sync">Синхронизировать</string>
+    <string name="sync_done">Синхронизировано</string>
+    <string name="drawer_sync_last">Синхронизировать · %1$s</string>
+    <string name="drawer_sync_running">Синхронизирую…</string>
+    <string name="drawer_sync_connect">Подключить Яндекс.Диск</string>
+    <string name="sync_not_connected">Яндекс.Диск не подключен — это делается в настройках</string>
+    <string name="meeting_no_audio">Звук этой записи остался на другом устройстве — расшифровать здесь нельзя</string>
 
     <string name="group_about">О приложении</string>
 

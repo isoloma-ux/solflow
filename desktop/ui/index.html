@@ -139,6 +139,8 @@
             <button class="pill-inset compact" id="meetPause" hidden>Пауза</button>
             <span class="meet-rec-hint" id="meetRecHint">Записать встречу</span>
             <span class="spacer"></span>
+            <button class="pill-inset compact" id="meetSyncNow" hidden
+                    title="Синхронизировать с Яндекс.Диском">Синхронизировать</button>
             <button class="pill-inset compact drop-target" id="meetImport">
               <span id="meetImportLabel">Импортировать файл</span>
             </button>
@@ -723,6 +725,78 @@
           </div>
         </section>
 
+        <!-- Синхронизация: встречи и проекты через папку приложения на
+             Яндекс.Диске того, кто вошёл. Вход — по коду, как на телевизоре:
+             код вводится на странице Яндекса в любом браузере. -->
+        <section class="panel">
+          <p class="kicker group-head">Синхронизация</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M7 18.5h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 6.8 9.6 4.5 4.5 0 0 0 7 18.5z"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Яндекс.Диск</p>
+              <p class="muted small" id="syncHint">
+                Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске
+              </p>
+            </div>
+            <button class="model-remove" id="syncDisconnect" hidden>Отключить</button>
+            <button class="pill-inset compact" id="syncNow" hidden>Синхронизировать</button>
+            <button class="pill-inset compact" id="syncConnect">Подключить</button>
+          </div>
+          <div class="perm" id="syncCodeRow" hidden>
+            <span class="row-icon"></span>
+            <div class="perm-text">
+              <p class="perm-title">Код для страницы Яндекса</p>
+              <p class="sync-code" id="syncCode"></p>
+            </div>
+            <button class="model-remove" id="syncCancelCode">Отмена</button>
+            <button class="pill-inset compact" id="syncCopyCode">Скопировать код</button>
+            <button class="pill-inset compact" id="syncOpenPage">Открыть страницу</button>
+          </div>
+          <div id="syncOptions" hidden>
+            <div class="perm">
+              <span class="row-icon"></span>
+              <div class="perm-text">
+                <p class="perm-title">Как часто проверять Диск</p>
+                <p class="muted small">За изменениями с других устройств. Свои уезжают всегда — через 20 секунд после правки</p>
+              </div>
+              <select id="syncInterval" class="meet-select wide">
+                <option value="min1">Каждую минуту</option>
+                <option value="min2">Каждые 2 минуты</option>
+                <option value="min5">Каждые 5 минут</option>
+                <option value="min15">Каждые 15 минут</option>
+                <option value="hour1">Раз в час</option>
+                <option value="manual">Только вручную</option>
+              </select>
+            </div>
+            <div class="perm">
+              <span class="row-icon"></span>
+              <div class="perm-text">
+                <p class="perm-title">Передавать звук записей</p>
+                <p class="muted small">Нужно, чтобы расшифровывать на другом устройстве. Час записи — больше ста мегабайт на Диске</p>
+              </div>
+              <button class="toggle" id="syncAudio">
+                <span class="toggle-track"><span class="toggle-knob"></span></span>
+                <span id="syncAudioLabel">Выключено</span>
+              </button>
+            </div>
+            <div class="perm">
+              <span class="row-icon"></span>
+              <div class="perm-text">
+                <p class="perm-title">Саммери для записей с других устройств</p>
+                <p class="muted small">Готовая расшифровка приехала без саммери — этот компьютер считает его и название сам и отправляет обратно</p>
+              </div>
+              <button class="toggle" id="syncAutoSummary">
+                <span class="toggle-track"><span class="toggle-knob"></span></span>
+                <span id="syncAutoSummaryLabel">Включено</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section class="panel">
           <p class="kicker group-head">Файлы и доступ</p>
           <div class="perm">
@@ -911,7 +985,16 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="0.6.0">
+            <ul class="whatsnew-list">
+              <li>Синхронизация через Яндекс.Диск: встречи и проекты одинаковы на телефоне и компьютере. Вход по коду — в настройках, данные лежат в папке приложения на вашем Диске.</li>
+              <li>Записали на телефоне — этот компьютер сам посчитает саммери, придумает название и отправит их обратно.</li>
+              <li>Переименования, проекты и удаления расходятся по всем устройствам; звук записей передается по желанию — отдельным переключателем.</li>
+              <li>Как часто проверять Диск — настройка; синхронизировать сразу можно кнопкой на странице встреч.</li>
+            </ul>
+          </div>
           <div data-whatsnew-version="0.5.3">
+            <p class="whatsnew-prev-title">Раньше, в 0.5.3</p>
             <ul class="whatsnew-list">
               <li>Саммери на Windows теперь считает видеокарта — NVIDIA и AMD, через Vulkan; без неё всё работает на процессоре, как раньше. Во время счёта видно, какой вычислитель в деле.</li>
             </ul>

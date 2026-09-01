@@ -14,8 +14,8 @@ android {
         // Версия общая для всех систем: релиз один на троих, и проверка
         // обновлений сравнивает номер с тегом. Раньше телефон жил своей
         // нумерацией (2.2) и потому считал 0.2.x старее себя.
-        versionCode = 30
-        versionName = "0.5.3"
+        versionCode = 31
+        versionName = "0.6.0"
 
         ndk {
             // Только arm64: 32-битных телефонов, которым нужна была бы armeabi-v7a,
@@ -31,6 +31,14 @@ android {
                 )
             }
         }
+
+        // Ключи Яндекс OAuth — из одного файла на все три платформы в корне
+        // репозитория (десктоп читает его же). Пустые — синхронизация в
+        // настройках объясняет, что ключи не заданы.
+        val yandex = groovy.json.JsonSlurper()
+            .parse(rootProject.file("../yandex-oauth.json")) as Map<*, *>
+        buildConfigField("String", "YANDEX_CLIENT_ID", "\"${yandex["client_id"] ?: ""}\"")
+        buildConfigField("String", "YANDEX_CLIENT_SECRET", "\"${yandex["client_secret"] ?: ""}\"")
     }
 
     externalNativeBuild {
@@ -101,5 +109,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // Потянуть список встреч вниз — синхронизация с Диском.
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Синхронизация фоном: с задержкой после правок и раз в час.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 }

@@ -157,6 +157,56 @@ object AppPrefs {
 
     fun setKeepAudio(context: Context, on: Boolean) = setFlag(context, "keep_audio", on)
 
+    // --- синхронизация через Яндекс.Диск ----------------------------------
+
+    /** OAuth-токен вошедшего человека; null — не подключено. */
+    fun yandexToken(context: Context): String? = text(context, "yandex_token", null)
+
+    fun yandexRefresh(context: Context): String? = text(context, "yandex_refresh", null)
+
+    /** Когда токен перестанет работать (millis); продлевается заранее. */
+    fun yandexExpiresAt(context: Context): Long = prefs(context).getLong("yandex_expires_at", 0)
+
+    fun setYandexTokens(context: Context, access: String?, refresh: String?, expiresAt: Long) {
+        prefs(context).edit()
+            .putString("yandex_token", access)
+            .putString("yandex_refresh", refresh)
+            .putLong("yandex_expires_at", expiresAt)
+            .apply()
+    }
+
+    /** Кто вошёл — показывается в настройках. */
+    fun yandexLogin(context: Context): String = text(context, "yandex_login", "")!!
+
+    fun setYandexLogin(context: Context, login: String) = setText(context, "yandex_login", login)
+
+    /**
+     * Передавать ли звук записей. По умолчанию нет: часовая встреча — больше
+     * ста мегабайт, а расшифровке и саммери звук не нужен.
+     */
+    fun syncAudio(context: Context): Boolean = flag(context, "sync_audio", false)
+
+    fun setSyncAudio(context: Context, on: Boolean) = setFlag(context, "sync_audio", on)
+
+    /**
+     * Как часто заглядывать на Диск за чужими изменениями: «min1», «min2»,
+     * «min5», «min15», «hour1» или «manual» — только по кнопке. Свои правки
+     * уезжают всегда, через 20 секунд после последней.
+     */
+    fun syncInterval(context: Context): String = text(context, "sync_interval", "min2")!!
+
+    fun setSyncInterval(context: Context, value: String) = setText(context, "sync_interval", value)
+
+    /** Интервал в миллисекундах; null — только вручную. */
+    fun syncIntervalMs(context: Context): Long? = when (syncInterval(context)) {
+        "manual" -> null
+        "min1" -> 60_000L
+        "min5" -> 5 * 60_000L
+        "min15" -> 15 * 60_000L
+        "hour1" -> 60 * 60_000L
+        else -> 2 * 60_000L
+    }
+
     // --- оформление -------------------------------------------------------
 
     /** Тема окна: «system», «light» или «dark». */

@@ -26,6 +26,7 @@ mod paste;
 mod pdf;
 mod report;
 mod segmenter;
+mod sync;
 #[cfg(has_summary)]
 mod summary;
 /// Без libsolflow_llama (llama-shim/build-macos.sh не гоняли) саммери
@@ -831,6 +832,9 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
             }
             "history_retention" => s.history_retention = text(),
             "keep_audio" => s.keep_audio = value.as_bool().unwrap_or(true),
+            "sync_audio" => s.sync_audio = value.as_bool().unwrap_or(false),
+            "sync_auto_summary" => s.sync_auto_summary = value.as_bool().unwrap_or(true),
+            "sync_interval" => s.sync_interval = text(),
             other => return Err(format!("неизвестная настройка «{other}»")),
         }
         settings::save(&app, &s);
@@ -840,6 +844,8 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
     match key.as_str() {
         "show_tray_icon" => apply_tray(&app),
         "history_limit" | "history_retention" => history::apply_limits(&app),
+        // Включили звук — он должен поехать сейчас, а не через пять минут.
+        "sync_audio" => sync::sync_now(&app),
         "model_unload" => {
             let now = app.state::<AppState>().settings.lock().unwrap().unload_after();
             if now == Some(0) {
@@ -1431,6 +1437,34 @@ fn project_delete(app: AppHandle, id: String) {
     meetings::delete_project(&app, &id);
 }
 
+// --- синхронизация ---------------------------------------------------------
+
+#[tauri::command]
+fn sync_status(app: AppHandle) -> sync::Status {
+    sync::status(&app)
+}
+
+/// Начать вход: вернуть код, который человек введёт на странице Яндекса.
+#[tauri::command]
+fn sync_connect(app: AppHandle) -> Result<sync::yandex::DeviceCode, String> {
+    sync::connect_start(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn sync_connect_cancel(app: AppHandle) {
+    sync::connect_cancel(&app);
+}
+
+#[tauri::command]
+fn sync_disconnect(app: AppHandle) {
+    sync::disconnect(&app);
+}
+
+#[tauri::command]
+fn sync_now(app: AppHandle) {
+    sync::sync_now(&app);
+}
+
 #[tauri::command]
 fn models_dir(app: AppHandle) -> String {
     app.path()
@@ -1548,7 +1582,12 @@ pub fn run() {
             projects_list,
             project_create,
             project_rename,
-            project_delete
+            project_delete,
+            sync_status,
+            sync_connect,
+            sync_connect_cancel,
+            sync_disconnect,
+            sync_now
         ])
         .setup(|app| {
             // Приложение живёт в меню-баре, в доке его нет — как Handy.
@@ -1589,6 +1628,9 @@ pub fn run() {
             app.manage(state);
             app.manage(models::ModelStore::new());
             app.manage(meetings::MeetingState::new());
+            // После настроек и состояния встреч: синхронизация читает и то,
+            // и другое.
+            sync::init(app.handle());
 
             hud::create(app.handle());
 

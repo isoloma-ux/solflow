@@ -42,8 +42,9 @@ pub struct Meta {
     pub state: String,
     #[serde(default)]
     pub imported: bool,
-    /// Id проекта из projects.json; None — «без проекта».
-    #[serde(default)]
+    /// Id проекта из projects.json; None — «без проекта». Пустое не
+    /// пишется: Android читает JSON null как строку «null».
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
     /// Сколько говорящих нашла диаризация; 0 — ещё не запускалась.
     #[serde(default)]
@@ -56,8 +57,12 @@ pub struct Meta {
     pub summary: String,
     /// Почему не вышло, если не вышло: строку показывает список встреч.
     /// Молчаливая неудача — худшее, что может случиться с импортом.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Момент последнего сохранения (millis) — по нему синхронизация
+    /// решает, чья правка новее, когда встречу поменяли на двух устройствах.
+    #[serde(default)]
+    pub updated: i64,
 }
 
 /// Одна реплика таймлайна: границы в секундах от начала записи.
@@ -99,6 +104,10 @@ pub struct MeetingRow {
     pub phase: Option<String>,
     /// Саммери локальной модели; пустая строка — его ещё не делали.
     pub summary: String,
+    /// Есть ли звук на этом компьютере. Приехавшая по синхронизации без
+    /// звука встреча — обычное дело: расшифровать заново или разделить
+    /// говорящих у неё нельзя, и кнопок для этого окно не рисует.
+    pub audio: bool,
 }
 
 // --- состояние -------------------------------------------------------------
@@ -137,7 +146,7 @@ impl MeetingState {
     }
 }
 
-fn notify(app: &AppHandle) {
+pub fn notify(app: &AppHandle) {
     let _ = app.emit("solflow-meetings", ());
 }
 
@@ -150,22 +159,34 @@ fn root(app: &AppHandle) -> PathBuf {
         .unwrap_or_default()
 }
 
-fn dir(app: &AppHandle, id: i64) -> PathBuf {
+pub fn dir(app: &AppHandle, id: i64) -> PathBuf {
     root(app).join(id.to_string())
 }
 
-fn audio_file(app: &AppHandle, id: i64) -> PathBuf {
+pub fn audio_file(app: &AppHandle, id: i64) -> PathBuf {
     dir(app, id).join("audio.wav")
 }
 
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Каждое сохранение — правка: штамп `updated` ставится здесь, а не у
+/// вызывающих, чтобы его нельзя было забыть.
 fn save_meta(app: &AppHandle, id: i64, meta: &Meta) {
     let path = dir(app, id).join("meta.json");
     if path.parent().map(|p| p.exists()).unwrap_or(false) {
-        let _ = std::fs::write(path, serde_json::to_string_pretty(meta).unwrap());
+        let mut stamped = meta.clone();
+        stamped.updated = now_ms();
+        let _ = std::fs::write(path, serde_json::to_string_pretty(&stamped).unwrap());
+        crate::sync::touch(app);
     }
 }
 
-fn load_meta(app: &AppHandle, id: i64) -> Option<Meta> {
+pub fn load_meta(app: &AppHandle, id: i64) -> Option<Meta> {
     let raw = std::fs::read_to_string(dir(app, id).join("meta.json")).ok()?;
     serde_json::from_str(&raw).ok()
 }
@@ -174,6 +195,40 @@ fn save_transcript(app: &AppHandle, id: i64, segments: &[Segment]) {
     let path = dir(app, id).join("transcript.json");
     if path.parent().map(|p| p.exists()).unwrap_or(false) {
         let _ = std::fs::write(path, serde_json::to_string(segments).unwrap());
+        crate::sync::touch(app);
+    }
+}
+
+/// Все встречи на диске — по каталогам с meta.json.
+pub fn local_ids(app: &AppHandle) -> Vec<i64> {
+    std::fs::read_dir(root(app))
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().to_string_lossy().parse::<i64>().ok())
+        .filter(|id| dir(app, *id).join("meta.json").exists())
+        .collect()
+}
+
+/// По каким встречам сейчас идёт работа — их синхронизация не трогает:
+/// файлы под ними меняются, а запись и вовсе ещё пишется.
+pub fn busy_ids(app: &AppHandle) -> std::collections::HashSet<i64> {
+    let state = app.state::<MeetingState>();
+    let mut ids: std::collections::HashSet<i64> =
+        state.phase.lock().unwrap().keys().copied().collect();
+    ids.extend(state.cancel.lock().unwrap().keys().copied());
+    if let Some(rec) = *state.recording_id.lock().unwrap() {
+        ids.insert(rec);
+    }
+    ids
+}
+
+/// Название для служебных строк вроде «Отправляю звук: …».
+pub fn display_title(meta: &Meta) -> String {
+    if meta.title.trim().is_empty() {
+        "запись без названия".to_string()
+    } else {
+        meta.title.clone()
     }
 }
 
@@ -200,6 +255,7 @@ fn create(app: &AppHandle, imported: bool) -> Result<(i64, Meta)> {
         names: HashMap::new(),
         summary: String::new(),
         error: None,
+        updated: now,
     };
     std::fs::create_dir_all(dir(app, now))?;
     save_meta(app, now, &meta);
@@ -247,6 +303,7 @@ pub fn rows(app: &AppHandle) -> Vec<MeetingRow> {
                 fetched: fetched.get(&id).copied(),
                 phase: phase.get(&id).map(|p| p.to_string()),
                 summary: m.summary,
+                audio: audio_file(app, id).exists(),
             })
         })
         .collect();
@@ -289,6 +346,9 @@ pub fn delete(app: &AppHandle, id: i64) {
     if let Some(flag) = state.cancel.lock().unwrap().get(&id) {
         flag.store(true, Ordering::Relaxed);
     }
+    // Сначала отметка для синхронизации, потом файлы: иначе следующее
+    // устройство привезло бы встречу обратно.
+    crate::sync::note_deleted(app, id);
     let _ = std::fs::remove_dir_all(dir(app, id));
     notify(app);
 }
@@ -386,6 +446,24 @@ fn save_projects(app: &AppHandle, list: &[Project]) {
         projects_file(app),
         serde_json::to_string_pretty(list).unwrap(),
     );
+    crate::sync::touch(app);
+}
+
+/// Список проектов целиком — так его приносит синхронизация. Встречи из
+/// пропавших проектов остаются, просто выходят из них, как при удалении
+/// проекта руками.
+pub fn replace_projects(app: &AppHandle, list: &[Project]) {
+    let alive: std::collections::HashSet<&str> = list.iter().map(|p| p.id.as_str()).collect();
+    for id in local_ids(app) {
+        if let Some(mut m) = load_meta(app, id) {
+            if m.project.as_deref().map(|p| !alive.contains(p)).unwrap_or(false) {
+                m.project = None;
+                save_meta(app, id, &m);
+            }
+        }
+    }
+    save_projects(app, list);
+    notify(app);
 }
 
 pub fn create_project(app: &AppHandle, name: String) -> Option<Project> {
@@ -800,6 +878,15 @@ pub fn busy(app: &AppHandle) -> bool {
 
 pub fn transcribe(app: &AppHandle, id: i64) {
     let state = app.state::<MeetingState>();
+    // Встреча приехала по синхронизации без звука — расшифровывать нечего,
+    // и говорим об этом сразу, а не после «запись пустая».
+    if !audio_file(app, id).exists() {
+        let _ = app.emit(
+            "solflow-import-failed",
+            "Звука этой записи на этом компьютере нет — включите передачу звука в настройках синхронизации".to_string(),
+        );
+        return;
+    }
     {
         let mut cancel = state.cancel.lock().unwrap();
         if cancel.contains_key(&id) {
@@ -1127,6 +1214,76 @@ fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> 
     meta.summary = summary;
     save_meta(app, id, &meta);
     Ok(())
+}
+
+/// Саммери и название для встречи, приехавшей по синхронизации готовой,
+/// но без них: телефон считать не умеет, компьютер делает это за него и
+/// отправляет обратно. Название — только безымянной: данное руками имя
+/// не трогаем. Модель должна быть уже скачана — проверяет вызывающий.
+pub fn summarize_and_title(app: &AppHandle, id: i64) {
+    let state = app.state::<MeetingState>();
+    {
+        let mut cancel = state.cancel.lock().unwrap();
+        if cancel.contains_key(&id) || state.phase.lock().unwrap().contains_key(&id) {
+            return;
+        }
+        cancel.insert(id, Arc::new(AtomicBool::new(false)));
+    }
+    state.progress.lock().unwrap().insert(id, 0);
+    state.phase.lock().unwrap().insert(id, "queued");
+    notify(app);
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let gate = app.state::<MeetingState>().engine_gate.clone();
+        let _turn = gate.lock().unwrap();
+
+        let state = app.state::<MeetingState>();
+        let flag = state
+            .cancel
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
+
+        let result = if flag.load(Ordering::Relaxed) {
+            Ok(())
+        } else {
+            summarize_job(&app, id, flag.clone()).and_then(|()| {
+                let mut meta = load_meta(&app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+                if meta.title.trim().is_empty() {
+                    let segments = load_transcript(&app, id);
+                    let mut head = String::new();
+                    for s in &segments {
+                        head.push_str(&s.text);
+                        head.push(' ');
+                        if head.len() > 6000 {
+                            break;
+                        }
+                    }
+                    match crate::summary::title(&app, &head) {
+                        Ok(title) if !title.is_empty() => {
+                            meta.title = title;
+                            save_meta(&app, id, &meta);
+                        }
+                        Ok(_) => {}
+                        Err(e) => log::warn!("название приехавшей встречи не удалось: {e}"),
+                    }
+                }
+                Ok(())
+            })
+        };
+
+        let state = app.state::<MeetingState>();
+        state.cancel.lock().unwrap().remove(&id);
+        state.progress.lock().unwrap().remove(&id);
+        state.phase.lock().unwrap().remove(&id);
+        if let Err(e) = result {
+            log::warn!("саммери приехавшей встречи не удалось: {e}");
+        }
+        notify(&app);
+    });
 }
 
 /// Название по кнопке: для уже готовых встреч и когда автоназвание не

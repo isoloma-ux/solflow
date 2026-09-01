@@ -96,6 +96,51 @@ pub struct Settings {
     /// Хранить ли звук диктовок — чтобы можно было переслушать.
     #[serde(default = "yes")]
     pub keep_audio: bool,
+
+    // --- синхронизация через Яндекс.Диск ---
+    /// OAuth-токен вошедшего человека; None — не подключено.
+    #[serde(default)]
+    pub yandex_token: Option<String>,
+    #[serde(default)]
+    pub yandex_refresh: Option<String>,
+    /// Когда токен перестанет работать (millis); продлевается заранее.
+    #[serde(default)]
+    pub yandex_expires_at: i64,
+    /// Кто вошёл — показывается в настройках.
+    #[serde(default)]
+    pub yandex_login: String,
+    /// Передавать ли звук записей. По умолчанию нет: часовая встреча —
+    /// больше ста мегабайт, а расшифровке и саммери звук не нужен.
+    #[serde(default)]
+    pub sync_audio: bool,
+    /// Считать саммери и название для готовых встреч, приехавших с других
+    /// устройств, — на телефоне модели нет, компьютер считает за него.
+    #[serde(default = "yes")]
+    pub sync_auto_summary: bool,
+    /// Как часто заглядывать на Диск за чужими изменениями: "min1", "min2",
+    /// "min5", "min15", "hour1" или "manual" — только по кнопке. Свои правки
+    /// уезжают всегда, через 20 секунд после последней.
+    #[serde(default = "default_sync_interval")]
+    pub sync_interval: String,
+}
+
+impl Settings {
+    /// Интервал проверки Диска; None — только вручную.
+    pub fn sync_period(&self) -> Option<std::time::Duration> {
+        use std::time::Duration;
+        match self.sync_interval.as_str() {
+            "manual" => None,
+            "min1" => Some(Duration::from_secs(60)),
+            "min5" => Some(Duration::from_secs(5 * 60)),
+            "min15" => Some(Duration::from_secs(15 * 60)),
+            "hour1" => Some(Duration::from_secs(3600)),
+            _ => Some(Duration::from_secs(2 * 60)),
+        }
+    }
+}
+
+fn default_sync_interval() -> String {
+    "min2".to_string()
 }
 
 impl Settings {
@@ -203,6 +248,13 @@ impl Default for Settings {
             history_limit: default_history_limit(),
             history_retention: default_retention(),
             keep_audio: true,
+            yandex_token: None,
+            yandex_refresh: None,
+            yandex_expires_at: 0,
+            yandex_login: String::new(),
+            sync_audio: false,
+            sync_auto_summary: true,
+            sync_interval: default_sync_interval(),
         }
     }
 }

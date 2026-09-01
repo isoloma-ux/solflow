@@ -1526,10 +1526,12 @@ function openRowMenu(meeting, button) {
   item(t("Экспорт"), ".md", () => exportAs("md"));
   item(t("Экспорт"), ".docx", () => exportAs("docx"));
   item(t("Экспорт"), ".pdf", () => exportAs("pdf"));
-  item(t("Экспорт"), ".wav", () => exportAs("wav"));
-  item(t("Расшифровать заново"), null, () =>
-    invoke("meeting_transcribe", { id: meeting.id })
-  );
+  if (meeting.audio) {
+    item(t("Экспорт"), ".wav", () => exportAs("wav"));
+    item(t("Расшифровать заново"), null, () =>
+      invoke("meeting_transcribe", { id: meeting.id })
+    );
+  }
   item(t("Выбрать"), null, () => toggleSelected(meeting.id));
 
   // Удаление — сразу из меню, но с подтверждением на том же месте.
@@ -1864,6 +1866,12 @@ async function renderDetail() {
     select.appendChild(option);
   }
   select.value = m.project || "";
+
+  // Встреча приехала по синхронизации без звука: расшифровать заново,
+  // разделить голоса и выгрузить .wav нечем — кнопок не показываем.
+  el("meetAgain").hidden = !m.audio;
+  el("meetSpeakers").hidden = !m.audio;
+  el("exportMenu").querySelector('[data-format="wav"]').hidden = !m.audio;
 
   // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
   const working = !!m.phase;
@@ -2462,7 +2470,192 @@ async function refreshSettings(reloadDevices = false) {
     el("downloaderHint").textContent =
       t("Ссылки на YouTube и VK скачиваются и расшифровываются");
   }
+
+  renderSync(await invoke("sync_status"));
 }
+
+// --- синхронизация ---------------------------------------------------------
+
+/** Ссылка со страницей ввода кода — пока код живёт. */
+let syncVerificationUrl = "https://oauth.yandex.ru/device";
+
+/** «сегодня в 14:30», «вчера в 09:12» или дата — для последней синхронизации. */
+function fmtSyncTime(ms) {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  const today = new Date();
+  const sameDay = (a, b) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (sameDay(d, today)) return t("сегодня в {0}", time);
+  if (sameDay(d, yesterday)) return t("вчера в {0}", time);
+  return `${d.toLocaleDateString("ru", { day: "numeric", month: "long" })}, ${time}`;
+}
+
+/** Нажали «Синхронизировать» руками — по окончании кнопка ответит цветом. */
+let syncManual = false;
+let syncWasRunning = false;
+let syncFlashUntil = 0;
+
+function flashSync(ok) {
+  syncFlashUntil = Date.now() + 2500;
+  for (const id of ["meetSyncNow", "syncNow"]) {
+    const button = el(id);
+    button.classList.remove("ok", "fail");
+    button.classList.add(ok ? "ok" : "fail");
+    button.textContent = ok ? t("Синхронизировано") : t("Не вышло");
+  }
+  setTimeout(() => {
+    for (const id of ["meetSyncNow", "syncNow"]) {
+      el(id).classList.remove("ok", "fail");
+      el(id).textContent = t("Синхронизировать");
+    }
+  }, 2500);
+}
+
+function renderSync(s) {
+  const hint = el("syncHint");
+  hint.classList.remove("sync-error");
+
+  // Ручная синхронизация закончилась: зелёным — сошлось, красным — нет.
+  if (syncWasRunning && !s.running && syncManual) {
+    syncManual = false;
+    flashSync(!s.message);
+  }
+  syncWasRunning = s.running;
+  const flashing = !s.running && Date.now() < syncFlashUntil;
+
+  el("syncConnect").hidden = s.connected || !!s.code || !s.configured;
+  el("syncDisconnect").hidden = !s.connected;
+  el("syncNow").hidden = !s.connected;
+  el("syncCodeRow").hidden = !s.code;
+  el("syncOptions").hidden = !s.connected;
+
+  if (!s.configured) {
+    hint.textContent = t("В этой сборке нет ключей Яндекс OAuth — синхронизация недоступна");
+  } else if (s.code) {
+    el("syncCode").textContent = s.code.user_code;
+    syncVerificationUrl = s.code.verification_url;
+    hint.textContent = t("Откройте страницу Яндекса, введите код и разрешите доступ к папке приложения. Жду подтверждения");
+  } else if (s.connected) {
+    const who = s.login ? t("Аккаунт {0}. ", s.login) : "";
+    if (s.progress) {
+      hint.textContent = s.progress;
+    } else if (s.running) {
+      hint.textContent = who + t("Синхронизирую");
+    } else if (s.message) {
+      hint.textContent = who + t("Не вышло: {0}", s.message);
+      hint.classList.add("sync-error");
+    } else if (s.last_sync) {
+      hint.textContent = who + t("Синхронизировано {0}", fmtSyncTime(s.last_sync));
+    } else {
+      hint.textContent = who + t("Еще не синхронизировалось");
+    }
+  } else if (s.message) {
+    hint.textContent = t("Не вышло: {0}", s.message);
+    hint.classList.add("sync-error");
+  } else {
+    hint.textContent = t(
+      "Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске"
+    );
+  }
+
+  el("syncNow").disabled = s.running;
+  if (!flashing) {
+    el("syncNow").textContent = s.running ? t("Синхронизирую…") : t("Синхронизировать");
+  }
+  el("syncInterval").value = s.sync_interval || "min2";
+
+  // Кнопка на странице встреч: живёт, пока подключено, и показывает время
+  // последней синхронизации подсказкой.
+  const quick = el("meetSyncNow");
+  quick.hidden = !s.connected;
+  quick.disabled = s.running;
+  if (!flashing) {
+    quick.textContent = s.running ? t("Синхронизирую…") : t("Синхронизировать");
+  }
+  quick.title = s.last_sync
+    ? t("Синхронизировано {0}", fmtSyncTime(s.last_sync))
+    : t("Еще не синхронизировалось");
+  markToggle("syncAudio", "syncAudioLabel", [t("Включено"), t("Выключено")], s.sync_audio);
+  markToggle(
+    "syncAutoSummary",
+    "syncAutoSummaryLabel",
+    [t("Включено"), t("Выключено")],
+    s.sync_auto_summary
+  );
+}
+
+listen("solflow-sync", (e) => renderSync(e.payload));
+
+el("syncConnect").addEventListener("click", async () => {
+  el("syncConnect").disabled = true;
+  try {
+    const code = await invoke("sync_connect");
+    syncVerificationUrl = code.verification_url;
+    renderSync(await invoke("sync_status"));
+    // Страница открывается сама: код перед глазами, осталось ввести.
+    invoke("open_link", { url: syncVerificationUrl });
+  } catch (err) {
+    el("syncHint").textContent = t("Не вышло: {0}", String(err));
+    el("syncHint").classList.add("sync-error");
+  } finally {
+    el("syncConnect").disabled = false;
+  }
+});
+
+el("syncOpenPage").addEventListener("click", () =>
+  invoke("open_link", { url: syncVerificationUrl })
+);
+el("syncCopyCode").addEventListener("click", () => {
+  navigator.clipboard.writeText(el("syncCode").textContent);
+  el("syncCopyCode").textContent = t("Скопировано");
+  setTimeout(() => (el("syncCopyCode").textContent = t("Скопировать код")), 1500);
+});
+el("syncCancelCode").addEventListener("click", () => invoke("sync_connect_cancel"));
+const syncByHand = () => {
+  syncManual = true;
+  invoke("sync_now");
+};
+el("syncNow").addEventListener("click", syncByHand);
+el("meetSyncNow").addEventListener("click", syncByHand);
+el("syncInterval").addEventListener("change", () =>
+  option("sync_interval", el("syncInterval").value)
+);
+// Состояние кнопки на странице встреч нужно и до первого захода в настройки.
+invoke("sync_status").then(renderSync);
+
+// Отключение в два нажатия: встречи остаются и здесь, и на Диске, но
+// вход придётся повторять.
+let syncDisconnectArmed = false;
+el("syncDisconnect").addEventListener("click", async () => {
+  if (!syncDisconnectArmed) {
+    syncDisconnectArmed = true;
+    el("syncDisconnect").textContent = t("Точно отключить?");
+    setTimeout(() => {
+      syncDisconnectArmed = false;
+      el("syncDisconnect").textContent = t("Отключить");
+    }, 3000);
+    return;
+  }
+  syncDisconnectArmed = false;
+  el("syncDisconnect").textContent = t("Отключить");
+  await invoke("sync_disconnect");
+  renderSync(await invoke("sync_status"));
+});
+
+bindToggle("syncAudio", "syncAudioLabel", [t("Включено"), t("Выключено")], (on) =>
+  option("sync_audio", on)
+);
+bindToggle(
+  "syncAutoSummary",
+  "syncAutoSummaryLabel",
+  [t("Включено"), t("Выключено")],
+  (on) => option("sync_auto_summary", on)
+);
 
 /** Сегменты: один выбранный из нескольких. */
 function bindSegments(boxId, attr, onPick) {

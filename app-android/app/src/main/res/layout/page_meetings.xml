@@ -338,15 +338,22 @@
                 android:text="@string/meetings_empty_hint" />
         </LinearLayout>
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/meetingList"
+        <!-- Потянуть вниз — синхронизация с Яндекс.Диском. -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/meetingRefresh"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="16dp"
-            android:layoutAnimation="@anim/layout_stagger"
-            android:clipToPadding="false"
-            android:scrollbars="none" />
+            android:layout_marginTop="16dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/meetingList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layoutAnimation="@anim/layout_stagger"
+                android:clipToPadding="false"
+                android:scrollbars="none" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
     </LinearLayout>
 
     <LinearLayout

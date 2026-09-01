@@ -1549,3 +1549,18 @@ textarea {
   border-top: 1px solid var(--hairline);
   font-weight: 500;
 }
+
+/* Синхронизация: код для страницы Яндекса — крупно и с разрядкой, его
+   переписывают глазами в другое окно. */
+.sync-code {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  margin: 4px 0 0;
+  user-select: all;
+}
+.sync-error { color: var(--danger); }
+
+/* Ответ кнопки синхронизации: зелёным сошлось, красным — нет. */
+.pill-inset.ok { border-color: var(--accent-solid); color: var(--accent); }
+.pill-inset.fail { border-color: var(--danger); color: var(--danger); }

@@ -253,6 +253,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(31, "0.6.0", R.string.whatsnew_body_060),
             Triple(27, "0.5.0", R.string.whatsnew_body),
             Triple(26, "0.4.0", R.string.whatsnew_body_040),
         )
@@ -427,6 +428,12 @@ class MainActivity : AppCompatActivity() {
         MeetingService.onChange = {
             runOnUiThread { if (page == Page.MEETINGS) renderMeetings() }
         }
+        // Компьютер мог посчитать саммери, пока телефон лежал в кармане, —
+        // при открытии заглядываем на Диск (не чаще раза в пару минут).
+        SyncManager.onAppOpened(this)
+        SyncManager.addListener(syncListener)
+        SyncManager.startPolling(this)
+        renderSyncState()
         // Диктовка могла продолжаться, пока экран был свёрнут, — вернуть ей
         // пульс и волну.
         if (recorder.isRecording) {
@@ -445,6 +452,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        SyncManager.removeListener(syncListener)
+        SyncManager.stopPolling()
         stopPlayback()
         stateJob?.cancel()
         DownloadService.onChange = null
@@ -500,6 +509,9 @@ class MainActivity : AppCompatActivity() {
     private fun show(next: Page) {
         val previous = page
         page = next
+        // Открыли встречи — заглянем на Диск, если давно не смотрели: свежее
+        // саммери с компьютера должно быть перед глазами без ожидания часа.
+        if (next == Page.MEETINGS && previous != next) SyncManager.onAppOpened(this)
         val pages = listOf(
             Page.DICTATION to ui.pageDictation.root,
             Page.MEETINGS to ui.pageMeetings.root,
@@ -685,6 +697,15 @@ class MainActivity : AppCompatActivity() {
 
         drawerDivider()
         drawerGroup(R.string.drawer_app)
+        drawerRow(syncRowLabel(), false, muted = !SyncManager.connected(this)) {
+            if (SyncManager.connected(this)) {
+                ui.drawer.closeDrawer(GravityCompat.START)
+                syncByHand()
+            } else {
+                ui.drawer.closeDrawer(GravityCompat.START)
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+        }
         drawerRow(getString(R.string.tab_settings), false) {
             ui.drawer.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -693,6 +714,62 @@ class MainActivity : AppCompatActivity() {
             ui.drawer.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, AboutActivity::class.java))
         }
+    }
+
+    // --- синхронизация на главном экране ---------------------------------
+
+    // Состояние снимается в момент события, а не когда до него дойдёт
+    // очередь главного потока: быстрая синхронизация успевает и начаться, и
+    // закончиться раньше, и экран иначе не увидел бы ни того, ни другого.
+    private val syncListener: () -> Unit = {
+        val running = SyncManager.running
+        runOnUiThread { renderSyncState(running) }
+    }
+
+    /** Синхронизацию попросили руками — по окончании ответим цветом. */
+    private var syncManual = false
+    private var syncWasRunning = false
+
+    private fun syncByHand() {
+        syncManual = true
+        SyncManager.runNow(this)
+    }
+
+    /** Крутилка списка и строка в шторке — по текущему состоянию. */
+    private fun renderSyncState(running: Boolean = SyncManager.running) {
+        val refresh = ui.pageMeetings.meetingRefresh
+        if (refresh.isRefreshing != running) refresh.isRefreshing = running
+        if (ui.drawer.isDrawerOpen(GravityCompat.START)) renderDrawer()
+        // Ручная синхронизация закончилась: зелёным — сошлось, красным — нет.
+        if (syncWasRunning && !running && syncManual) {
+            syncManual = false
+            val error = SyncManager.message
+            val bar = if (error == null) {
+                Snackbar.make(ui.root, R.string.sync_done, Snackbar.LENGTH_SHORT)
+                    .setBackgroundTint(getColor(R.color.accent_solid))
+                    .setTextColor(getColor(R.color.on_accent))
+            } else {
+                Snackbar.make(ui.root, getString(R.string.sync_hint_error_short, error), Snackbar.LENGTH_LONG)
+                    .setBackgroundTint(getColor(R.color.danger))
+                    .setTextColor(0xFFFFFFFF.toInt())
+            }
+            bar.show()
+        }
+        syncWasRunning = running
+        // Приехало что-то новое — список перечитывается через onChange сервиса.
+    }
+
+    /** «Синхронизировать · сегодня, 00:33», «Синхронизирую…» или приглашение подключить. */
+    private fun syncRowLabel(): String {
+        if (!SyncManager.connected(this)) return getString(R.string.drawer_sync_connect)
+        if (SyncManager.running) return getString(R.string.drawer_sync_running)
+        val last = SyncManager.lastSync(this)
+        return if (last > 0) {
+            getString(
+                R.string.drawer_sync_last,
+                "${TranscriptStore.dayLabel(this, last).lowercase()}, ${TranscriptStore.timeLabel(last)}",
+            )
+        } else getString(R.string.drawer_sync)
     }
 
     private fun drawerGroup(title: Int) {
@@ -920,6 +997,21 @@ class MainActivity : AppCompatActivity() {
         val m = ui.pageMeetings
         m.meetingList.layoutManager = LinearLayoutManager(this)
         m.meetingList.adapter = meetings
+        // Потянуть вниз — синхронизация. Без подключения объясняем, куда идти.
+        m.meetingRefresh.setColorSchemeColors(getColor(R.color.accent))
+        m.meetingRefresh.setProgressBackgroundColorSchemeColor(getColor(R.color.graphite))
+        m.meetingRefresh.setOnRefreshListener {
+            if (SyncManager.connected(this)) {
+                syncByHand()
+            } else {
+                m.meetingRefresh.isRefreshing = false
+                Snackbar.make(ui.root, R.string.sync_not_connected, Snackbar.LENGTH_LONG)
+                    .setAction(R.string.tab_settings) {
+                        startActivity(Intent(this, SettingsActivity::class.java))
+                    }
+                    .show()
+            }
+        }
         m.meetingTimeline.layoutManager = LinearLayoutManager(this)
         m.meetingTimeline.adapter = segments
 
@@ -1521,14 +1613,18 @@ class MainActivity : AppCompatActivity() {
         val phaseRes = MeetingService.phase[open.id]
         val working = percent != null && phaseRes != null
         m.meetingState.visibility = visibility(!open.isDone || working)
+        // Встреча могла приехать по синхронизации без звука: расшифровать её
+        // здесь нечем, и кнопку заменяет объяснение.
+        val hasAudio = MeetingStore.audioFile(this, open.id).exists()
         m.meetingState.text = when {
             working -> getString(phaseRes!!, percent)
             open.state == Meeting.STATE_FAILED -> getString(R.string.meeting_state_failed)
             open.isDone -> ""
+            !hasAudio -> getString(R.string.meeting_no_audio)
             else -> getString(R.string.meeting_state_recorded)
         }
         m.meetingTranscribe.visibility = visibility(
-            !working && !open.isDone && open.id != MeetingService.recordingId
+            !working && !open.isDone && hasAudio && open.id != MeetingService.recordingId
         )
         m.meetingProgress.visibility = visibility(working)
         m.meetingProgress.setProgress(percent ?: 0, working && motionOn())
@@ -1554,7 +1650,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        m.meetingDiarize.visibility = visibility(open.isDone && !working)
+        m.meetingDiarize.visibility = visibility(open.isDone && !working && hasAudio)
         m.meetingExportRow.visibility = visibility(open.isDone)
         m.meetingShareText.visibility = visibility(open.isDone)
         // Звук есть и у нерасшифрованной встречи — лишь бы работа по ней

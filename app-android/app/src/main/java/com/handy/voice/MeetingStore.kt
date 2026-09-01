@@ -34,6 +34,11 @@ data class Meeting(
     val project: String? = null,
     /** Саммери от локальной языковой модели; пусто — его ещё не делали. */
     val summary: String = "",
+    /**
+     * Момент последнего сохранения (millis) — по нему синхронизация решает,
+     * чья правка новее, когда встречу поменяли на двух устройствах.
+     */
+    val updated: Long = 0,
 ) {
     val isDone: Boolean get() = state == STATE_DONE
 
@@ -55,7 +60,14 @@ object MeetingStore {
 
     private fun root(context: Context) = File(context.filesDir, "meetings")
 
-    private fun dir(context: Context, id: Long) = File(root(context), id.toString())
+    /** Каталог встречи — синхронизация пишет в него файлы с Диска как есть. */
+    fun dir(context: Context, id: Long) = File(root(context), id.toString())
+
+    /** Все встречи на диске — по каталогам с meta.json. */
+    fun ids(context: Context): List<Long> =
+        (root(context).listFiles() ?: emptyArray())
+            .mapNotNull { it.name.toLongOrNull() }
+            .filter { metaFile(context, it).exists() }
 
     fun audioFile(context: Context, id: Long) = File(dir(context, id), "audio.wav")
 
@@ -80,6 +92,11 @@ object MeetingStore {
         return meeting
     }
 
+    /**
+     * Каждое сохранение — правка: штамп `updated` ставится здесь, а не у
+     * вызывающих, чтобы его нельзя было забыть. Синхронизация узнаёт об
+     * изменении и уезжает на Диск с задержкой.
+     */
     fun save(context: Context, meeting: Meeting) {
         metaFile(context, meeting.id).writeText(
             JSONObject().apply {
@@ -94,8 +111,10 @@ object MeetingStore {
                 })
                 meeting.project?.let { put("project", it) }
                 if (meeting.summary.isNotEmpty()) put("summary", meeting.summary)
+                put("updated", System.currentTimeMillis())
             }.toString()
         )
+        SyncManager.touch(context)
     }
 
     fun load(context: Context, id: Long): Meeting? {
@@ -105,7 +124,7 @@ object MeetingStore {
             val o = JSONObject(f.readText())
             Meeting(
                 id = id,
-                title = o.optString("title"),
+                title = if (o.isNull("title")) "" else o.optString("title"),
                 at = o.optLong("at", id),
                 seconds = o.optDouble("seconds", 0.0).toFloat(),
                 state = o.optString("state", Meeting.STATE_RECORDED),
@@ -116,8 +135,13 @@ object MeetingStore {
                         .mapNotNull { k -> k.toIntOrNull()?.let { it to names.getString(k) } }
                         .toMap()
                 } ?: emptyMap(),
-                project = o.optString("project").takeIf { it.isNotBlank() },
-                summary = o.optString("summary"),
+                // Мета с компьютера пишет отсутствующий проект как JSON null,
+                // а optString на null отдаёт строку «null» — и встреча уезжала
+                // бы в несуществующий проект. Поэтому null проверяется явно.
+                project = if (o.isNull("project")) null
+                else o.optString("project").takeIf { it.isNotBlank() },
+                summary = if (o.isNull("summary")) "" else o.optString("summary"),
+                updated = o.optLong("updated", 0),
             )
         }.getOrNull()
     }
@@ -130,6 +154,9 @@ object MeetingStore {
             .sortedByDescending { it.at }
 
     fun delete(context: Context, id: Long) {
+        // Сначала отметка для синхронизации, потом файлы: иначе следующее
+        // устройство привезло бы встречу обратно.
+        SyncManager.noteDeleted(context, id)
         dir(context, id).deleteRecursively()
     }
 
@@ -144,6 +171,7 @@ object MeetingStore {
             })
         }
         transcriptFile(context, id).writeText(arr.toString())
+        SyncManager.touch(context)
     }
 
     fun loadTranscript(context: Context, id: Long): List<MeetingSegment> {
@@ -194,6 +222,21 @@ object MeetingStore {
             })
         }
         projectsFile(context).writeText(arr.toString())
+        SyncManager.touch(context)
+    }
+
+    /**
+     * Список проектов целиком — так его приносит синхронизация. Встречи из
+     * пропавших проектов остаются, просто выходят из них.
+     */
+    fun replaceProjects(context: Context, list: List<Project>) {
+        val alive = list.map { it.id }.toSet()
+        for (meeting in all(context)) {
+            if (meeting.project != null && meeting.project !in alive) {
+                save(context, meeting.copy(project = null))
+            }
+        }
+        saveProjects(context, list)
     }
 
     fun createProject(context: Context, name: String): Project {
