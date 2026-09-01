@@ -17,6 +17,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -941,6 +942,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         m.meetingCopy.setOnClickListener { copyMeeting() }
+        m.meetingShareText.setOnClickListener { shareMeetingText() }
         m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
         m.meetingDelete.setOnClickListener { deleteMeeting() }
         m.meetingDiarize.setOnClickListener { chooseDiarize() }
@@ -1551,10 +1553,25 @@ class MainActivity : AppCompatActivity() {
         )
         m.meetingSummaryBox.visibility = visibility(open.summary.isNotEmpty())
         if (open.summary.isNotEmpty()) {
-            m.meetingSummaryText.text = renderSummaryText(open.summary)
+            val rendered = renderSummaryText(open.summary)
+            if (m.meetingSummaryText.text.toString() != rendered.toString()) {
+                m.meetingSummaryText.text = rendered
+            }
+            // Потолок высоты: длинное саммери листается внутри карточки,
+            // а таймлайн и кнопки экспорта остаются достижимыми.
+            val cap = (300 * resources.displayMetrics.density).toInt()
+            m.meetingSummaryScroll.post {
+                val wanted = if (m.meetingSummaryText.height > cap) cap
+                else ViewGroup.LayoutParams.WRAP_CONTENT
+                if (m.meetingSummaryScroll.layoutParams.height != wanted) {
+                    m.meetingSummaryScroll.layoutParams =
+                        m.meetingSummaryScroll.layoutParams.apply { height = wanted }
+                }
+            }
         }
         m.meetingDiarize.visibility = visibility(open.isDone && !working)
         m.meetingExportRow.visibility = visibility(open.isDone)
+        m.meetingShareText.visibility = visibility(open.isDone)
         // Звук есть и у нерасшифрованной встречи — лишь бы работа по ней
         // не шла и файл был на месте.
         m.meetingSaveAudio.visibility = visibility(
@@ -1770,6 +1787,40 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    /**
+     * Текст встречи в системный лист «Поделиться»: переслать человеку или
+     * закинуть во внешнюю нейросеть — осознанный шаг пользователя, само
+     * приложение в интернет ничего не отправляет.
+     */
+    private fun shareMeetingText() {
+        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+        val text = buildString {
+            appendLine(MeetingStore.displayTitle(this@MainActivity, meeting))
+            if (meeting.summary.isNotEmpty()) {
+                appendLine()
+                appendLine(meeting.summary.trim())
+            }
+            appendLine()
+            var previous: Int? = null
+            for (s in MeetingStore.loadTranscript(this@MainActivity, meeting.id)) {
+                if (s.speaker != null && s.speaker != previous) {
+                    appendLine(MeetingStore.speakerLabel(this@MainActivity, meeting, s.speaker))
+                }
+                previous = s.speaker
+                appendLine("${MeetingStore.clockLabel(s.start)}  ${s.text}")
+            }
+        }.trimEnd()
+        if (text.isBlank()) return
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, text),
+                getString(R.string.meeting_share_text),
+            )
+        )
     }
 
     private fun copyMeeting() {

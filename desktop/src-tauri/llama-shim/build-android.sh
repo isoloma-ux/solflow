@@ -43,7 +43,8 @@ for lib in \
     src/libllama.a \
     ggml/src/libggml.a \
     ggml/src/libggml-base.a \
-    ggml/src/libggml-cpu.a
+    ggml/src/libggml-cpu.a \
+    _deps/kleidiai-build/libkleidiai.a
 do
     [ -f "$llama/build-android/$lib" ] && libs="$libs $llama/build-android/$lib"
 done

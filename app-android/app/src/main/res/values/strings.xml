@@ -333,6 +333,7 @@
     <string name="export_done_many">Сохранено в Загрузки, файлов: %1$d</string>
     <string name="meeting_save_audio">Сохранить звук (WAV)</string>
     <string name="meeting_summary">Саммери</string>
+    <string name="meeting_share_text">Поделиться текстом</string>
     <string name="meeting_summary_redo">Обновить саммери</string>
     <string name="meeting_autotitle">Придумать название</string>
     <string name="summary_hint">Сделано локальной моделью — проверяйте факты по расшифровке</string>

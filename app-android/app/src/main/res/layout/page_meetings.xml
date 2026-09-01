@@ -552,15 +552,26 @@
                 android:layout_height="wrap_content"
                 android:text="@string/meeting_summary" />
 
-            <TextView
-                android:id="@+id/meetingSummaryText"
-                style="@style/Text.Body"
+            <!-- Длинное саммери прокручивается внутри карточки: колонка
+                 детали не скроллится, и без потолка высоты кнопки экспорта
+                 уезжали за экран (проверено на телефоне). -->
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/meetingSummaryScroll"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:textSize="14sp"
-                android:lineSpacingMultiplier="1.25"
-                android:textIsSelectable="true" />
+                android:fadeScrollbars="true"
+                android:scrollbars="vertical">
+
+                <TextView
+                    android:id="@+id/meetingSummaryText"
+                    style="@style/Text.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:lineSpacingMultiplier="1.25"
+                    android:textIsSelectable="true" />
+            </androidx.core.widget.NestedScrollView>
 
             <TextView
                 style="@style/Text.Muted"
@@ -650,6 +661,16 @@
                 android:layout_marginStart="8dp"
                 android:text="@string/export_doc" />
         </LinearLayout>
+
+        <!-- Поделиться текстом: переслать или закинуть во внешнюю LLM. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingShareText"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            android:text="@string/meeting_share_text" />
 
         <!-- Исходный звук встречи — WAV в Загрузки: изнутри приложения
              его иначе не достать. -->
