@@ -988,6 +988,30 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
 
     meta.state = STATE_DONE.to_string();
     meta.error = None;
+
+    // Автоназвание: безымянной встрече — короткое имя от модели саммери,
+    // если та уже скачана (качать гигабайты ради названия не станем).
+    // Ошибка названия не должна валить готовую расшифровку — молча живём
+    // с «Встречей 1 сентября».
+    if meta.title.trim().is_empty() && crate::summary::model_ready(app) {
+        let head: String = {
+            let mut text = String::new();
+            for s in &segments {
+                text.push_str(&s.text);
+                text.push(' ');
+                if text.len() > 6000 {
+                    break;
+                }
+            }
+            text
+        };
+        match crate::summary::title(app, &head) {
+            Ok(title) if !title.is_empty() => meta.title = title,
+            Ok(_) => {}
+            Err(e) => log::warn!("автоназвание не удалось: {e}"),
+        }
+    }
+
     save_meta(app, id, &meta);
     Ok(())
 }

@@ -276,6 +276,50 @@ pub fn summarize(
     )
 }
 
+/// Короткое название записи по началу расшифровки. Контекст маленький —
+/// ради пары слов не разворачиваем гигабайтный KV-кэш.
+pub fn title(app: &AppHandle, transcript_head: &str) -> Result<String> {
+    let model = model_path(app);
+    if !model.exists() {
+        return Err(anyhow!("модель саммери не скачана"));
+    }
+    let path = CString::new(model.to_string_lossy().as_bytes())?;
+    let handle = unsafe { sf_llm_load(path.as_ptr(), 4096, 0) };
+    if handle.is_null() {
+        return Err(anyhow!("модель саммери не загрузилась"));
+    }
+    let llm = Llm(handle);
+
+    let raw = generate(
+        &llm,
+        transcript_head,
+        "Тебе дают начало автоматической расшифровки записи (встреча, интервью, лекция \
+         или заметка); в тексте бывают ошибки распознавания. Придумай короткое название \
+         этой записи на русском: от двух до пяти слов, по сути разговора. Ответь только \
+         самим названием — без кавычек, точки в конце и пояснений.",
+        64,
+        (0, 100),
+        |_| {},
+        Arc::new(AtomicBool::new(false)),
+    )?;
+
+    // Модель иногда всё же заворачивает ответ в кавычки или льёт лишнее —
+    // берём первую строку и чистим края.
+    let title = raw
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_matches(|c| "«»\"'“”.".contains(c))
+        .trim()
+        .to_string();
+    // Слишком длинное «название» — признак, что модель ушла в пересказ.
+    if title.chars().count() > 60 {
+        return Ok(String::new());
+    }
+    Ok(title)
+}
+
 /// Режет текст на n примерно равных кусков по границам предложений.
 fn split_into(text: &str, n: usize) -> Vec<String> {
     let mut parts = Vec::new();

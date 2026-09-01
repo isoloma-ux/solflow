@@ -61,6 +61,9 @@ mod summary {
     ) -> Result<String> {
         Err(anyhow!("сборка без модели саммери"))
     }
+    pub fn title(_app: &AppHandle, _transcript_head: &str) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
 }
 mod ttf;
 mod settings;
