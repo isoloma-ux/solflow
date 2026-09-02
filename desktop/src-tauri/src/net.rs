@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use ureq::tls::{TlsConfig, TlsProvider};
+use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 use ureq::Agent;
 
 /// Некоторым API (GitHub) без внятного User-Agent отвечать не положено.
@@ -32,8 +32,10 @@ fn agent() -> &'static Agent {
     AGENT.get_or_init(|| {
         let config = Agent::config_builder()
             .tls_config(
+                // Корни — системные, а не набор Mozilla: см. sync/yandex.rs.
                 TlsConfig::builder()
                     .provider(TlsProvider::NativeTls)
+                    .root_certs(RootCerts::PlatformVerifier)
                     .build(),
             )
             .timeout_connect(Some(CONNECT_TIMEOUT))

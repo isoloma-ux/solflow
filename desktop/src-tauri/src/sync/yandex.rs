@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
-use ureq::tls::{TlsConfig, TlsProvider};
+use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 use ureq::Agent;
 
 /// Ключи приложения в Яндекс OAuth — один файл на все три платформы.
@@ -60,8 +60,13 @@ fn agent() -> &'static Agent {
     AGENT.get_or_init(|| {
         let config = Agent::config_builder()
             .tls_config(
+            // Корни — системные. По умолчанию ureq отключает встроенные корни
+            // и подсовывает набор Mozilla, а schannel на Windows строит
+            // цепочку Яндекса до корня, которого в том наборе нет, — и
+            // отвечает «unable to find any user-specified roots».
                 TlsConfig::builder()
                     .provider(TlsProvider::NativeTls)
+                    .root_certs(RootCerts::PlatformVerifier)
                     .build(),
             )
             .timeout_connect(Some(Duration::from_secs(15)))

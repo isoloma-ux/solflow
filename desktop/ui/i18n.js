@@ -184,6 +184,8 @@ const EN = {
   "Раньше, в 0.4.0": "Earlier, in 0.4.0",
   "Раньше, в 0.5.0": "Earlier, in 0.5.0",
   "Раньше, в 0.5.3": "Earlier, in 0.5.3",
+  "Раньше, в 0.6.0": "Earlier, in 0.6.0",
+  "Синхронизация на Windows: подключение к Яндекс.Диску спотыкалось о проверку сертификата — исправлено.": "Sync on Windows: connecting to Yandex Disk stumbled on certificate verification — fixed.",
   "Синхронизация через Яндекс.Диск: встречи и проекты одинаковы на телефоне и компьютере. Вход по коду — в настройках, данные лежат в папке приложения на вашем Диске.": "Sync via Yandex Disk: meetings and projects are the same on the phone and the computer. Sign in with a code in Settings; the data lives in the app folder on your Disk.",
   "Записали на телефоне — этот компьютер сам посчитает саммери, придумает название и отправит их обратно.": "Recorded on the phone — this computer writes the summary and a title itself and sends them back.",
   "Переименования, проекты и удаления расходятся по всем устройствам; звук записей передается по желанию — отдельным переключателем.": "Renames, projects and deletions reach every device; recording audio is transferred only if you turn it on.",
