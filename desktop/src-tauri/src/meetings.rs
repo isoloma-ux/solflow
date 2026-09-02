@@ -2187,6 +2187,39 @@ pub fn export(
     }
 
     let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+
+    // Только саммери — в письмо или заметку, без двух часов расшифровки.
+    if let Some(ext) = format.strip_prefix("summary-") {
+        if meta.summary.trim().is_empty() {
+            return Err(anyhow!("саммери ещё нет"));
+        }
+        let ext = if ext == "md" { "md" } else { "txt" };
+        let path = export_target_path(
+            app,
+            target,
+            &format!("{} — саммери", safe_file_name(title)),
+            ext,
+        )?;
+        let body = if ext == "md" {
+            format!("# {title}\n\n{}\n", meta.summary.trim())
+        } else {
+            let mut out = format!("{title}\n\n");
+            for (head, line) in summary_lines(&meta.summary) {
+                if head {
+                    out.push_str(&format!("\n{line}\n"));
+                } else {
+                    out.push_str(&format!("• {line}\n"));
+                }
+            }
+            out
+        };
+        std::fs::write(&path, body)?;
+        if reveal {
+            crate::sys::reveal_file(&path);
+        }
+        return Ok(path.to_string_lossy().to_string());
+    }
+
     let segments = load_transcript(app, id);
     if segments.is_empty() {
         return Err(anyhow!("расшифровки ещё нет"));

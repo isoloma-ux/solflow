@@ -80,6 +80,11 @@ class MainActivity : AppCompatActivity() {
     private var selectionShown = false
     /** null — все встречи, [NO_PROJECT] — те, что вне проектов. */
     private var projectFilter: String? = null
+
+    /** Развёрнутые в шторке проекты (ключ «__all__» — «Все записи»). */
+    private val openDrawerProjects = mutableSetOf<String>()
+
+
     private var meetingQuery = ""
     private val selection = mutableSetOf<Long>()
 
@@ -215,6 +220,9 @@ class MainActivity : AppCompatActivity() {
                 ui.drawer.isDrawerOpen(GravityCompat.START) ->
                     ui.drawer.closeDrawer(GravityCompat.START)
                 page == Page.MEETINGS && selection.isNotEmpty() -> clearSelection()
+                page == Page.MEETINGS && openMeetingId != null &&
+                    ui.pageMeetings.meetingTranscriptSheet.visibility == View.VISIBLE ->
+                    hideTranscriptSheet()
                 page == Page.MEETINGS && openMeetingId != null -> {
                     openMeetingId = null
                     renderMeetings()
@@ -253,6 +261,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(33, "0.7.0", R.string.whatsnew_body_070),
             Triple(32, "0.6.1", R.string.whatsnew_body_061),
             Triple(31, "0.6.0", R.string.whatsnew_body_060),
             Triple(27, "0.5.0", R.string.whatsnew_body),
@@ -679,15 +688,23 @@ class MainActivity : AppCompatActivity() {
         val box = ui.drawerList
         box.removeAllViews()
 
-        drawerRow(getString(R.string.project_all), projectFilter == null) { pickProject(null) }
+        val meetings = MeetingStore.all(this)
+        drawerTree(ALL_PROJECTS, getString(R.string.project_all), projectFilter == null, meetings) {
+            pickProject(null)
+        }
 
         drawerDivider()
         drawerGroup(R.string.drawer_projects)
-        drawerRow(getString(R.string.project_none), projectFilter == NO_PROJECT) {
-            pickProject(NO_PROJECT)
-        }
+        drawerTree(
+            NO_PROJECT, getString(R.string.project_none), projectFilter == NO_PROJECT,
+            meetings.filter { it.project == null },
+        ) { pickProject(NO_PROJECT) }
         for (project in MeetingStore.projects(this)) {
-            drawerRow(project.name, projectFilter == project.id) { pickProject(project.id) }
+            drawerTree(
+                project.id, project.name, projectFilter == project.id,
+                meetings.filter { it.project == project.id },
+                onLongTap = { projectSheet(project) },
+            ) { pickProject(project.id) }
         }
         drawerRow("+  " + getString(R.string.project_new_title), false, muted = true) {
             ui.drawer.closeDrawer(GravityCompat.START)
@@ -800,8 +817,12 @@ class MainActivity : AppCompatActivity() {
         title: String,
         active: Boolean,
         muted: Boolean = false,
+        indent: Boolean = false,
+        expanded: Boolean? = null,
+        onToggle: (() -> Unit)? = null,
+        onLongTap: (() -> Unit)? = null,
         onTap: () -> Unit,
-    ) {
+    ): TextView {
         val row = layoutInflater
             .inflate(R.layout.item_drawer_row, ui.drawerList, false) as TextView
         row.text = title
@@ -811,8 +832,125 @@ class MainActivity : AppCompatActivity() {
         }
         // Приглушённая строка — действие, а не пункт списка.
         if (muted) row.setTextColor(getColor(R.color.fog))
-        row.setOnClickListener { onTap() }
+        val density = resources.displayMetrics.density
+        if (indent) {
+            // Запись внутри проекта: сдвиг и мельче, как в сайдбаре на компьютере.
+            row.setPaddingRelative((24 * density).toInt(), 0, 0, 0)
+            row.textSize = 14f
+            row.layoutParams = row.layoutParams.apply { height = (40 * density).toInt() }
+            if (!active) row.setTextColor(getColor(R.color.fog))
+        }
+        if (expanded != null) {
+            // Стрелка справа раскрывает записи проекта; тап по остальной
+            // строке, как и раньше, выбирает проект.
+            row.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                0, 0, if (expanded) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, 0,
+            )
+            var lastX = 0f
+            row.setOnTouchListener { _, event -> lastX = event.x; false }
+            row.setOnClickListener {
+                if (lastX > row.width - 56 * density) onToggle?.invoke() else onTap()
+            }
+        } else {
+            row.setOnClickListener { onTap() }
+        }
+        if (onLongTap != null) {
+            row.setOnLongClickListener {
+                onLongTap()
+                true
+            }
+        }
         ui.drawerList.addView(row)
+        return row
+    }
+
+    /**
+     * Проект в шторке как папка: стрелка раскрывает его записи, долгое
+     * нажатие по проекту — переименовать или удалить, по записи — её меню.
+     */
+    private fun drawerTree(
+        key: String,
+        title: String,
+        active: Boolean,
+        inside: List<Meeting>,
+        onLongTap: (() -> Unit)? = null,
+        onTap: () -> Unit,
+    ) {
+        val expanded = key in openDrawerProjects
+        drawerRow(
+            title, active,
+            expanded = expanded,
+            onToggle = {
+                if (expanded) openDrawerProjects.remove(key) else openDrawerProjects.add(key)
+                renderDrawer()
+            },
+            onLongTap = onLongTap,
+            onTap = onTap,
+        )
+        if (!expanded) return
+        if (inside.isEmpty()) {
+            drawerRow(getString(R.string.drawer_empty), false, muted = true, indent = true) {}
+        }
+        for (meeting in inside.take(30)) {
+            drawerRow(
+                MeetingStore.displayTitle(this, meeting),
+                openMeetingId == meeting.id,
+                indent = true,
+                onLongTap = { meetingSheet(meeting) },
+            ) {
+                ui.drawer.closeDrawer(GravityCompat.START)
+                show(Page.MEETINGS)
+                openMeeting(meeting.id)
+            }
+        }
+    }
+
+    private fun projectSheet(project: MeetingStore.Project) {
+        actionSheet(
+            project.name,
+            listOf(
+                SheetOption(RENAME_PROJECT, getString(R.string.project_rename), R.drawable.ic_edit),
+                SheetOption.DIVIDER,
+                SheetOption(DELETE_PROJECT, getString(R.string.project_delete), R.drawable.ic_trash, danger = true),
+            ),
+        ) { value ->
+            when (value) {
+                RENAME_PROJECT -> askProjectName(project.name) { name ->
+                    MeetingStore.renameProject(this, project.id, name)
+                    renderMeetings()
+                    renderDrawer()
+                }
+                DELETE_PROJECT -> confirmProjectDelete(project.id)
+            }
+        }
+    }
+
+    /** То же, что умеет открытая встреча, — из шторки, по долгому нажатию. */
+    private fun meetingSheet(meeting: Meeting) {
+        val options = buildList {
+            add(SheetOption("open", getString(R.string.sheet_open), R.drawable.ic_next))
+            add(SheetOption.DIVIDER)
+            add(SheetOption("rename", getString(R.string.sheet_rename), R.drawable.ic_edit))
+            if (meeting.isDone) {
+                add(SheetOption("export", getString(R.string.meeting_export), R.drawable.ic_download))
+                add(SheetOption("share", getString(R.string.meeting_share_text), R.drawable.ic_share))
+            }
+            add(SheetOption.DIVIDER)
+            add(SheetOption("delete", getString(R.string.meeting_delete), R.drawable.ic_trash, danger = true))
+        }
+        actionSheet(MeetingStore.displayTitle(this, meeting), options) { value ->
+            when (value) {
+                "open" -> {
+                    ui.drawer.closeDrawer(GravityCompat.START)
+                    show(Page.MEETINGS)
+                    openMeeting(meeting.id)
+                }
+                "rename" -> renameMeeting(meeting.id)
+                "export" -> exportSheet(meeting.id)
+                "share" -> shareMeetingText(meeting.id)
+                "delete" -> deleteMeeting(meeting.id)
+            }
+        }
     }
 
     /** Выбор проекта в шторке ведёт на вкладку встреч с этим фильтром. */
@@ -1045,15 +1183,29 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             renderMeetings()
         }
-        m.meetingCopy.setOnClickListener { copyMeeting() }
-        m.meetingShareText.setOnClickListener { shareMeetingText() }
-        m.meetingSaveAudio.setOnClickListener { saveMeetingAudio() }
-        m.meetingDelete.setOnClickListener { deleteMeeting() }
-        m.meetingDiarize.setOnClickListener { chooseDiarize() }
-        m.exportTxt.setOnClickListener { exportMeeting(ExportFormat.TXT) }
-        m.exportMd.setOnClickListener { exportMeeting(ExportFormat.MD) }
-        m.exportPdf.setOnClickListener { exportMeeting(ExportFormat.PDF) }
-        m.exportDoc.setOnClickListener { exportMeeting(ExportFormat.DOCX) }
+        m.meetingMore.setOnClickListener { meetingActions() }
+        m.meetingSummaryBox.setOnClickListener { showSummarySheet() }
+        m.meetingSummaryOpen.setOnClickListener { showSummarySheet() }
+        m.meetingSummaryShare.setOnClickListener { shareSummary() }
+        m.meetingSummaryExport.setOnClickListener { exportSummary() }
+        m.meetingTranscriptCopy.setOnClickListener { copyMeeting() }
+        m.meetingTranscriptShare.setOnClickListener { shareMeetingText() }
+        m.meetingTranscriptExport.setOnClickListener { exportSheet() }
+        m.meetingTranscriptBox.setOnClickListener { showTranscriptSheet() }
+        m.meetingTranscriptOpen.setOnClickListener { showTranscriptSheet() }
+        m.meetingTranscriptClose.setOnClickListener { hideTranscriptSheet() }
+        dragToDismiss(m.meetingTranscriptHandle)
+        dragToDismiss(m.meetingTranscriptHeader)
+        m.meetingTranscriptSheetCopy.setOnClickListener { copyMeeting() }
+        m.meetingTranscriptSheetShare.setOnClickListener { shareMeetingText() }
+        m.meetingTranscriptSheetExport.setOnClickListener { exportSheet() }
+        m.meetingSummaryCopy.setOnClickListener {
+            val summary = openMeetingId?.let { MeetingStore.load(this, it) }?.summary.orEmpty()
+            if (summary.isBlank()) return@setOnClickListener
+            getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Sol Flow", summary))
+            Snackbar.make(ui.root, R.string.summary_copied, Snackbar.LENGTH_SHORT).show()
+        }
 
         clearableSearch(m.meetingSearch)
         m.meetingSearch.addTextChangedListener(object : TextWatcher {
@@ -1205,11 +1357,12 @@ class MainActivity : AppCompatActivity() {
         val ids = selection.toList()
         if (ids.isEmpty()) return
         val options = buildList {
-            add(NO_PROJECT to getString(R.string.project_none))
-            for (p in MeetingStore.projects(this@MainActivity)) add(p.id to p.name)
-            add(NEW_PROJECT to getString(R.string.project_new))
+            add(SheetOption(NO_PROJECT, getString(R.string.project_none), R.drawable.ic_folder))
+            for (p in MeetingStore.projects(this@MainActivity)) add(SheetOption(p.id, p.name, R.drawable.ic_folder))
+            add(SheetOption.DIVIDER)
+            add(SheetOption(NEW_PROJECT, getString(R.string.project_new), R.drawable.ic_edit))
         }
-        optionSheet(getString(R.string.selection_project), options, null) { value ->
+        actionSheet(getString(R.string.selection_project), options) { value ->
             fun move(project: String?) {
                 for (id in ids) MeetingStore.setProject(this, id, project)
                 clearSelection()
@@ -1279,13 +1432,14 @@ class MainActivity : AppCompatActivity() {
             .mapNotNull { MeetingStore.load(this, it) }
             .sortedBy { it.at }
         val formats = listOf(
-            "txt" to getString(R.string.export_txt),
-            "md" to getString(R.string.export_md),
-            "pdf" to getString(R.string.export_pdf),
-            "docx" to getString(R.string.export_doc),
-            "wav" to getString(R.string.export_wav),
+            SheetOption("txt", getString(R.string.export_as, ".txt"), R.drawable.ic_file),
+            SheetOption("md", getString(R.string.export_as, ".md"), R.drawable.ic_file),
+            SheetOption("pdf", getString(R.string.export_as, ".pdf"), R.drawable.ic_file),
+            SheetOption("docx", getString(R.string.export_as, ".docx"), R.drawable.ic_file),
+            SheetOption.DIVIDER,
+            SheetOption("wav", getString(R.string.meeting_save_audio), R.drawable.ic_waveform),
         )
-        optionSheet(getString(R.string.selection_export), formats, null) { value ->
+        actionSheet(getString(R.string.selection_export), formats) { value ->
             // Звук есть и у нерасшифрованных, и склеивать его не во что —
             // всегда отдельными файлами, без второго вопроса.
             if (value == "wav") {
@@ -1296,13 +1450,13 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     runAudioExport(withAudio)
                 }
-                return@optionSheet
+                return@actionSheet
             }
             val done = picked.filter { it.isDone }
             if (done.isEmpty()) {
                 Snackbar.make(ui.root, R.string.selection_export_none, Snackbar.LENGTH_LONG)
                     .show()
-                return@optionSheet
+                return@actionSheet
             }
             val format = when (value) {
                 "txt" -> ExportFormat.TXT
@@ -1598,6 +1752,7 @@ class MainActivity : AppCompatActivity() {
             }
             syncMeetingRecordingMotion(recording && !paused)
 
+            if (m.meetingTranscriptSheet.visibility == View.VISIBLE) hideTranscriptSheet(animate = false)
             renderMeetingList()
             return
         }
@@ -1639,30 +1794,10 @@ class MainActivity : AppCompatActivity() {
             if (m.meetingSummaryText.text.toString() != rendered.toString()) {
                 m.meetingSummaryText.text = rendered
             }
-            // Потолок высоты: длинное саммери листается внутри карточки,
-            // а таймлайн и кнопки экспорта остаются достижимыми.
-            val cap = (300 * resources.displayMetrics.density).toInt()
-            m.meetingSummaryScroll.post {
-                val wanted = if (m.meetingSummaryText.height > cap) cap
-                else ViewGroup.LayoutParams.WRAP_CONTENT
-                if (m.meetingSummaryScroll.layoutParams.height != wanted) {
-                    m.meetingSummaryScroll.layoutParams =
-                        m.meetingSummaryScroll.layoutParams.apply { height = wanted }
-                }
-            }
         }
-        m.meetingDiarize.visibility = visibility(open.isDone && !working && hasAudio)
-        m.meetingExportRow.visibility = visibility(open.isDone)
-        m.meetingShareText.visibility = visibility(open.isDone)
+        m.meetingMore.visibility = visibility(open.isDone || (!working && hasAudio))
         // Звук есть и у нерасшифрованной встречи — лишь бы работа по ней
         // не шла и файл был на месте.
-        m.meetingSaveAudio.visibility = visibility(
-            !working && open.id != MeetingService.recordingId &&
-                MeetingStore.audioFile(this, open.id).exists()
-        )
-        m.meetingCopy.visibility = visibility(open.isDone)
-        // Пока по встрече идёт работа, удалять её из-под неё нельзя.
-        m.meetingDelete.visibility = visibility(!working)
 
         segments.setLabels(
             (0 until open.speakers).associateWith {
@@ -1685,8 +1820,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Поиск по расшифровке появляется, когда есть что искать.
-        m.meetingFindRow.visibility = visibility(detailSegments.isNotEmpty())
+        // Карточка расшифровки: первые реплики, целиком — листом.
+        m.meetingTranscriptBox.visibility = visibility(detailSegments.isNotEmpty())
+        val preview = detailSegments.take(4).joinToString(" ") { it.text }
+        if (m.meetingTranscriptPreview.text.toString() != preview) {
+            m.meetingTranscriptPreview.text = preview
+        }
 
         // Пришли из общего поиска — подставляем слово и ведём к месту.
         val wanted = pendingFind
@@ -1694,6 +1833,8 @@ class MainActivity : AppCompatActivity() {
             pendingFind = null
             val index = pendingIndex
             pendingIndex = null
+            // Из общего поиска — сразу в расшифровку, к найденному месту.
+            if (wanted.isNotBlank() || index != null) showTranscriptSheet(animate = false)
             if (m.meetingFind.text?.toString() != wanted) {
                 // Слушатель поля сам пересчитает совпадения.
                 m.meetingFind.setText(wanted)
@@ -1854,8 +1995,8 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun renameMeeting() {
-        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+    private fun renameMeeting(id: Long? = openMeetingId) {
+        val meeting = id?.let { MeetingStore.load(this, it) } ?: return
         val input = EditText(this).apply {
             setText(meeting.title.ifBlank { MeetingStore.displayTitle(context, meeting) })
             setSelectAllOnFocus(true)
@@ -1866,6 +2007,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.save) { _, _ ->
                 MeetingStore.save(this, meeting.copy(title = input.text.toString().trim()))
                 renderMeetings()
+                if (ui.drawer.isDrawerOpen(GravityCompat.START)) renderDrawer()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -1876,8 +2018,8 @@ class MainActivity : AppCompatActivity() {
      * закинуть во внешнюю нейросеть — осознанный шаг пользователя, само
      * приложение в интернет ничего не отправляет.
      */
-    private fun shareMeetingText() {
-        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+    private fun shareMeetingText(id: Long? = openMeetingId) {
+        val meeting = id?.let { MeetingStore.load(this, it) } ?: return
         val text = buildString {
             appendLine(MeetingStore.displayTitle(this@MainActivity, meeting))
             if (meeting.summary.isNotEmpty()) {
@@ -1905,6 +2047,223 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /** Меню открытой встречи — одним листом вместо ряда кнопок. */
+    private fun meetingActions() {
+        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+        val working = MeetingService.phase.containsKey(meeting.id)
+        val hasAudio = MeetingStore.audioFile(this, meeting.id).exists() &&
+            meeting.id != MeetingService.recordingId
+        val options = buildList {
+            if (meeting.isDone) {
+                add(SheetOption("copy", getString(R.string.copy), R.drawable.ic_copy))
+                add(SheetOption("share", getString(R.string.meeting_share_text), R.drawable.ic_share))
+                add(SheetOption("export", getString(R.string.meeting_export), R.drawable.ic_download))
+                add(SheetOption.DIVIDER)
+                add(SheetOption("transcript", getString(R.string.transcript_title), R.drawable.ic_text_lines))
+                if (meeting.summary.isNotBlank()) {
+                    add(SheetOption("summary", getString(R.string.meeting_summary), R.drawable.ic_text_lines))
+                }
+                if (hasAudio && !working) {
+                    add(SheetOption("speakers", getString(R.string.meeting_diarize), R.drawable.ic_people))
+                }
+                add(SheetOption.DIVIDER)
+            }
+            if (hasAudio && !working) {
+                add(SheetOption("audio", getString(R.string.meeting_save_audio), R.drawable.ic_waveform))
+            }
+            add(SheetOption("rename", getString(R.string.sheet_rename), R.drawable.ic_edit))
+            if (!working) {
+                add(SheetOption.DIVIDER)
+                add(SheetOption("delete", getString(R.string.meeting_delete), R.drawable.ic_trash, danger = true))
+            }
+        }
+        actionSheet(MeetingStore.displayTitle(this, meeting), options) { value ->
+            when (value) {
+                "copy" -> copyMeeting()
+                "share" -> shareMeetingText()
+                "export" -> exportSheet()
+                "transcript" -> showTranscriptSheet()
+                "summary" -> showSummarySheet()
+                "speakers" -> chooseDiarize()
+                "audio" -> saveMeetingAudio()
+                "rename" -> renameMeeting()
+                "delete" -> deleteMeeting()
+            }
+        }
+    }
+
+    /** Расшифровка целиком — лист поверх экрана встречи, с поиском внутри. */
+    private fun showTranscriptSheet(animate: Boolean = true) {
+        val sheet = ui.pageMeetings.meetingTranscriptSheet
+        if (sheet.visibility == View.VISIBLE) return
+        sheet.visibility = View.VISIBLE
+        if (animate && motionOn()) {
+            val from = sheet.height.toFloat().takeIf { it > 0 }
+                ?: resources.displayMetrics.heightPixels.toFloat()
+            sheet.translationY = from
+            sheet.animate().translationY(0f).setDuration(280)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        } else {
+            sheet.translationY = 0f
+        }
+    }
+
+    /**
+     * Смахнуть лист расшифровки вниз, как системный: он едет за пальцем, и
+     * если его утащили дальше четверти высоты или резко бросили — уходит,
+     * иначе возвращается на место.
+     */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun dragToDismiss(grip: View) {
+        val sheet = ui.pageMeetings.meetingTranscriptSheet
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        var startY = 0f
+        var dragging = false
+        var tracker: android.view.VelocityTracker? = null
+        grip.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    dragging = false
+                    tracker = android.view.VelocityTracker.obtain().also { it.addMovement(event) }
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    tracker?.addMovement(event)
+                    val dy = event.rawY - startY
+                    if (!dragging && dy > slop) dragging = true
+                    if (dragging) sheet.translationY = dy.coerceAtLeast(0f)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    tracker?.computeCurrentVelocity(1000)
+                    val velocity = tracker?.yVelocity ?: 0f
+                    tracker?.recycle()
+                    tracker = null
+                    val far = sheet.translationY > sheet.height * 0.25f
+                    if (dragging && (far || velocity > 1500f)) {
+                        hideTranscriptSheet()
+                    } else {
+                        sheet.animate().translationY(0f).setDuration(180).start()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun hideTranscriptSheet(animate: Boolean = true) {
+        val sheet = ui.pageMeetings.meetingTranscriptSheet
+        if (sheet.visibility != View.VISIBLE) return
+        if (animate && motionOn()) {
+            sheet.animate().translationY(sheet.height.toFloat()).setDuration(220)
+                .withEndAction {
+                    sheet.visibility = View.GONE
+                    sheet.translationY = 0f
+                }.start()
+        } else {
+            sheet.visibility = View.GONE
+        }
+    }
+
+    /** Саммери целиком — нижним листом во весь экран, с копированием и экспортом. */
+    private fun showSummarySheet() {
+        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+        if (meeting.summary.isBlank()) return
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.sheet_summary, null)
+        view.findViewById<TextView>(R.id.summaryText).text = renderSummaryText(meeting.summary)
+        view.findViewById<View>(R.id.summaryCopy).setOnClickListener {
+            getSystemService(android.content.ClipboardManager::class.java)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Sol Flow", meeting.summary))
+            Snackbar.make(ui.root, R.string.summary_copied, Snackbar.LENGTH_SHORT).show()
+            sheet.dismiss()
+        }
+        view.findViewById<View>(R.id.summaryShare).setOnClickListener {
+            sheet.dismiss()
+            shareSummary()
+        }
+        view.findViewById<View>(R.id.summaryExport).setOnClickListener {
+            sheet.dismiss()
+            exportSummary(meeting.id)
+        }
+        sheet.setContentView(view)
+        (view.parent as? View)?.setBackgroundColor(0)
+        view.setBackgroundResource(R.drawable.bg_sheet)
+        // Во весь экран сразу: саммери — текст на страницу, а не пара строк.
+        val height = (resources.displayMetrics.heightPixels * 0.92f).toInt()
+        view.layoutParams = view.layoutParams?.apply { this.height = height }
+            ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
+        sheet.behavior.peekHeight = height
+        sheet.behavior.skipCollapsed = true
+        sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+        sheet.show()
+    }
+
+    /** Экспорт: одна кнопка, форматы — листом; саммери и звук отдельными блоками. */
+    private fun exportSheet(id: Long? = openMeetingId) {
+        val meeting = id?.let { MeetingStore.load(this, it) } ?: return
+        val hasAudio = id == openMeetingId && MeetingStore.audioFile(this, meeting.id).exists() &&
+            meeting.id != MeetingService.recordingId && !MeetingService.phase.containsKey(meeting.id)
+        val options = buildList {
+            add(SheetOption("txt", getString(R.string.export_as, ".txt"), R.drawable.ic_file))
+            add(SheetOption("md", getString(R.string.export_as, ".md"), R.drawable.ic_file))
+            add(SheetOption("pdf", getString(R.string.export_as, ".pdf"), R.drawable.ic_file))
+            add(SheetOption("docx", getString(R.string.export_as, ".docx"), R.drawable.ic_file))
+            if (meeting.summary.isNotBlank()) {
+                add(SheetOption.DIVIDER)
+                add(SheetOption("summary", getString(R.string.export_summary), R.drawable.ic_text_lines))
+            }
+            if (hasAudio) {
+                add(SheetOption.DIVIDER)
+                add(SheetOption("wav", getString(R.string.meeting_save_audio), R.drawable.ic_waveform))
+            }
+        }
+        actionSheet(getString(R.string.meeting_export), options) { value ->
+            when (value) {
+                "txt" -> exportMeeting(ExportFormat.TXT, meeting.id)
+                "md" -> exportMeeting(ExportFormat.MD, meeting.id)
+                "pdf" -> exportMeeting(ExportFormat.PDF, meeting.id)
+                "docx" -> exportMeeting(ExportFormat.DOCX, meeting.id)
+                "summary" -> exportSummary(meeting.id)
+                "wav" -> saveMeetingAudio()
+            }
+        }
+    }
+
+    /** Только саммери — в системный лист «Поделиться», с названием встречи. */
+    private fun shareSummary() {
+        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+        if (meeting.summary.isBlank()) return
+        val text = MeetingStore.displayTitle(this, meeting) + "\n\n" + meeting.summary.trim()
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
+                getString(R.string.summary_share),
+            )
+        )
+    }
+
+    /** Саммери отдельным файлом — тем же путём в Загрузки, что и расшифровка. */
+    private fun exportSummary(id: Long? = openMeetingId) {
+        val meeting = id?.let { MeetingStore.load(this, it) } ?: return
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { MeetingExport.saveSummary(this@MainActivity, meeting) }
+            }
+            result.fold(
+                onSuccess = { export ->
+                    Snackbar.make(ui.root, getString(R.string.export_done, export.name), Snackbar.LENGTH_LONG)
+                        .show()
+                },
+                onFailure = {
+                    Snackbar.make(ui.root, R.string.export_failed, Snackbar.LENGTH_LONG).show()
+                },
+            )
+        }
+    }
+
     private fun copyMeeting() {
         val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
         val text = buildString {
@@ -1921,21 +2280,22 @@ class MainActivity : AppCompatActivity() {
         copyToClipboard(text)
     }
 
-    private fun deleteMeeting() {
-        val id = openMeetingId ?: return
+    private fun deleteMeeting(id: Long? = openMeetingId) {
+        if (id == null) return
         MaterialAlertDialogBuilder(this)
             .setMessage(R.string.meeting_delete_confirm)
             .setPositiveButton(R.string.meeting_delete) { _, _ ->
                 MeetingStore.delete(this, id)
-                openMeetingId = null
+                if (openMeetingId == id) openMeetingId = null
                 renderMeetings()
+                if (ui.drawer.isDrawerOpen(GravityCompat.START)) renderDrawer()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
-    private fun exportMeeting(format: ExportFormat) {
-        val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
+    private fun exportMeeting(format: ExportFormat, id: Long? = openMeetingId) {
+        val meeting = id?.let { MeetingStore.load(this, it) } ?: return
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {

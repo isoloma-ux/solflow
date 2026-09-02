@@ -1,6 +1,6 @@
 [package]
 name = "solflow"
-version = "0.6.1"
+version = "0.7.0"
 description = "Sol Flow — офлайновый голосовой ввод"
 edition = "2021"
 
@@ -27,6 +27,8 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
+# Системное уведомление о новой версии — баннер в окне видит не каждый.
+tauri-plugin-notification = "2"
 cpal = "0.16"
 enigo = "0.6"
 serde = { version = "1", features = ["derive"] }

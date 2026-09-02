@@ -686,9 +686,26 @@ fn spawn_update_watch(app: AppHandle) {
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(FIRST_DELAY));
+        // Об одной версии — одно системное уведомление: баннер в окне
+        // остаётся, а повторять раз в шесть часов не нужно.
+        let mut notified: Option<String> = None;
         loop {
             let info = latest_release();
             if info.newer {
+                if info.latest != notified {
+                    notified = info.latest.clone();
+                    use tauri_plugin_notification::NotificationExt;
+                    let version = info.latest.clone().unwrap_or_default();
+                    let _ = app
+                        .notification()
+                        .builder()
+                        .title("Sol Flow")
+                        .body(
+                            lang::t(&app, "Вышла версия {0} — обновление ждет в подвале окна")
+                                .replace("{0}", version.trim_start_matches('v')),
+                        )
+                        .show();
+                }
                 let _ = app.emit("solflow-update", info);
             }
             std::thread::sleep(std::time::Duration::from_secs(EVERY));
@@ -1394,6 +1411,21 @@ fn meetings_delete(app: AppHandle, ids: Vec<i64>) {
     }
 }
 
+/// Саммери пачкой: каждая встаёт в ту же очередь к движку, что и одиночная.
+#[tauri::command]
+fn meetings_summarize(app: AppHandle, ids: Vec<i64>) {
+    for id in ids {
+        meetings::summarize(&app, id);
+    }
+}
+
+#[tauri::command]
+fn meetings_autotitle(app: AppHandle, ids: Vec<i64>) {
+    for id in ids {
+        meetings::autotitle(&app, id);
+    }
+}
+
 #[tauri::command]
 fn meetings_transcribe(app: AppHandle, ids: Vec<i64>) {
     for id in ids {
@@ -1494,6 +1526,7 @@ pub fn run() {
 
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -1576,6 +1609,8 @@ pub fn run() {
             meetings_export,
             meetings_delete,
             meetings_transcribe,
+            meetings_summarize,
+            meetings_autotitle,
             meeting_search,
             autostart_enabled,
             set_autostart,

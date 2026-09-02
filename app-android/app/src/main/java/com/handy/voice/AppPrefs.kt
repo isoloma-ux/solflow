@@ -207,6 +207,12 @@ object AppPrefs {
         else -> 2 * 60_000L
     }
 
+    /** Версия, о которой уже показали уведомление, — чтобы не повторяться. */
+    fun notifiedVersion(context: Context): String? = text(context, "notified_version", null)
+
+    fun setNotifiedVersion(context: Context, version: String) =
+        setText(context, "notified_version", version)
+
     // --- оформление -------------------------------------------------------
 
     /** Тема окна: «system», «light» или «dark». */

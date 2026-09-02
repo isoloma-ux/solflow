@@ -80,6 +80,14 @@
                 android:textSize="14sp"
                 android:text="@string/about_author_text" />
 
+            <TextView
+                style="@style/Text.Muted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textSize="14sp"
+                android:text="@string/about_sync" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/linkSite"
                 style="@style/Pill.Inset"

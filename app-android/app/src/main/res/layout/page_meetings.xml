@@ -237,6 +237,11 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/selectionTranscribe"
+                    app:icon="@drawable/ic_redo"
+                    app:iconGravity="textStart"
+                    app:iconPadding="6dp"
+                    app:iconSize="16dp"
+                    app:iconTint="@color/ink"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -249,6 +254,11 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/selectionProject"
+                    app:icon="@drawable/ic_folder"
+                    app:iconGravity="textStart"
+                    app:iconPadding="6dp"
+                    app:iconSize="16dp"
+                    app:iconTint="@color/ink"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -269,6 +279,11 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/selectionExport"
+                    app:icon="@drawable/ic_download"
+                    app:iconGravity="textStart"
+                    app:iconPadding="6dp"
+                    app:iconSize="16dp"
+                    app:iconTint="@color/ink"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -281,6 +296,11 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/selectionDelete"
+                    app:icon="@drawable/ic_trash"
+                    app:iconGravity="textStart"
+                    app:iconPadding="6dp"
+                    app:iconSize="16dp"
+                    app:iconTint="@color/danger"
                     style="@style/Pill.Inset"
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -295,6 +315,11 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/selectionCancel"
+                    app:icon="@drawable/ic_clear"
+                    app:iconGravity="textStart"
+                    app:iconPadding="6dp"
+                    app:iconSize="16dp"
+                    app:iconTint="@color/fog"
                 style="@style/Pill.Inset"
                 android:layout_width="match_parent"
                 android:layout_height="42dp"
@@ -384,13 +409,17 @@
                 android:foreground="?attr/selectableItemBackground"
                 android:text="@string/meeting_back" />
 
+            <!-- Всё, что можно сделать со встречей, — одним меню: ряд кнопок
+                 не помещался и прятал расшифровку. -->
             <ImageButton
-                android:id="@+id/meetingDelete"
+                android:id="@+id/meetingMore"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/meeting_delete_cd"
-                android:src="@drawable/ic_trash" />
+                android:contentDescription="@string/meeting_more_cd"
+                android:src="@drawable/ic_more_vert" />
+
+
         </LinearLayout>
 
         <!-- Тап по названию — переименование. -->
@@ -411,6 +440,297 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp" />
 
+        <TextView
+            android:id="@+id/meetingState"
+            style="@style/Text.Muted"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
+
+        <!-- Полоса хода работы — процентов в подписи мало, как у загрузок. -->
+        <ProgressBar
+            android:id="@+id/meetingProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:progressTint="@color/accent_solid"
+            android:progressBackgroundTint="@color/hairline"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingTranscribe"
+            app:icon="@drawable/ic_redo"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp"
+            app:iconTint="@color/ink"
+            style="@style/Pill"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginStart="44dp"
+            android:layout_marginEnd="44dp"
+            android:visibility="gone"
+            android:text="@string/meeting_transcribe" />
+
+        <!-- Отмена идущей работы: расшифровки, импорта или разделения. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingCancelWork"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="44dp"
+            android:layout_marginEnd="44dp"
+            android:visibility="gone"
+            android:textColor="@color/danger"
+            app:strokeColor="@color/danger"
+            android:text="@string/download_cancel" />
+
+        <!-- Карточка саммери над таймлайном: черновик от модели. -->
+        <LinearLayout
+            android:id="@+id/meetingSummaryBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_inner"
+            android:padding="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    style="@style/Text.Eyebrow"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/meeting_summary" />
+
+                <!-- Скопировать, поделиться, экспорт — прямо из карточки, чтобы
+                     не ходить в общее меню; там всё это дублируется. -->
+                <ImageButton
+                    android:id="@+id/meetingSummaryCopy"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/summary_copy"
+                    android:src="@drawable/ic_copy" />
+                <ImageButton
+                    android:id="@+id/meetingSummaryShare"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/summary_share"
+                    android:src="@drawable/ic_share" />
+                <ImageButton
+                    android:id="@+id/meetingSummaryExport"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/export_summary"
+                    android:src="@drawable/ic_download" />
+            </LinearLayout>
+
+            <!-- Только первые строки: целиком саммери открывается листом по
+                 нажатию на карточку, а расшифровке остаётся экран. -->
+            <TextView
+                android:id="@+id/meetingSummaryText"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textSize="14sp"
+                android:lineSpacingMultiplier="1.25"
+                android:maxLines="4"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/meetingSummaryOpen"
+                style="@style/Text.Body"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:textSize="14sp"
+                android:textColor="@color/accent"
+                android:text="@string/summary_open" />
+
+            <TextView
+                style="@style/Text.Muted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="12sp"
+                android:text="@string/summary_hint" />
+        </LinearLayout>
+
+        <!-- Расшифровка — карточкой с первыми репликами; целиком открывается
+             листом с поиском внутри, как и саммери. -->
+        <LinearLayout
+            android:id="@+id/meetingTranscriptBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:background="@drawable/bg_card_inner"
+            android:padding="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    style="@style/Text.Eyebrow"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/transcript_title" />
+
+                <ImageButton
+                    android:id="@+id/meetingTranscriptCopy"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/copy"
+                    android:src="@drawable/ic_copy" />
+                <ImageButton
+                    android:id="@+id/meetingTranscriptShare"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/meeting_share_text"
+                    android:src="@drawable/ic_share" />
+                <ImageButton
+                    android:id="@+id/meetingTranscriptExport"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/meeting_export"
+                    android:src="@drawable/ic_download" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/meetingTranscriptPreview"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textSize="14sp"
+                android:lineSpacingMultiplier="1.25"
+                android:maxLines="5"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/meetingTranscriptOpen"
+                style="@style/Text.Body"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:textSize="14sp"
+                android:textColor="@color/accent"
+                android:text="@string/transcript_open" />
+        </LinearLayout>
+
+
+
+
+    </LinearLayout>
+
+    <!-- Расшифровка целиком: лист поверх экрана встречи, поиск внутри него,
+         как и саммери. Не отдельный диалог, чтобы поле поиска и таймлайн
+         остались теми же вьюхами, что и раньше, — вся логика поиска
+         и переходов из общего поиска живёт на них. -->
+    <LinearLayout
+        android:id="@+id/meetingTranscriptSheet"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="24dp"
+        android:orientation="vertical"
+        android:background="@drawable/bg_sheet"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <!-- Ползунок с запасом по высоте: за него лист тянут вниз, как
+             системный, — попадать в полоску в 4dp пальцем неудобно. -->
+        <View
+            android:id="@+id/meetingTranscriptHandle"
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:background="@android:color/transparent" />
+
+        <View
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_marginTop="-14dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/bg_sheet_handle" />
+
+        <LinearLayout
+            android:id="@+id/meetingTranscriptHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                style="@style/Text.Heading"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/transcript_title" />
+
+            <ImageButton
+                android:id="@+id/meetingTranscriptClose"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/close"
+                android:src="@drawable/ic_clear" />
+        </LinearLayout>
+
         <!--
           Поиск по открытой расшифровке: подсвечивает слово во всех репликах
           и ведёт по ним. Без него найти нужное место в двухчасовой встрече
@@ -420,10 +740,9 @@
             android:id="@+id/meetingFindRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="8dp"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:visibility="gone">
+            android:gravity="center_vertical">
 
             <EditText
                 android:id="@+id/meetingFind"
@@ -462,210 +781,76 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/meetingState"
-            style="@style/Text.Muted"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:visibility="gone" />
-
-        <!-- Полоса хода работы — процентов в подписи мало, как у загрузок. -->
-        <ProgressBar
-            android:id="@+id/meetingProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:layout_marginTop="10dp"
-            android:max="100"
-            android:progressTint="@color/accent_solid"
-            android:progressBackgroundTint="@color/hairline"
-            android:visibility="gone" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingTranscribe"
-            style="@style/Pill"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="16dp"
-            android:layout_marginStart="44dp"
-            android:layout_marginEnd="44dp"
-            android:visibility="gone"
-            android:text="@string/meeting_transcribe" />
-
-        <!-- Отмена идущей работы: расшифровки, импорта или разделения. -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingCancelWork"
-            style="@style/Pill.Inset"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:layout_marginTop="12dp"
-            android:layout_marginStart="44dp"
-            android:layout_marginEnd="44dp"
-            android:visibility="gone"
-            android:textColor="@color/danger"
-            app:strokeColor="@color/danger"
-            android:text="@string/download_cancel" />
-
-        <!-- Карточка саммери над таймлайном: черновик от модели. -->
-        <LinearLayout
-            android:id="@+id/meetingSummaryBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical"
-            android:background="@drawable/bg_card_inner"
-            android:padding="16dp"
-            android:visibility="gone">
-
-            <TextView
-                style="@style/Text.Eyebrow"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/meeting_summary" />
-
-            <!-- Длинное саммери прокручивается внутри карточки: колонка
-                 детали не скроллится, и без потолка высоты кнопки экспорта
-                 уезжали за экран (проверено на телефоне). -->
-            <androidx.core.widget.NestedScrollView
-                android:id="@+id/meetingSummaryScroll"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:fadeScrollbars="true"
-                android:scrollbars="vertical">
-
-                <TextView
-                    android:id="@+id/meetingSummaryText"
-                    style="@style/Text.Body"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="14sp"
-                    android:lineSpacingMultiplier="1.25"
-                    android:textIsSelectable="true" />
-            </androidx.core.widget.NestedScrollView>
-
-            <TextView
-                style="@style/Text.Muted"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:textSize="12sp"
-                android:text="@string/summary_hint" />
-        </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/meetingTimeline"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:layoutAnimation="@anim/layout_stagger"
             android:clipToPadding="false"
             android:scrollbars="none" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingDiarize"
-            style="@style/Pill.Inset"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:layout_marginTop="12dp"
-            android:visibility="gone"
-            android:text="@string/meeting_diarize" />
-
-        <!-- Экспорт: четыре формата одним рядом, подпись объясняет куда. -->
+        <!-- Тот же ряд, что в листе саммери: скопировать, поделиться, экспорт. -->
         <LinearLayout
-            android:id="@+id/meetingExportRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal"
-            android:visibility="gone">
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="16dp"
+            android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/exportTxt"
-                style="@style/Pill.Inset"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:textSize="13sp"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="42dp"
-                android:text="@string/export_txt" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/exportMd"
-                style="@style/Pill.Inset"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:textSize="13sp"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="42dp"
-                android:layout_marginStart="8dp"
-                android:text="@string/export_md" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/exportPdf"
-                style="@style/Pill.Inset"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:textSize="13sp"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="42dp"
-                android:layout_marginStart="8dp"
-                android:text="@string/export_pdf" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/exportDoc"
-                style="@style/Pill.Inset"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:textSize="13sp"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="42dp"
-                android:layout_marginStart="8dp"
-                android:text="@string/export_doc" />
-        </LinearLayout>
-
-        <!-- Поделиться текстом: переслать или закинуть во внешнюю LLM. -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingShareText"
+            android:id="@+id/meetingTranscriptSheetCopy"
             style="@style/Pill.Inset"
-            android:layout_width="match_parent"
+            app:icon="@drawable/ic_copy"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:iconSize="16dp"
+            app:iconTint="@color/ink"
+            android:minWidth="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="42dp"
-            android:layout_marginTop="8dp"
-            android:visibility="gone"
-            android:text="@string/meeting_share_text" />
-
-        <!-- Исходный звук встречи — WAV в Загрузки: изнутри приложения
-             его иначе не достать. -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingSaveAudio"
-            style="@style/Pill.Inset"
-            android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:layout_marginTop="8dp"
-            android:visibility="gone"
-            android:text="@string/meeting_save_audio" />
-
-        <!-- Скопировать — главное действие готовой расшифровки, поэтому
-             акцентная. Зелёная кнопка на экране одна. -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/meetingCopy"
-            style="@style/Pill"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone"
+            android:textSize="13sp"
             android:text="@string/copy" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingTranscriptSheetShare"
+            style="@style/Pill.Inset"
+            app:icon="@drawable/ic_share"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:iconSize="16dp"
+            app:iconTint="@color/ink"
+            android:minWidth="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:textSize="13sp"
+            android:text="@string/share_short" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingTranscriptSheetExport"
+            style="@style/Pill.Inset"
+            app:icon="@drawable/ic_download"
+            app:iconGravity="textStart"
+            app:iconPadding="6dp"
+            app:iconSize="16dp"
+            app:iconTint="@color/ink"
+            android:minWidth="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:textSize="13sp"
+            android:text="@string/meeting_export" />
+        </LinearLayout>
     </LinearLayout>
 
 </FrameLayout>

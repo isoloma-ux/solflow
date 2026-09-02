@@ -273,20 +273,27 @@ class SettingsActivity : AppCompatActivity() {
      * сама сменится на «подключено».
      */
     private fun showCode(code: Yandex.DeviceCode) {
+        // Код сразу в буфере: на странице Яндекса остаётся только вставить.
+        copyCode(code)
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.sync_code_title)
             .setMessage(getString(R.string.sync_code_message, code.userCode))
             .setPositiveButton(R.string.sync_open_page) { _, _ ->
+                copyCode(code)
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(code.verificationUrl)))
             }
             .setNeutralButton(R.string.sync_copy_code) { _, _ ->
-                getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText("Sol Flow", code.userCode))
+                copyCode(code)
                 Toast.makeText(this, R.string.sync_copied, Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(R.string.sync_cancel) { _, _ -> SyncManager.cancelConnect() }
             .show()
         refresh()
+    }
+
+    private fun copyCode(code: Yandex.DeviceCode) {
+        getSystemService(ClipboardManager::class.java)
+            .setPrimaryClip(ClipData.newPlainText("Sol Flow", code.userCode))
     }
 
     // --- заготовки строк --------------------------------------------------

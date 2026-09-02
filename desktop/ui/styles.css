@@ -1564,3 +1564,57 @@ textarea {
 /* Ответ кнопки синхронизации: зелёным сошлось, красным — нет. */
 .pill-inset.ok { border-color: var(--accent-solid); color: var(--accent); }
 .pill-inset.fail { border-color: var(--danger); color: var(--danger); }
+
+/* Окно входа в Яндекс.Диск: код крупно, шаги списком. */
+.sync-code-big { font-size: 34px; margin: 12px 0 16px; }
+.sync-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* Кнопки открытой встречи: иконка с подписью, как у «Удалить», а не ряд
+   пилюль — панель стала легче и читается слева направо. */
+.tool-button {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fog);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tool-button svg { width: 15px; height: 15px; flex: none; }
+.tool-button:hover { color: var(--ink); background: var(--graphite-2); }
+.tool-button:disabled { opacity: 0.5; cursor: default; }
+.summary-head-row { display: flex; align-items: center; justify-content: space-between; }
+.summary-head-row .kicker { margin: 0; }
+
+/* Меню записи из сайдбара: у курсора, вне обрезающей строки; пункты с
+   иконками, длинные наборы — в подменю справа. */
+.project-menu.floating { position: fixed; left: 0; top: 0; width: 214px; }
+.menu-item { display: flex; align-items: center; gap: 9px; position: relative; }
+.menu-icon { display: inline-flex; width: 14px; height: 14px; color: var(--fog); flex: none; }
+.menu-icon svg { width: 14px; height: 14px; }
+.menu-item.danger .menu-icon { color: inherit; }
+.menu-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-chevron { display: inline-flex; margin-left: auto; color: var(--fog); }
+.menu-chevron svg { width: 11px; height: 11px; }
+.menu-item.has-sub { cursor: default; }
+.submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% - 4px);
+  top: -6px;
+  width: 196px;
+  z-index: 11;
+}
+.menu-item.has-sub:hover > .submenu { display: block; }
+.project-menu.sub-left .submenu { left: auto; right: calc(100% - 4px); }
+/* «Удалить запись» в меню: та же раскладка с иконкой, что у остальных
+   пунктов; красным — только при наведении, как и везде. */
+.menu-item.danger { display: flex; color: var(--fog); }
+.menu-item.danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }

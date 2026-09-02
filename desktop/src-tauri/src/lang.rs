@@ -40,6 +40,11 @@ const EN: &[(&str, &str)] = &[
     // трей
     ("Открыть Sol Flow", "Open Sol Flow"),
     ("Выйти", "Quit"),
+    // обновление
+    (
+        "Вышла версия {0} — обновление ждет в подвале окна",
+        "Version {0} is out — the update is waiting at the bottom of the window",
+    ),
     // подписи клавиш
     ("Пробел", "Space"),
     // вставка текста

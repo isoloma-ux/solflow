@@ -103,6 +103,15 @@ object MeetingExport {
         return ExportResult(name, write(context, name, format.mime, bytes))
     }
 
+    /** Только саммери в Markdown — в письмо или заметку, без всей расшифровки. */
+    fun saveSummary(context: Context, meeting: Meeting): ExportResult {
+        require(meeting.summary.isNotBlank()) { "саммери ещё нет" }
+        val title = MeetingStore.displayTitle(context, meeting)
+        val body = "# $title\n\n${meeting.summary.trim()}\n"
+        val name = "${safeName(title)} — саммери.md"
+        return ExportResult(name, write(context, name, "text/markdown", body.toByteArray()))
+    }
+
     /** Несколько встреч одним файлом; каждая начинается со своего заголовка. */
     fun saveCombined(
         context: Context,

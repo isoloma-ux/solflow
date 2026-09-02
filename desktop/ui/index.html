@@ -222,6 +222,8 @@
               <div id="bulkProjectMenu" class="lang-panel menu" hidden></div>
             </div>
             <button class="pill-inset compact" id="bulkAgain">Расшифровать</button>
+            <button class="pill-inset compact" id="bulkSummary">Саммери</button>
+            <button class="pill-inset compact" id="bulkTitle">Названия</button>
             <button class="danger-text icon-button" id="bulkDelete">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
                    stroke-linecap="round" aria-hidden="true">
@@ -247,9 +249,9 @@
 
           <div class="meet-actions">
             <select id="meetProjectSelect" class="meet-select"></select>
-            <button class="pill-inset compact" id="meetCopy">Скопировать</button>
+            <button class="tool-button icon-button" id="meetCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span id="meetCopyLabel">Скопировать</span></button>
             <div class="filter-anchor">
-              <button class="pill-inset compact" id="meetExport">Экспорт ▾</button>
+              <button class="tool-button icon-button" id="meetExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 19.5h15"/></svg><span id="meetExportLabel">Экспорт ▾</span></button>
               <div id="exportMenu" class="lang-panel menu" hidden>
                 <button class="lang-row" data-format="txt">
                   <span class="lang-name">Текст</span><span class="lang-count">.txt</span>
@@ -266,10 +268,16 @@
                 <button class="lang-row" data-format="wav">
                   <span class="lang-name">Звук</span><span class="lang-count">.wav</span>
                 </button>
+                <button class="lang-row" data-format="summary-md" id="exportSummaryMd" hidden>
+                  <span class="lang-name">Только саммери</span><span class="lang-count">.md</span>
+                </button>
+                <button class="lang-row" data-format="summary-txt" id="exportSummaryTxt" hidden>
+                  <span class="lang-name">Только саммери</span><span class="lang-count">.txt</span>
+                </button>
               </div>
             </div>
             <div class="filter-anchor">
-              <button class="pill-inset compact" id="meetSpeakers">Говорящие ▾</button>
+              <button class="tool-button icon-button" id="meetSpeakers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.6M20.5 19a5 5 0 0 0-3.5-4.8"/></svg><span id="meetSpeakersLabel">Говорящие ▾</span></button>
               <div id="speakersMenu" class="lang-panel menu" hidden>
                 <button class="lang-row" data-speakers="0">
                   <span class="lang-name">Определить самой</span>
@@ -289,9 +297,9 @@
                 <p class="lang-empty" id="speakersHint"></p>
               </div>
             </div>
-            <button class="pill-inset compact" id="meetSummary" hidden>Саммери</button>
-            <button class="pill-inset compact" id="meetAutoTitle" hidden>Придумать название</button>
-            <button class="pill-inset compact" id="meetAgain">Расшифровать заново</button>
+            <button class="tool-button icon-button" id="meetSummary" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6.5h14M5 11h9M5 15.5h11M5 20h7"/></svg><span id="meetSummaryLabel">Саммери</span></button>
+            <button class="tool-button icon-button" id="meetAutoTitle" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.6 4.2 4.2 1.6-4.2 1.6L12 15l-1.6-4.1-4.2-1.6 4.2-1.6zM5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9zM19 15l.7 1.6 1.6.7-1.6.7L19 19.5l-.7-1.5-1.6-.7 1.6-.7z"/></svg><span id="meetAutoTitleLabel">Придумать название</span></button>
+            <button class="tool-button icon-button" id="meetAgain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg><span id="meetAgainLabel">Расшифровать заново</span></button>
             <button class="danger-text push-right icon-button" id="meetDelete"
                     title="Удалить встречу">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -312,7 +320,12 @@
 
           <!-- Саммери от локальной модели: черновик, а не истина. -->
           <section class="meet-summary" id="meetSummaryBox" hidden>
-            <p class="kicker">Саммери</p>
+            <div class="summary-head-row">
+              <p class="kicker">Саммери</p>
+              <button class="icon-only" id="meetSummaryCopy" title="Скопировать саммери">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+              </button>
+            </div>
             <div id="meetSummaryText"></div>
             <p class="muted small">Сделано локальной моделью — проверяйте факты по расшифровке</p>
           </section>
@@ -890,6 +903,7 @@
             Sol Flow есть для Mac, Windows и Android — и везде распознавание
             идет офлайн, на самом устройстве.
           </p>
+          <p class="muted small">Встречи и проекты можно держать одинаковыми на всех устройствах: в настройках подключите Яндекс.Диск, вход по короткому коду. Данные лежат в папке приложения на вашем Диске, чужих серверов нет.</p>
 
           <div class="links">
             <button class="pill-inset compact link" data-url="https://ivansolomin.ru">
@@ -985,7 +999,18 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="0.7.0">
+            <ul class="whatsnew-list">
+              <li>Вход в Яндекс.Диск стал понятнее: код сразу в буфере обмена, три шага в одном окне, пункт во вводном экране и в «О проекте».</li>
+              <li>Правая кнопка по записи в сайдбаре — полное меню: экспорт, саммери, название, расшифровать заново, удалить.</li>
+              <li>Запись можно перетащить на «+ Проект» — проект создается на месте, запись сразу в нем.</li>
+              <li>Саммери копируется одной кнопкой в карточке и выгружается отдельным файлом.</li>
+              <li>Кнопки открытой встречи стали иконками с подписью; выбранным встречам можно посчитать саммери и названия пачкой.</li>
+              <li>О новой версии сообщает системное уведомление.</li>
+            </ul>
+          </div>
           <div data-whatsnew-version="0.6.1">
+            <p class="whatsnew-prev-title">Раньше, в 0.6.1</p>
             <ul class="whatsnew-list">
               <li>Синхронизация на Windows: подключение к Яндекс.Диску спотыкалось о проверку сертификата — исправлено.</li>
             </ul>
@@ -1031,6 +1056,29 @@
         <div class="intro-foot">
           <span class="spacer"></span>
           <button class="pill-inset compact" id="whatsnewOk">Понятно</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вход в Яндекс.Диск: код и три шага в одном окне, чтобы человек
+         не потерялся между приложением и страницей Яндекса -->
+    <div class="intro" id="syncDialog" hidden>
+      <div class="intro-card">
+        <div class="intro-body">
+          <p class="intro-title">Вход в Яндекс.Диск</p>
+          <p class="sync-code sync-code-big" id="syncDialogCode"></p>
+          <ol class="sync-steps">
+            <li>Код уже скопирован в буфер обмена</li>
+            <li>Откройте страницу Яндекса — кнопка ниже</li>
+            <li>Вставьте код и нажмите «Разрешить»</li>
+          </ol>
+          <p class="muted small">Окно можно закрыть: приложение ждет подтверждения в фоне, строка в настройках сама сменится на «подключено»</p>
+        </div>
+        <div class="intro-foot">
+          <button class="model-remove" id="syncDialogCancel">Отмена</button>
+          <span class="spacer"></span>
+          <button class="pill-inset compact" id="syncDialogCopy">Скопировать код</button>
+          <button class="pill-inset compact support" id="syncDialogOpen">Открыть страницу Яндекса</button>
         </div>
       </div>
     </div>

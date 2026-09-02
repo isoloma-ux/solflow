@@ -11,5 +11,7 @@ class SolFlowApp : Application() {
     override fun onCreate() {
         super.onCreate()
         SettingsActivity.applyTheme(AppPrefs.theme(this))
+        // Раз в день — есть ли новая версия; уведомление, если есть.
+        UpdateWorker.schedule(this)
     }
 }

@@ -63,6 +63,9 @@ class AboutActivity : AppCompatActivity() {
         }
 
         ui.checkUpdate.setOnClickListener { checkUpdate() }
+        // Пришли из уведомления о новой версии — проверяем сразу, без
+        // лишнего нажатия.
+        if (intent.getBooleanExtra(EXTRA_UPDATE, false)) checkUpdate()
         ui.bugSend.setOnClickListener { sendReport() }
         ui.bugCopy.setOnClickListener {
             copy(report(ui.bugText.text?.toString().orEmpty()))
@@ -220,6 +223,9 @@ class AboutActivity : AppCompatActivity() {
         const val DONATION = "https://www.donationalerts.com/r/isoloma"
 
         /** Где искать новые версии — тот же релиз, что у Mac и Windows. */
+        /** Открыть экран сразу с проверкой обновления — из уведомления. */
+        const val EXTRA_UPDATE = "update"
+
         const val RELEASES_API =
             "https://api.github.com/repos/isoloma-ux/solflow/releases/latest"
         const val RELEASES_PAGE = "https://github.com/isoloma-ux/solflow/releases/latest"

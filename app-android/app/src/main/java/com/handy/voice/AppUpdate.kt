@@ -100,6 +100,19 @@ object AppUpdate {
             }
         }.getOrNull()
 
+    /** Новее ли версия с GitHub той, что стоит: сравнение по числам, не по строкам. */
+    fun newer(latest: String, current: String): Boolean {
+        fun parse(v: String) = v.trimStart('v').split('.', '-').mapNotNull { it.toIntOrNull() }
+        val a = parse(latest)
+        val b = parse(current)
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(i) { 0 }
+            val y = b.getOrElse(i) { 0 }
+            if (x != y) return x > y
+        }
+        return false
+    }
+
     /** Разрешено ли приложению ставить APK. */
     fun canInstall(context: Context): Boolean =
         context.packageManager.canRequestPackageInstalls()

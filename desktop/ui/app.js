@@ -895,7 +895,7 @@ function renderProjects() {
         link.oncontextmenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          openSidebarMeetingMenu(link, m);
+          openSidebarMeetingMenu(link, m, e.clientX, e.clientY);
         };
         list.appendChild(link);
       }
@@ -961,56 +961,162 @@ function startMeetingRename(anchor, meeting) {
   });
 }
 
-/** Меню записи в сайдбаре: открыть, переименовать, перенести, удалить. */
-function openSidebarMeetingMenu(anchor, meeting) {
+/** Иконки пунктов меню записи — та же одинарная обводка, что и в окне. */
+const MENU_ICONS = {
+  open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>',
+  rename: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z M13 7l3 3"/></svg>',
+  export: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 19.5h15"/></svg>',
+  transcript: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6.5h14M5 11h9M5 15.5h11M5 20h7"/></svg>',
+  move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6l1.7 2.2h7.7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M10 13.5h5M13 11l2.5 2.5L13 16"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/></svg>',
+  chevron: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+};
+
+/**
+ * Меню записи в сайдбаре — по правой кнопке, у курсора и правее него, чтобы
+ * соседние записи оставались на виду. Длинные наборы (экспорт, расшифровка,
+ * перенос) спрятаны в подменю, которые выезжают вправо при наведении.
+ */
+function openSidebarMeetingMenu(anchor, meeting, x, y) {
   closeProjectMenu();
   const menu = document.createElement("div");
-  menu.className = "lang-panel menu project-menu";
+  menu.className = "lang-panel menu project-menu floating";
   menu.onclick = (e) => e.stopPropagation();
 
-  const item = (text, action) => {
-    const row = document.createElement("button");
-    row.className = "lang-row";
-    row.textContent = text;
-    row.onclick = () => {
+  const label = (icon, text) => {
+    const wrap = document.createDocumentFragment();
+    const i = document.createElement("span");
+    i.className = "menu-icon";
+    i.innerHTML = MENU_ICONS[icon];
+    const t = document.createElement("span");
+    t.className = "menu-text";
+    t.textContent = text;
+    wrap.append(i, t);
+    return wrap;
+  };
+
+  const row = (icon, text, action, into = menu) => {
+    const button = document.createElement("button");
+    button.className = "lang-row menu-item";
+    button.appendChild(label(icon, text));
+    button.onclick = () => {
       closeProjectMenu();
       action();
     };
-    menu.appendChild(row);
+    into.appendChild(button);
+    return button;
   };
 
-  item(t("Открыть"), () => {
+  /** Пункт с подменю: наведение раскрывает список справа. */
+  const sub = (icon, text, children) => {
+    const item = document.createElement("div");
+    item.className = "lang-row menu-item has-sub";
+    item.appendChild(label(icon, text));
+    const chev = document.createElement("span");
+    chev.className = "menu-chevron";
+    chev.innerHTML = MENU_ICONS.chevron;
+    item.appendChild(chev);
+    const panel = document.createElement("div");
+    panel.className = "lang-panel submenu";
+    for (const [name, hint, action] of children) {
+      const button = document.createElement("button");
+      button.className = "lang-row";
+      const n = document.createElement("span");
+      n.className = "lang-name";
+      n.textContent = name;
+      button.appendChild(n);
+      if (hint) {
+        const h = document.createElement("span");
+        h.className = "lang-count";
+        h.textContent = hint;
+        button.appendChild(h);
+      }
+      button.onclick = () => {
+        closeProjectMenu();
+        action();
+      };
+      panel.appendChild(button);
+    }
+    item.appendChild(panel);
+    menu.appendChild(item);
+  };
+
+  row("open", t("Открыть"), () => {
     showPage("meetings");
     openMeeting(meeting.id);
   });
-  item(t("Переименовать"), () => startMeetingRename(anchor, meeting));
+  row("rename", t("Переименовать"), () => startMeetingRename(anchor, meeting));
 
-  // Перенос без перетаскивания — на случай, когда мышью неудобно.
-  const targets = [{ id: null, name: t("Без проекта") }, ...meetProjects];
-  for (const target of targets) {
-    if (target.id === meeting.project) continue;
-    item(t("В «{0}»", target.name), () => {
-      invoke("meeting_set_project", { id: meeting.id, project: target.id });
-    });
+  const done = meeting.state === "done";
+  if (done || meeting.audio) {
+    const exports = [];
+    if (done) {
+      exports.push(
+        [t("Текст"), ".txt", () => exportFromList(meeting, "txt")],
+        ["Markdown", ".md", () => exportFromList(meeting, "md")],
+        ["Word", ".docx", () => exportFromList(meeting, "docx")],
+        ["PDF", ".pdf", () => exportFromList(meeting, "pdf")]
+      );
+      if (meeting.summary) {
+        exports.push([t("Только саммери"), ".md", () => exportFromList(meeting, "summary-md")]);
+      }
+    }
+    if (meeting.audio) exports.push([t("Звук"), ".wav", () => exportFromList(meeting, "wav")]);
+    sub("export", t("Экспорт"), exports);
+
+    const work = [];
+    if (meeting.audio) {
+      work.push([t("Расшифровать заново"), null, () => invoke("meeting_transcribe", { id: meeting.id })]);
+    }
+    if (done) {
+      work.push(
+        [meeting.summary ? t("Обновить саммери") : t("Саммери"), null, async () => {
+          if (await summaryReady()) invoke("meeting_summarize", { id: meeting.id });
+        }],
+        [t("Придумать название"), null, async () => {
+          if (await summaryReady()) invoke("meeting_autotitle", { id: meeting.id });
+        }]
+      );
+    }
+    sub("transcript", t("Расшифровка"), work);
   }
 
-  const remove = document.createElement("button");
-  remove.className = "lang-row danger";
-  remove.textContent = t("Удалить запись");
+  // Перенос без перетаскивания — на случай, когда мышью неудобно.
+  const targets = [{ id: null, name: t("Без проекта") }, ...meetProjects]
+    .filter((target) => target.id !== meeting.project)
+    .map((target) => [target.name, null, () =>
+      invoke("meeting_set_project", { id: meeting.id, project: target.id }),
+    ]);
+  if (targets.length) sub("move", t("Переместить"), targets);
+
+  const remove = row("trash", t("Удалить запись"), () => {}, menu);
+  remove.classList.add("danger");
   let armed = false;
   remove.onclick = () => {
     if (!armed) {
       armed = true;
-      remove.textContent = t("Точно удалить?");
+      remove.querySelector(".menu-text").textContent = t("Точно удалить?");
       return;
     }
     closeProjectMenu();
     if (detailId === meeting.id) closeMeeting();
     invoke("meeting_delete", { id: meeting.id });
   };
-  menu.appendChild(remove);
 
-  anchor.appendChild(menu);
+  // У курсора и правее него: соседние записи остаются видны, и по промаху
+  // можно сразу нажать правой кнопкой на другую. Не влезает — сдвигаем.
+  const rect = anchor.getBoundingClientRect();
+  const px = x ?? rect.right;
+  const py = y ?? rect.top;
+  menu.style.left = `${Math.round(px + 6)}px`;
+  menu.style.top = `${Math.round(py - 6)}px`;
+  document.body.appendChild(menu);
+  const box = menu.getBoundingClientRect();
+  if (box.bottom > window.innerHeight - 8) {
+    menu.style.top = `${Math.max(8, window.innerHeight - 8 - box.height)}px`;
+  }
+  // Подменю выезжают вправо; у правого края окна — влево.
+  if (box.right + 200 > window.innerWidth) menu.classList.add("sub-left");
   projectMenuEl = menu;
 }
 
@@ -1118,7 +1224,8 @@ function startMeetingDrag(event, meeting) {
 
     // Цель ищем под курсором: так работает и для развёрнутых проектов.
     const under = document.elementFromPoint(e.clientX, e.clientY);
-    const project = under?.closest(".nav-project");
+    // «+ Проект» тоже принимает записи: новый проект создаётся на месте.
+    const project = under?.closest(".nav-project, .nav-add");
     if (target !== project) {
       target?.classList.remove("drop-here");
       target = project;
@@ -1134,9 +1241,25 @@ function startMeetingDrag(event, meeting) {
     target?.classList.remove("drop-here");
     if (!ghost || !target) return;
 
+    const ids = selected.has(meeting.id) ? [...selected] : [meeting.id];
+    if (target.classList.contains("nav-add")) {
+      // Бросили на «+ Проект»: спрашиваем имя прямо в строке, создаём и
+      // сразу кладём туда записи.
+      inlineField(target, "", t("Название проекта"), async (name) => {
+        if (!name) return;
+        const created = await invoke("project_create", { name });
+        if (!created) return;
+        for (const id of ids) await invoke("meeting_set_project", { id, project: created.id });
+        clearSelection();
+        refreshMeetings();
+        el("meetStatus").textContent = t("Перенес {0} в «{1}»",
+          plural(ids.length, t("запись"), t("записи"), t("записей")), name);
+      });
+      return;
+    }
+
     const raw = target.dataset.project;
     const project = raw === "" ? null : raw;
-    const ids = selected.has(meeting.id) ? [...selected] : [meeting.id];
     for (const id of ids) invoke("meeting_set_project", { id, project });
     clearSelection();
 
@@ -1450,6 +1573,18 @@ el("bulkAgain").addEventListener("click", () => {
   invoke("meetings_transcribe", { ids: [...selected] });
   clearSelection();
 });
+// Саммери и названия для пачки — по очереди, как расшифровки. Без модели
+// не запускаем: скачивать гигабайты от группового нажатия было бы сюрпризом.
+el("bulkSummary").addEventListener("click", async () => {
+  if (!(await summaryReady())) return;
+  invoke("meetings_summarize", { ids: [...selected] });
+  clearSelection();
+});
+el("bulkTitle").addEventListener("click", async () => {
+  if (!(await summaryReady())) return;
+  invoke("meetings_autotitle", { ids: [...selected] });
+  clearSelection();
+});
 
 // Удаление группы — в два нажатия, как и одиночное.
 let bulkDeleteArmed = null;
@@ -1526,11 +1661,20 @@ function openRowMenu(meeting, button) {
   item(t("Экспорт"), ".md", () => exportAs("md"));
   item(t("Экспорт"), ".docx", () => exportAs("docx"));
   item(t("Экспорт"), ".pdf", () => exportAs("pdf"));
+  if (meeting.summary) item(t("Только саммери"), ".md", () => exportAs("summary-md"));
   if (meeting.audio) {
     item(t("Экспорт"), ".wav", () => exportAs("wav"));
     item(t("Расшифровать заново"), null, () =>
       invoke("meeting_transcribe", { id: meeting.id })
     );
+  }
+  if (meeting.state === "done") {
+    item(meeting.summary ? t("Обновить саммери") : t("Саммери"), null, async () => {
+      if (await summaryReady()) invoke("meeting_summarize", { id: meeting.id });
+    });
+    item(t("Придумать название"), null, async () => {
+      if (await summaryReady()) invoke("meeting_autotitle", { id: meeting.id });
+    });
   }
   item(t("Выбрать"), null, () => toggleSelected(meeting.id));
 
@@ -1759,8 +1903,10 @@ function renderSummary(m) {
   el("meetAutoTitle").hidden = !done;
   el("meetAutoTitle").disabled = busy;
   if (!summaryArmed) {
-    button.textContent = m.summary ? t("Обновить саммери") : t("Саммери");
+    el("meetSummaryLabel").textContent = m.summary ? t("Обновить саммери") : t("Саммери");
   }
+  el("exportSummaryMd").hidden = !m.summary;
+  el("exportSummaryTxt").hidden = !m.summary;
 
   const box = el("meetSummaryBox");
   box.hidden = !m.summary;
@@ -1784,6 +1930,34 @@ function renderSummary(m) {
   }
 }
 
+el("meetSummaryCopy").addEventListener("click", () => {
+  const m = meetRows.find((r) => r.id === detailId);
+  if (!m || !m.summary) return;
+  navigator.clipboard.writeText(m.summary);
+  showDetailStatus(t("Саммери скопировано"));
+});
+
+/** Саммери без модели не посчитать — говорим, где её взять, вместо тихой закачки. */
+async function summaryReady() {
+  const [ready] = await invoke("summary_state");
+  if (!ready) {
+    el("meetStatus").textContent =
+      t("Модель саммери не скачана — откройте встречу и нажмите «Саммери»");
+  }
+  return ready;
+}
+
+/** Экспорт из списка или сайдбара: без открытой встречи, статус — в шапке. */
+async function exportFromList(meeting, format) {
+  el("meetStatus").textContent = t("Готовлю файл");
+  try {
+    await invoke("meeting_export", { id: meeting.id, format, title: meetingTitle(meeting) });
+    el("meetStatus").textContent = t("Файл .{0} сохранен в Загрузки", format.replace("summary-", ""));
+  } catch (err) {
+    el("meetStatus").textContent = String(err);
+  }
+}
+
 // Модель тяжёлая, поэтому без неё кнопка сначала честно спрашивает про
 // скачивание, и только второе нажатие запускает работу.
 let summaryArmed = null;
@@ -1791,7 +1965,7 @@ el("meetSummary").addEventListener("click", async () => {
   if (detailId === null) return;
   const [ready, mb] = await invoke("summary_state");
   if (!ready && !summaryArmed) {
-    el("meetSummary").textContent = t("Скачать модель ~{0} ГБ?", (mb / 1024).toFixed(1));
+    el("meetSummaryLabel").textContent = t("Скачать модель ~{0} ГБ?", (mb / 1024).toFixed(1));
     summaryArmed = setTimeout(() => {
       summaryArmed = null;
       const m = meetRows.find((r) => r.id === detailId);
@@ -2529,6 +2703,8 @@ function renderSync(s) {
   const flashing = !s.running && Date.now() < syncFlashUntil;
 
   el("syncConnect").hidden = s.connected || !!s.code || !s.configured;
+  // Код принят или протух — окно входа больше не нужно.
+  if (s.connected || !s.code) el("syncDialog").hidden = true;
   el("syncDisconnect").hidden = !s.connected;
   el("syncNow").hidden = !s.connected;
   el("syncCodeRow").hidden = !s.code;
@@ -2591,14 +2767,23 @@ function renderSync(s) {
 
 listen("solflow-sync", (e) => renderSync(e.payload));
 
+/** Код в буфер: человеку остаётся только вставить его на странице. */
+function copySyncCode() {
+  const code = el("syncDialogCode").textContent || el("syncCode").textContent;
+  if (code) navigator.clipboard.writeText(code);
+}
+
 el("syncConnect").addEventListener("click", async () => {
   el("syncConnect").disabled = true;
   try {
     const code = await invoke("sync_connect");
     syncVerificationUrl = code.verification_url;
+    // Код сразу в буфере, а страница не открывается сама: сначала окно с
+    // тремя шагами, чтобы было ясно, что делать дальше.
+    el("syncDialogCode").textContent = code.user_code;
+    copySyncCode();
+    el("syncDialog").hidden = false;
     renderSync(await invoke("sync_status"));
-    // Страница открывается сама: код перед глазами, осталось ввести.
-    invoke("open_link", { url: syncVerificationUrl });
   } catch (err) {
     el("syncHint").textContent = t("Не вышло: {0}", String(err));
     el("syncHint").classList.add("sync-error");
@@ -2610,6 +2795,19 @@ el("syncConnect").addEventListener("click", async () => {
 el("syncOpenPage").addEventListener("click", () =>
   invoke("open_link", { url: syncVerificationUrl })
 );
+el("syncDialogOpen").addEventListener("click", () => {
+  copySyncCode();
+  invoke("open_link", { url: syncVerificationUrl });
+});
+el("syncDialogCopy").addEventListener("click", () => {
+  copySyncCode();
+  el("syncDialogCopy").textContent = t("Скопировано");
+  setTimeout(() => (el("syncDialogCopy").textContent = t("Скопировать код")), 1500);
+});
+el("syncDialogCancel").addEventListener("click", () => {
+  el("syncDialog").hidden = true;
+  invoke("sync_connect_cancel");
+});
 el("syncCopyCode").addEventListener("click", () => {
   navigator.clipboard.writeText(el("syncCode").textContent);
   el("syncCopyCode").textContent = t("Скопировано");
@@ -2956,6 +3154,25 @@ const INTRO = [
             <span class="shot-pill filled"></span>
           </div>
           <div class="shot-row wide"></div>
+          <div class="shot-row mid"></div>
+        </div>
+      </div>`,
+  },
+  {
+    title: t("Встречи на всех устройствах"),
+    text:
+      t("Подключите Яндекс.Диск в настройках — вход по короткому коду. ") +
+      t("Записи, проекты и саммери станут одинаковыми на телефоне и ") +
+      t("компьютере; данные лежат в папке приложения на вашем Диске."),
+    shot: `<div class="shot">
+        <div class="shot-side">
+          <div class="shot-line"></div><div class="shot-line short"></div>
+          <div class="shot-line short"></div><div class="shot-line on short"></div>
+        </div>
+        <div class="shot-main">
+          <div class="shot-title"></div>
+          <div class="shot-row wide"></div>
+          <div class="shot-tags"><span class="shot-pill filled"></span><span class="shot-pill"></span></div>
           <div class="shot-row mid"></div>
         </div>
       </div>`,

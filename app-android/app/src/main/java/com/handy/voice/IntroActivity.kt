@@ -26,6 +26,7 @@ class IntroActivity : AppCompatActivity() {
         Step(R.drawable.ic_mic, R.string.intro2_title, R.string.intro2_text),
         Step(R.drawable.ic_text_lines, R.string.intro3_title, R.string.intro3_text),
         Step(R.drawable.ic_file, R.string.intro4_title, R.string.intro4_text),
+        Step(R.drawable.ic_cloud, R.string.intro5_title, R.string.intro5_text),
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
