@@ -1514,6 +1514,26 @@ textarea {
 }
 .meet-summary p { font-size: 14px; }
 
+/* Вопрос к записи: список пар вопрос/ответ и поле снизу. */
+.meet-ask .qa-q { font-weight: 500; margin-top: 14px; }
+.meet-ask .qa-q:first-child { margin-top: 0; }
+.meet-ask .qa-a { margin-top: 4px; }
+.meet-ask .qa-a p { margin-top: 4px; color: var(--fog); }
+.meet-ask .qa-a .summary-item { margin-top: 4px; }
+.meet-ask .qa-time {
+  color: var(--accent-solid);
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.meet-ask .qa-time:hover { text-decoration: underline; }
+.ask-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.ask-row .search { flex: 1; }
+.segment.jumped { background: var(--graphite-2); border-radius: 8px; }
+
 /* Строка идущей работы в детали встречи. */
 .meet-work {
   display: flex;

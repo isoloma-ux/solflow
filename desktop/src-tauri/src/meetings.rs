@@ -81,6 +81,16 @@ pub struct Project {
     pub name: String,
 }
 
+/// Вопрос к записи и ответ локальной модели. Лежат в qa.json рядом со
+/// встречей, в синхронизацию не ходят: телефону отвечать нечем, а ответы
+/// привязаны к репликам этой расшифровки.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct QaItem {
+    pub q: String,
+    pub a: String,
+    pub at: i64,
+}
+
 /// Строка списка встреч для интерфейса.
 #[derive(Serialize)]
 pub struct MeetingRow {
@@ -230,6 +240,76 @@ pub fn display_title(meta: &Meta) -> String {
     } else {
         meta.title.clone()
     }
+}
+
+pub fn load_qa(app: &AppHandle, id: i64) -> Vec<QaItem> {
+    std::fs::read_to_string(dir(app, id).join("qa.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_qa(app: &AppHandle, id: i64, items: &[QaItem]) {
+    let path = dir(app, id).join("qa.json");
+    if path.parent().map(|p| p.exists()).unwrap_or(false) {
+        let _ = std::fs::write(path, serde_json::to_string_pretty(items).unwrap());
+    }
+}
+
+pub fn clear_qa(app: &AppHandle, id: i64) {
+    let _ = std::fs::remove_file(dir(app, id).join("qa.json"));
+}
+
+/// Расшифровка со временем в начале строк — для вопросов к записи. Реплики
+/// склеиваются по двадцать секунд, чтобы метки не съедали контекст; при
+/// смене говорящего строка начинается заново и подписывается его именем.
+pub fn timed_text(meta: &Meta, segments: &[Segment]) -> String {
+    let clock = |sec: f32| {
+        let total = sec.max(0.0) as u64;
+        let (h, m, s) = (total / 3600, total / 60 % 60, total % 60);
+        if h > 0 {
+            format!("{h}:{m:02}:{s:02}")
+        } else {
+            format!("{m}:{s:02}")
+        }
+    };
+    let name = |spk: u32| {
+        meta.names
+            .get(&spk.to_string())
+            .cloned()
+            .unwrap_or_else(|| format!("Говорящий {}", spk + 1))
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut started = 0.0f32;
+    let mut speaker: Option<u32> = None;
+    for seg in segments {
+        let text = seg.text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let new_line = current.is_empty()
+            || seg.s - started >= 20.0
+            || (seg.spk.is_some() && seg.spk != speaker);
+        if new_line {
+            if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+            }
+            started = seg.s;
+            speaker = seg.spk;
+            current = match seg.spk {
+                Some(spk) => format!("[{}] {}: {}", clock(seg.s), name(spk), text),
+                None => format!("[{}] {}", clock(seg.s), text),
+            };
+        } else {
+            current.push(' ');
+            current.push_str(text);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines.join("\n")
 }
 
 pub fn load_transcript(app: &AppHandle, id: i64) -> Vec<Segment> {
@@ -1109,6 +1189,25 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
 /// сначала тянем её (интерфейс предупреждает о размере заранее). Очередь
 /// та же, что у расшифровок: движки тяжёлые, пусть ходят по одному.
 pub fn summarize(app: &AppHandle, id: i64) {
+    llm_job(app, id, "solflow-summary-error", "саммери", summarize_job);
+}
+
+/// Вопрос к записи — той же очередью и с той же отменой, что саммери.
+pub fn ask(app: &AppHandle, id: i64, question: String) {
+    llm_job(app, id, "solflow-qa-error", "вопрос к записи", move |app, id, flag| {
+        ask_job(app, id, &question, flag)
+    });
+}
+
+/// Общая обвязка работ языковой модели над встречей: отметка отмены,
+/// очередь движков, фаза и прогресс для окна, ошибка — событием.
+fn llm_job(
+    app: &AppHandle,
+    id: i64,
+    error_event: &'static str,
+    what: &'static str,
+    job: impl FnOnce(&AppHandle, i64, Arc<AtomicBool>) -> Result<()> + Send + 'static,
+) {
     let state = app.state::<MeetingState>();
     {
         let mut cancel = state.cancel.lock().unwrap();
@@ -1138,7 +1237,7 @@ pub fn summarize(app: &AppHandle, id: i64) {
         let result = if flag.load(Ordering::Relaxed) {
             Ok(())
         } else {
-            summarize_job(&app, id, flag.clone())
+            job(&app, id, flag.clone())
         };
 
         let state = app.state::<MeetingState>();
@@ -1148,19 +1247,19 @@ pub fn summarize(app: &AppHandle, id: i64) {
         state.phase.lock().unwrap().remove(&id);
 
         if let Err(e) = result {
-            log::error!("саммери не удалось: {e}");
+            log::error!("{what}: не удалось: {e}");
             if !cancelled {
                 use tauri::Emitter;
-                let _ = app.emit("solflow-summary-error", format!("{e}"));
+                let _ = app.emit(error_event, format!("{e}"));
             }
         }
         notify(&app);
     });
 }
 
-fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> {
+/// Докачать модель, если её нет, — с фазой и процентами в окне.
+fn ensure_llm(app: &AppHandle, id: i64, flag: &Arc<AtomicBool>) -> Result<()> {
     let state = app.state::<MeetingState>();
-
     if !crate::summary::model_ready(app) {
         state.phase.lock().unwrap().insert(id, "llm_downloading");
         notify(app);
@@ -1174,6 +1273,52 @@ fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> 
             &|| flag.load(Ordering::Relaxed),
         )?;
     }
+    Ok(())
+}
+
+fn ask_job(app: &AppHandle, id: i64, question: &str, flag: Arc<AtomicBool>) -> Result<()> {
+    ensure_llm(app, id, &flag)?;
+    let state = app.state::<MeetingState>();
+    state.phase.lock().unwrap().insert(id, "asking");
+    state.progress.lock().unwrap().insert(id, 0);
+    notify(app);
+
+    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    let segments = load_transcript(app, id);
+    if segments.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+    let timed = timed_text(&meta, &segments);
+
+    let progress_app = app.clone();
+    let answer = crate::summary::ask(
+        app,
+        &timed,
+        question,
+        move |pct| {
+            let state = progress_app.state::<MeetingState>();
+            state.progress.lock().unwrap().insert(id, pct);
+            notify(&progress_app);
+        },
+        flag,
+    )?;
+
+    let mut items = load_qa(app, id);
+    items.push(QaItem {
+        q: question.trim().to_string(),
+        a: answer,
+        at: now_ms(),
+    });
+    save_qa(app, id, &items);
+    use tauri::Emitter;
+    let _ = app.emit("solflow-qa", id);
+    Ok(())
+}
+
+fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> {
+    let state = app.state::<MeetingState>();
+
+    ensure_llm(app, id, &flag)?;
 
     state.phase.lock().unwrap().insert(id, "summarizing");
     state.progress.lock().unwrap().insert(id, 0);

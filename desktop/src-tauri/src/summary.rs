@@ -51,6 +51,36 @@ const MERGE_PROMPT: &str = "Ниже — ключевые пункты посл�
 задачи из частей; если их нет — «Задачи не проговаривались»\n\nЭто подробный конспект, а не \
 краткая аннотация: не сжимай всё до трёх пунктов. Ничего не выдумывай и не добавляй от себя.";
 
+/// Вопрос к записи: ответ с опорой на время реплик. Размышления выключены —
+/// на процессоре они растягивали бы ответ на минуты, а вопрос — про то,
+/// что уже сказано в тексте, думать тут не над чем.
+const ASK_PROMPT: &str = "Ты отвечаешь на вопросы по автоматической расшифровке разговора \
+(встреча, интервью, лекция). В тексте бывают ошибки распознавания. Каждая строка \
+расшифровки начинается с времени в квадратных скобках, например [12:40] или [1:05:12]. \
+Отвечай на русском, коротко и по делу: сначала сам ответ в одном-трёх предложениях, потом, \
+если есть что добавить, до пяти пунктов с подробностями. После каждого утверждения ставь \
+время места в записи, откуда оно взято, в том же виде — [12:40]. Пиши только то, что есть в \
+расшифровке; если ответа в ней нет, напиши: «В записи об этом не говорили». /no_think";
+
+/// Кусок длинной записи: не отвечать, а выписать всё, что относится к
+/// вопросу, — ответ соберётся из выписок.
+const ASK_PART_PROMPT: &str = "Ниже — фрагмент автоматической расшифровки длинного \
+разговора; в тексте бывают ошибки распознавания, каждая строка начинается с времени в \
+квадратных скобках. Выпиши из фрагмента всё, что относится к вопросу: близкие к тексту \
+цитаты или пересказ, каждая строка — с временем из начала её строки в том же виде, \
+например [12:40]. До восьми строк. Если во фрагменте нет ничего по вопросу, ответь одним \
+словом: нет. /no_think";
+
+const ASK_MERGE_PROMPT: &str = "Ниже — выписки из разных частей одной длинной расшифровки, \
+собранные по вопросу; у каждой выписки есть время в квадратных скобках. Ответь на вопрос \
+по этим выпискам на русском, коротко и по делу: сначала сам ответ в одном-трёх \
+предложениях, потом до пяти пунктов с подробностями. После каждого утверждения ставь время \
+из выписки в том же виде — [12:40]. Ничего не выдумывай. Если выписок нет или в них нет \
+ответа на вопрос, весь ответ — одна фраза «В записи об этом не говорили»; если ответ \
+есть, этой фразы быть не должно. /no_think";
+
+const ASK_TOKENS: c_int = 700;
+
 /// Контекст умеренный: KV-кэш на 32k токенов занимал ~5 ГБ и душил машины
 /// с 16 ГБ; на 16k — вдвое меньше, а длинные встречи и так режутся на куски.
 const N_CTX: c_int = 16384;
@@ -229,6 +259,33 @@ fn generate(
     }
 }
 
+/// Загрузка модели на один заход.
+fn load(app: &AppHandle, n_ctx: c_int) -> Result<Llm> {
+    load_path(&model_path(app), n_ctx)
+}
+
+fn load_path(model: &std::path::Path, n_ctx: c_int) -> Result<Llm> {
+    if !model.exists() {
+        return Err(anyhow!("модель саммери не скачана"));
+    }
+    let path = CString::new(model.to_string_lossy().as_bytes())?;
+    let handle = unsafe { sf_llm_load(path.as_ptr(), n_ctx, 0) };
+    if handle.is_null() {
+        return Err(anyhow!("модель саммери не загрузилась"));
+    }
+    Ok(Llm(handle))
+}
+
+/// На сколько кусков резать текст, чтобы каждый влез в бюджет контекста.
+fn parts_for(llm: &Llm, text: &str) -> Result<usize> {
+    let text_c = CString::new(text)?;
+    let tokens = unsafe { sf_llm_count_tokens(llm.0, text_c.as_ptr()) };
+    if tokens < 0 {
+        return Err(anyhow!("текст не токенизировался"));
+    }
+    Ok(((tokens as usize).div_ceil(PART_BUDGET)).max(1))
+}
+
 /// Полное саммери: длинная расшифровка режется на куски по бюджету токенов,
 /// куски сводятся финальным проходом. Модель грузится один раз.
 pub fn summarize(
@@ -237,24 +294,8 @@ pub fn summarize(
     progress: impl Fn(u8) + Send + Sync + Clone + 'static,
     cancelled: Arc<AtomicBool>,
 ) -> Result<String> {
-    let model = model_path(app);
-    if !model.exists() {
-        return Err(anyhow!("модель саммери не скачана"));
-    }
-
-    let path = CString::new(model.to_string_lossy().as_bytes())?;
-    let handle = unsafe { sf_llm_load(path.as_ptr(), N_CTX, 0) };
-    if handle.is_null() {
-        return Err(anyhow!("модель саммери не загрузилась"));
-    }
-    let llm = Llm(handle);
-
-    let text_c = CString::new(transcript)?;
-    let tokens = unsafe { sf_llm_count_tokens(llm.0, text_c.as_ptr()) };
-    if tokens < 0 {
-        return Err(anyhow!("текст не токенизировался"));
-    }
-    let parts_n = ((tokens as usize).div_ceil(PART_BUDGET)).max(1);
+    let llm = load(app, N_CTX)?;
+    let parts_n = parts_for(&llm, transcript)?;
 
     if parts_n == 1 {
         return generate(&llm, transcript, SYSTEM_PROMPT, MAX_TOKENS, (0, 100), progress, cancelled);
@@ -288,19 +329,89 @@ pub fn summarize(
     )
 }
 
+/// Ответ на вопрос по расшифровке. `timed` — текст, где каждая строка
+/// начинается с времени «[мм:сс]»: по этим меткам модель ссылается на
+/// места записи, а окно превращает их в переходы к репликам. Длинная
+/// запись идёт кусками: из каждого выписывается относящееся к вопросу,
+/// ответ собирается по выпискам.
+pub fn ask(
+    app: &AppHandle,
+    timed: &str,
+    question: &str,
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<String> {
+    ask_with(&model_path(app), timed, question, progress, cancelled)
+}
+
+/// То же по пути к модели — для проверок без приложения.
+pub fn ask_with(
+    model: &std::path::Path,
+    timed: &str,
+    question: &str,
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<String> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err(anyhow!("вопрос пустой"));
+    }
+    let llm = load_path(model, N_CTX)?;
+    let parts_n = parts_for(&llm, timed)?;
+    let with_question = |prompt: &str| format!("{prompt}\n\nВопрос: {question}");
+
+    if parts_n == 1 {
+        return generate(
+            &llm,
+            timed,
+            &with_question(ASK_PROMPT),
+            ASK_TOKENS,
+            (0, 100),
+            progress,
+            cancelled,
+        );
+    }
+
+    let parts = split_into(timed, parts_n);
+    let slice = 100 / (parts_n + 1) as u8;
+    let mut notes = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        let from = slice * i as u8;
+        let found = generate(
+            &llm,
+            part,
+            &with_question(ASK_PART_PROMPT),
+            ASK_TOKENS,
+            (from, from + slice),
+            progress.clone(),
+            cancelled.clone(),
+        )?;
+        let cleaned = found.trim().trim_end_matches('.');
+        log::debug!("вопрос, кусок {}/{parts_n}: {found}", i + 1);
+        if !cleaned.is_empty() && !cleaned.eq_ignore_ascii_case("нет") {
+            notes.push(found);
+        }
+    }
+    let merged = if notes.is_empty() {
+        "(выписок нет)".to_string()
+    } else {
+        notes.join("\n\n---\n\n")
+    };
+    generate(
+        &llm,
+        &merged,
+        &with_question(ASK_MERGE_PROMPT),
+        ASK_TOKENS,
+        (slice * parts_n as u8, 100),
+        progress,
+        cancelled,
+    )
+}
+
 /// Короткое название записи по началу расшифровки. Контекст маленький —
 /// ради пары слов не разворачиваем гигабайтный KV-кэш.
 pub fn title(app: &AppHandle, transcript_head: &str) -> Result<String> {
-    let model = model_path(app);
-    if !model.exists() {
-        return Err(anyhow!("модель саммери не скачана"));
-    }
-    let path = CString::new(model.to_string_lossy().as_bytes())?;
-    let handle = unsafe { sf_llm_load(path.as_ptr(), 4096, 0) };
-    if handle.is_null() {
-        return Err(anyhow!("модель саммери не загрузилась"));
-    }
-    let llm = Llm(handle);
+    let llm = load(app, 4096)?;
 
     // /no_think обязателен: на размышления модель тратила весь короткий
     // бюджет токенов и до самого названия не доходила (проверено — после

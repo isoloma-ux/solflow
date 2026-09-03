@@ -19,7 +19,7 @@ mod lang;
 /// Оверлей на macOS — NSPanel, на остальных системах обычное окно.
 #[cfg_attr(not(target_os = "macos"), path = "hud_win.rs")]
 mod hud;
-mod meetings;
+pub mod meetings;
 mod models;
 mod net;
 mod paste;
@@ -28,7 +28,7 @@ mod report;
 mod segmenter;
 mod sync;
 #[cfg(has_summary)]
-mod summary;
+pub mod summary;
 /// Без libsolflow_llama (llama-shim/build-macos.sh не гоняли) саммери
 /// выключено, но всё остальное собирается и работает.
 #[cfg(not(has_summary))]
@@ -66,6 +66,15 @@ mod summary {
         Err(anyhow!("сборка без модели саммери"))
     }
     pub fn title(_app: &AppHandle, _transcript_head: &str) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
+    pub fn ask(
+        _app: &AppHandle,
+        _timed: &str,
+        _question: &str,
+        _progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+        _cancelled: Arc<AtomicBool>,
+    ) -> Result<String> {
         Err(anyhow!("сборка без модели саммери"))
     }
 }
@@ -1158,6 +1167,22 @@ fn summary_state(app: AppHandle) -> (bool, u64) {
     (summary::model_ready(&app), summary::MODEL_MB)
 }
 
+/// Вопрос к записи: ответ считает та же модель, что и саммери.
+#[tauri::command]
+fn meeting_ask(app: AppHandle, id: i64, question: String) {
+    meetings::ask(&app, id, question);
+}
+
+#[tauri::command]
+fn meeting_qa(app: AppHandle, id: i64) -> Vec<meetings::QaItem> {
+    meetings::load_qa(&app, id)
+}
+
+#[tauri::command]
+fn meeting_qa_clear(app: AppHandle, id: i64) {
+    meetings::clear_qa(&app, id);
+}
+
 /// Придумать название по кнопке — для готовых встреч.
 #[tauri::command]
 fn meeting_autotitle(app: AppHandle, id: i64) {
@@ -1619,6 +1644,9 @@ pub fn run() {
             meetings_export_combined,
             meeting_summarize,
             summary_state,
+            meeting_ask,
+            meeting_qa,
+            meeting_qa_clear,
             meeting_autotitle,
             meeting_import,
             meeting_import_paths,

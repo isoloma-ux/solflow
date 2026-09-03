@@ -773,6 +773,7 @@ function stateLabel(m) {
   if (m.phase === "queued") return t("В очереди на расшифровку");
   if (m.phase === "llm_downloading") return t("Качаю модель саммери{0}", pct);
   if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
+  if (m.phase === "asking") return t("Отвечаю на вопрос{0}", pct);
   if (m.phase === "titling") return t("Придумываю название");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
@@ -1958,6 +1959,137 @@ async function exportFromList(meeting, format) {
   }
 }
 
+// --- вопрос к записи ------------------------------------------------------
+
+/** Время «[мм:сс]» или «[ч:мм:сс]» из ответа модели → секунды. */
+function clockToSeconds(text) {
+  const parts = text.split(":").map(Number);
+  if (parts.some(Number.isNaN)) return null;
+  return parts.reduce((acc, v) => acc * 60 + v, 0);
+}
+
+/** Прокрутить к реплике, в которую попадает момент записи. */
+function jumpToClock(seconds) {
+  const rows = [...document.querySelectorAll("#meetSegments .segment")];
+  let target = null;
+  for (const row of rows) {
+    if (Number(row.dataset.s) <= seconds + 0.01) target = row;
+    else break;
+  }
+  if (!target) target = rows[0];
+  if (!target) return;
+  rows.forEach((r) => r.classList.remove("jumped"));
+  target.classList.add("jumped");
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  setTimeout(() => target.classList.remove("jumped"), 2500);
+}
+
+/** Строка ответа: текст с кликабельными метками времени. */
+function answerLine(text) {
+  const frag = document.createDocumentFragment();
+  const re = /\[(\d{1,2}(?::\d{2}){1,2})\]/g;
+  let last = 0;
+  for (const match of text.matchAll(re)) {
+    if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+    const seconds = clockToSeconds(match[1]);
+    if (seconds === null) {
+      frag.appendChild(document.createTextNode(match[0]));
+    } else {
+      const button = document.createElement("button");
+      button.className = "qa-time";
+      button.textContent = match[1];
+      button.title = t("К этому месту записи");
+      button.onclick = () => jumpToClock(seconds);
+      frag.appendChild(button);
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+  return frag;
+}
+
+async function renderQa(m) {
+  const box = el("meetAskBox");
+  const done = m.state === "done";
+  box.hidden = !done;
+  if (!done) return;
+  const busy = !!m.phase;
+  el("meetAsk").disabled = busy;
+  el("meetAskSend").disabled = busy;
+
+  const items = await invoke("meeting_qa", { id: m.id });
+  el("meetQaClear").hidden = !items.length;
+  const list = el("meetQaList");
+  list.textContent = "";
+  for (const item of items) {
+    const q = document.createElement("p");
+    q.className = "qa-q";
+    q.textContent = item.q;
+    const a = document.createElement("div");
+    a.className = "qa-a";
+    for (const raw of item.a.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const p = document.createElement("p");
+      if (/^[-•]/.test(line)) {
+        p.className = "summary-item";
+        p.appendChild(answerLine(line.replace(/^[-•]\s*/, "")));
+      } else {
+        p.appendChild(answerLine(line.replace(/^#+\s*/, "")));
+      }
+      a.appendChild(p);
+    }
+    list.append(q, a);
+  }
+}
+
+let askArmed = null;
+async function askMeeting() {
+  if (detailId === null) return;
+  const question = el("meetAsk").value.trim();
+  if (!question) return;
+  const [ready, mb] = await invoke("summary_state");
+  // Модель тяжёлая: без неё первое нажатие только предупреждает о размере.
+  if (!ready && !askArmed) {
+    el("meetAskSend").textContent = t("Скачать модель ~{0} ГБ?", (mb / 1024).toFixed(1));
+    askArmed = setTimeout(() => {
+      askArmed = null;
+      el("meetAskSend").textContent = t("Спросить");
+    }, 5000);
+    return;
+  }
+  if (askArmed) {
+    clearTimeout(askArmed);
+    askArmed = null;
+    el("meetAskSend").textContent = t("Спросить");
+  }
+  invoke("meeting_ask", { id: detailId, question });
+  el("meetAsk").value = "";
+}
+
+el("meetAskSend").addEventListener("click", askMeeting);
+el("meetAsk").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") askMeeting();
+});
+
+el("meetQaClear").addEventListener("click", async () => {
+  if (detailId === null) return;
+  await invoke("meeting_qa_clear", { id: detailId });
+  const m = meetRows.find((r) => r.id === detailId);
+  if (m) renderQa(m);
+});
+
+listen("solflow-qa", (e) => {
+  if (e.payload !== detailId) return;
+  const m = meetRows.find((r) => r.id === detailId);
+  if (m) renderQa(m);
+});
+
+listen("solflow-qa-error", (e) => {
+  el("meetDetailStatus").textContent = t("Вопрос: {0}", e.payload);
+  el("meetDetailStatus").hidden = false;
+});
+
 // Модель тяжёлая, поэтому без неё кнопка сначала честно спрашивает про
 // скачивание, и только второе нажатие запускает работу.
 let summaryArmed = null;
@@ -2058,6 +2190,7 @@ async function renderDetail() {
   }
 
   renderSummary(m);
+  renderQa(m);
 
   detailSegments = await invoke("meeting_segments", { id: detailId });
   renderSpeakersPanel(m, detailSegments);
@@ -2081,6 +2214,7 @@ async function renderDetail() {
 
     const row = document.createElement("div");
     row.className = "segment";
+    row.dataset.s = String(s.s);
     const clock = document.createElement("span");
     clock.className = "segment-clock";
     clock.textContent = fmtClock(s.s);
