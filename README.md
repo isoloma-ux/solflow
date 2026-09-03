@@ -4,14 +4,12 @@
 
 # Sol Flow
 
+**Русский** · [English](README.en.md)
+
 Распознавание речи, которое не покидает ваше устройство. Диктовка в любое
 поле ввода и расшифровка встреч — на Mac, Windows и Android. Бесплатно, без
 подписки и без отправки звука куда бы то ни было: модели работают прямо на
 компьютере или телефоне, интернет нужен один раз, чтобы их скачать.
-
-*Sol Flow is an offline speech-to-text app for Mac, Windows and Android:
-dictation into any input field and meeting transcription, with nothing sent
-to the network. The app and this page are in Russian.*
 
 **Сайт с инструкциями и скриншотами:** [ivansolomin.ru/solflow](https://ivansolomin.ru/solflow)
 · **Последняя версия:** [Releases](https://github.com/isoloma-ux/solflow/releases/latest)
