@@ -91,6 +91,18 @@ pub struct QaItem {
     pub at: i64,
 }
 
+/// Разборы записи моделью — в extras.json рядом со встречей, как и
+/// вопросы: десктоп считает, десктоп и показывает.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Extras {
+    #[serde(default)]
+    pub tasks: String,
+    #[serde(default)]
+    pub letter: String,
+    #[serde(default)]
+    pub outline: String,
+}
+
 /// Строка списка встреч для интерфейса.
 #[derive(Serialize)]
 pub struct MeetingRow {
@@ -258,6 +270,31 @@ fn save_qa(app: &AppHandle, id: i64, items: &[QaItem]) {
 
 pub fn clear_qa(app: &AppHandle, id: i64) {
     let _ = std::fs::remove_file(dir(app, id).join("qa.json"));
+}
+
+pub fn load_extras(app: &AppHandle, id: i64) -> Extras {
+    std::fs::read_to_string(dir(app, id).join("extras.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_extras(app: &AppHandle, id: i64, extras: &Extras) {
+    let path = dir(app, id).join("extras.json");
+    if path.parent().map(|p| p.exists()).unwrap_or(false) {
+        let _ = std::fs::write(path, serde_json::to_string_pretty(extras).unwrap());
+    }
+}
+
+pub fn clear_extra(app: &AppHandle, id: i64, kind: &str) {
+    let mut extras = load_extras(app, id);
+    match kind {
+        "tasks" => extras.tasks.clear(),
+        "letter" => extras.letter.clear(),
+        "outline" => extras.outline.clear(),
+        _ => return,
+    }
+    save_extras(app, id, &extras);
 }
 
 /// Расшифровка со временем в начале строк — для вопросов к записи. Реплики
@@ -1197,6 +1234,67 @@ pub fn ask(app: &AppHandle, id: i64, question: String) {
     llm_job(app, id, "solflow-qa-error", "вопрос к записи", move |app, id, flag| {
         ask_job(app, id, &question, flag)
     });
+}
+
+/// Разбор записи: решения и задачи, письмо по итогам или оглавление.
+pub fn derive(app: &AppHandle, id: i64, kind: String) {
+    let phase: &'static str = match kind.as_str() {
+        "tasks" => "tasks",
+        "letter" => "letter",
+        "outline" => "outline",
+        _ => return,
+    };
+    llm_job(app, id, "solflow-extras-error", "разбор записи", move |app, id, flag| {
+        derive_job(app, id, phase, flag)
+    });
+}
+
+fn derive_job(app: &AppHandle, id: i64, kind: &'static str, flag: Arc<AtomicBool>) -> Result<()> {
+    ensure_llm(app, id, &flag)?;
+    let state = app.state::<MeetingState>();
+    state.phase.lock().unwrap().insert(id, kind);
+    state.progress.lock().unwrap().insert(id, 0);
+    notify(app);
+
+    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    let segments = load_transcript(app, id);
+    if segments.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+    // Письму время реплик ни к чему, остальным — опора для ссылок.
+    let text = if kind == "letter" {
+        segments
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        timed_text(&meta, &segments)
+    };
+
+    let progress_app = app.clone();
+    let result = crate::summary::derive(
+        app,
+        kind,
+        &text,
+        move |pct| {
+            let state = progress_app.state::<MeetingState>();
+            state.progress.lock().unwrap().insert(id, pct);
+            notify(&progress_app);
+        },
+        flag,
+    )?;
+
+    let mut extras = load_extras(app, id);
+    match kind {
+        "tasks" => extras.tasks = result,
+        "letter" => extras.letter = result,
+        _ => extras.outline = result,
+    }
+    save_extras(app, id, &extras);
+    use tauri::Emitter;
+    let _ = app.emit("solflow-extras", id);
+    Ok(())
 }
 
 /// Общая обвязка работ языковой модели над встречей: отметка отмены,

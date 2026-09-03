@@ -77,6 +77,15 @@ mod summary {
     ) -> Result<String> {
         Err(anyhow!("сборка без модели саммери"))
     }
+    pub fn derive(
+        _app: &AppHandle,
+        _kind: &str,
+        _text: &str,
+        _progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+        _cancelled: Arc<AtomicBool>,
+    ) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
 }
 mod ttf;
 mod settings;
@@ -1183,6 +1192,22 @@ fn meeting_qa_clear(app: AppHandle, id: i64) {
     meetings::clear_qa(&app, id);
 }
 
+/// Разбор записи моделью: "tasks", "letter" или "outline".
+#[tauri::command]
+fn meeting_derive(app: AppHandle, id: i64, kind: String) {
+    meetings::derive(&app, id, kind);
+}
+
+#[tauri::command]
+fn meeting_extras(app: AppHandle, id: i64) -> meetings::Extras {
+    meetings::load_extras(&app, id)
+}
+
+#[tauri::command]
+fn meeting_extras_clear(app: AppHandle, id: i64, kind: String) {
+    meetings::clear_extra(&app, id, &kind);
+}
+
 /// Придумать название по кнопке — для готовых встреч.
 #[tauri::command]
 fn meeting_autotitle(app: AppHandle, id: i64) {
@@ -1647,6 +1672,9 @@ pub fn run() {
             meeting_ask,
             meeting_qa,
             meeting_qa_clear,
+            meeting_derive,
+            meeting_extras,
+            meeting_extras_clear,
             meeting_autotitle,
             meeting_import,
             meeting_import_paths,

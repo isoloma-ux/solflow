@@ -774,6 +774,9 @@ function stateLabel(m) {
   if (m.phase === "llm_downloading") return t("Качаю модель саммери{0}", pct);
   if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
   if (m.phase === "asking") return t("Отвечаю на вопрос{0}", pct);
+  if (m.phase === "tasks") return t("Ищу решения и задачи{0}", pct);
+  if (m.phase === "letter") return t("Пишу письмо по итогам{0}", pct);
+  if (m.phase === "outline") return t("Составляю оглавление{0}", pct);
   if (m.phase === "titling") return t("Придумываю название");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
@@ -1959,6 +1962,114 @@ async function exportFromList(meeting, format) {
   }
 }
 
+// --- разборы записи: решения и задачи, письмо, оглавление -------------------
+
+const EXTRA_KINDS = [
+  ["tasks", "Решения и задачи"],
+  ["letter", "Письмо по итогам"],
+  ["outline", "Оглавление"],
+];
+
+/** Карточка разбора: заголовок, копирование, удаление, текст с метками. */
+function extraCard(kind, title, text) {
+  const card = document.createElement("section");
+  card.className = "meet-summary meet-extra";
+  const head = document.createElement("div");
+  head.className = "summary-head-row";
+  const kicker = document.createElement("p");
+  kicker.className = "kicker";
+  kicker.textContent = t(title);
+  const tools = document.createElement("span");
+  tools.className = "extra-tools";
+  const copy = document.createElement("button");
+  copy.className = "icon-only";
+  copy.title = t("Скопировать");
+  copy.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+  copy.onclick = () => {
+    navigator.clipboard.writeText(text);
+    showDetailStatus(t("Скопировано"));
+  };
+  const remove = document.createElement("button");
+  remove.className = "icon-only";
+  remove.title = t("Убрать");
+  remove.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v6M13.5 11v6"/></svg>';
+  remove.onclick = async () => {
+    await invoke("meeting_extras_clear", { id: detailId, kind });
+    const m = meetRows.find((r) => r.id === detailId);
+    if (m) renderExtras(m);
+  };
+  tools.append(copy, remove);
+  head.append(kicker, tools);
+  card.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "qa-a";
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const p = document.createElement("p");
+    if (line.startsWith("##")) {
+      p.className = "summary-head";
+      p.textContent = line.replace(/^#+\s*/, "");
+    } else if (/^[-•]/.test(line)) {
+      p.className = "summary-item";
+      p.appendChild(answerLine(line.replace(/^[-•]\s*/, "")));
+    } else {
+      p.appendChild(answerLine(line));
+    }
+    body.appendChild(p);
+  }
+  card.appendChild(body);
+  return card;
+}
+
+async function renderExtras(m) {
+  const done = m.state === "done";
+  el("meetDerive").hidden = !done;
+  el("meetDerive").disabled = !!m.phase;
+  const box = el("meetExtras");
+  box.textContent = "";
+  if (!done) return;
+  const extras = await invoke("meeting_extras", { id: m.id });
+  for (const [kind, title] of EXTRA_KINDS) {
+    if (extras[kind]) box.appendChild(extraCard(kind, title, extras[kind]));
+  }
+}
+
+el("meetDerive").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const menu = el("deriveMenu");
+  menu.hidden = !menu.hidden;
+  if (menu.hidden) return;
+  const [ready, mb] = await invoke("summary_state");
+  el("deriveHint").textContent = ready
+    ? t("Считает локальная модель, ответ — под саммери")
+    : t("Первый раз скачает модель ~{0} ГБ", (mb / 1024).toFixed(1));
+});
+el("deriveMenu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const kind = e.target.closest("[data-derive]")?.dataset.derive;
+  if (!kind || detailId === null) return;
+  el("deriveMenu").hidden = true;
+  invoke("meeting_derive", { id: detailId, kind });
+});
+document.addEventListener("click", () => {
+  el("deriveMenu").hidden = true;
+});
+
+listen("solflow-extras", (e) => {
+  if (e.payload !== detailId) return;
+  const m = meetRows.find((r) => r.id === detailId);
+  if (m) renderExtras(m);
+});
+
+listen("solflow-extras-error", (e) => {
+  el("meetDetailStatus").textContent = t("Разбор: {0}", e.payload);
+  el("meetDetailStatus").hidden = false;
+});
+
 // --- вопрос к записи ------------------------------------------------------
 
 /** Время «[мм:сс]» или «[ч:мм:сс]» из ответа модели → секунды. */
@@ -2190,6 +2301,7 @@ async function renderDetail() {
   }
 
   renderSummary(m);
+  renderExtras(m);
   renderQa(m);
 
   detailSegments = await invoke("meeting_segments", { id: detailId });

@@ -81,6 +81,65 @@ const ASK_MERGE_PROMPT: &str = "Ниже — выписки из разных ч
 
 const ASK_TOKENS: c_int = 700;
 
+/// Разборы записи той же моделью: решения и задачи, письмо по итогам,
+/// оглавление. Формат жёсткий, размышления выключены — это выписки из
+/// текста, а не сочинение.
+/// Решения и задачи: модель только выписывает строки трёх типов, разделы
+/// собирает код. Маленькая модель копирует любой пример или шаблон из
+/// промпта буквально — вплоть до выдуманной «Марины к пятнице», — поэтому
+/// в промпте нет ни примеров, ни шаблонов, только слова-метки строк.
+const TASKS_PART_PROMPT: &str = "Ниже — автоматическая расшифровка разговора или её \
+фрагмент; в тексте бывают ошибки распознавания, каждая строка начинается с времени в \
+квадратных скобках. Выпиши из текста принятые решения, поставленные задачи и открытые \
+вопросы (что обсуждали, но не решили). Каждая находка — отдельная строка. Строка о решении \
+начинается со слова «Решение:», о задаче — со слова «Задача:», о вопросе — со слова \
+«Вопрос:». В задаче сначала назови, кто её взял, если это прозвучало, потом суть, потом \
+срок, если он был. Каждую строку заканчивай временем в квадратных скобках — временем той \
+строки текста, откуда взята находка. Не больше десяти строк, своими словами по тексту, \
+ничего не выдумывай — ни имён, ни сроков, ни цифр. Если ничего такого в тексте нет, ответь \
+одним словом: нет. /no_think";
+
+const LETTER_PROMPT: &str = "Тебе дают автоматическую расшифровку рабочей встречи; в тексте \
+бывают ошибки распознавания. Напиши участникам письмо по итогам встречи на русском, деловым \
+и живым тоном, без канцелярита. Строго в таком виде:\n\nКоллеги, добрый день!\n\nодин \
+абзац: о чём была встреча и к чему пришли\n\nДоговорились:\n- пункты\n\nЗадачи:\n- кто: \
+что — срок, если прозвучал\n\nСледующие шаги:\n- пункты\n\nС уважением,\n[Имя]\n\nПиши \
+только то, что было на встрече, не выдумывай имена, цифры и сроки; времени в скобках в \
+письме быть не должно; если задач или шагов не было, пропусти этот раздел. /no_think";
+
+const LETTER_MERGE_PROMPT: &str = "Ниже — ключевые пункты последовательных частей одной \
+рабочей встречи. Напиши по ним участникам письмо по итогам встречи на русском, деловым и \
+живым тоном, без канцелярита. Строго в таком виде:\n\nКоллеги, добрый день!\n\nодин абзац: \
+о чём была встреча и к чему пришли\n\nДоговорились:\n- пункты\n\nЗадачи:\n- кто: что — \
+срок, если прозвучал\n\nСледующие шаги:\n- пункты\n\nС уважением,\n[Имя]\n\nПиши только \
+по пунктам, не выдумывай имена, цифры и сроки; времени в скобках в письме быть не должно; \
+если задач или шагов не было, пропусти этот раздел. /no_think";
+
+/// Оглавление: куски мельче обычных (модель бросала вторую половину
+/// длинного куска), темы просит по две-пять на кусок, а итог прореживает
+/// код — темы ближе трёх минут друг к другу склеиваются.
+const OUTLINE_PROMPT: &str = "Ниже — автоматическая расшифровка разговора (встреча, \
+интервью, лекция) или её фрагмент; в тексте бывают ошибки распознавания, каждая строка \
+начинается с времени в квадратных скобках. Разбей этот текст на крупные темы по порядку: от \
+двух до пяти тем, каждая тема объединяет много строк и длится несколько минут; темы должны \
+покрыть текст от начала до конца. Каждая тема — одна строка: сначала время в квадратных \
+скобках той строки текста, где тема началась, потом название темы своими словами (без \
+нумерации и без слова «тема»), потом тире и одно предложение о том, что в ней говорили. \
+Только эти строки, без заголовков и пояснений. /no_think";
+
+const LETTER_PART_PROMPT: &str = concat!(
+    "Тебе дают фрагмент автоматической расшифровки длинного разговора (встречи или ",
+    "интервью); в тексте бывают ошибки распознавания. Выпиши ключевые пункты этого фрагмента: ",
+    "от шести до десяти, каждый — конкретная мысль, факт, договорённость или вывод, с именами ",
+    "и цифрами, если они прозвучали. Если во фрагменте были решения или поставленные задачи — ",
+    "добавь их отдельными строками «Решение: …» и «Задача: …». Пиши только по содержанию ",
+    "фрагмента, ничего не выдумывай и не добавляй выводов от себя. /no_think"
+);
+
+const TASKS_TOKENS: c_int = 1500;
+const LETTER_TOKENS: c_int = 1200;
+const OUTLINE_TOKENS: c_int = 900;
+
 /// Контекст умеренный: KV-кэш на 32k токенов занимал ~5 ГБ и душил машины
 /// с 16 ГБ; на 16k — вдвое меньше, а длинные встречи и так режутся на куски.
 const N_CTX: c_int = 16384;
@@ -278,12 +337,16 @@ fn load_path(model: &std::path::Path, n_ctx: c_int) -> Result<Llm> {
 
 /// На сколько кусков резать текст, чтобы каждый влез в бюджет контекста.
 fn parts_for(llm: &Llm, text: &str) -> Result<usize> {
+    parts_for_budget(llm, text, PART_BUDGET)
+}
+
+fn parts_for_budget(llm: &Llm, text: &str, budget: usize) -> Result<usize> {
     let text_c = CString::new(text)?;
     let tokens = unsafe { sf_llm_count_tokens(llm.0, text_c.as_ptr()) };
     if tokens < 0 {
         return Err(anyhow!("текст не токенизировался"));
     }
-    Ok(((tokens as usize).div_ceil(PART_BUDGET)).max(1))
+    Ok(((tokens as usize).div_ceil(budget)).max(1))
 }
 
 /// Полное саммери: длинная расшифровка режется на куски по бюджету токенов,
@@ -408,6 +471,194 @@ pub fn ask_with(
     )
 }
 
+/// Разбор записи: "tasks" — решения и задачи (текст со временем), "letter" —
+/// письмо по итогам (текст без времени), "outline" — оглавление (текст со
+/// временем; куски просто склеиваются — темы и так идут по порядку).
+pub fn derive(
+    app: &AppHandle,
+    kind: &str,
+    text: &str,
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<String> {
+    derive_with(&model_path(app), kind, text, progress, cancelled)
+}
+
+pub fn derive_with(
+    model: &std::path::Path,
+    kind: &str,
+    text: &str,
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<String> {
+    let llm = load_path(model, N_CTX)?;
+    // Выписки для письма — без размышлений: с ними куски считались вдвое
+    // дольше, а качества письму это не прибавляло.
+    let (whole, part_prompt, merge_prompt, tokens, budget) = match kind {
+        "tasks" => (TASKS_PART_PROMPT, TASKS_PART_PROMPT, "", TASKS_TOKENS, PART_BUDGET),
+        "letter" => (
+            LETTER_PROMPT,
+            LETTER_PART_PROMPT,
+            LETTER_MERGE_PROMPT,
+            LETTER_TOKENS,
+            PART_BUDGET,
+        ),
+        "outline" => (OUTLINE_PROMPT, OUTLINE_PROMPT, "", OUTLINE_TOKENS, PART_BUDGET / 2),
+        other => return Err(anyhow!("неизвестный разбор «{other}»")),
+    };
+    let parts_n = parts_for_budget(&llm, text, budget)?;
+
+    if parts_n == 1 {
+        let out = generate(&llm, text, whole, tokens, (0, 100), progress, cancelled)?;
+        return Ok(assemble(kind, &[out]));
+    }
+
+    let parts = split_into(text, parts_n);
+    let merged_pass = if merge_prompt.is_empty() { 0 } else { 1 };
+    let slice = 100 / (parts_n + merged_pass) as u8;
+    let mut pieces = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        let from = slice * i as u8;
+        let found = generate(
+            &llm,
+            part,
+            part_prompt,
+            tokens,
+            (from, from + slice),
+            progress.clone(),
+            cancelled.clone(),
+        )?;
+        log::debug!("разбор {kind}, кусок {}/{parts_n}: {found}", i + 1);
+        let cleaned = found.trim().trim_end_matches('.');
+        if !cleaned.is_empty() && !cleaned.eq_ignore_ascii_case("нет") {
+            pieces.push(found);
+        }
+    }
+    if merge_prompt.is_empty() {
+        return Ok(assemble(kind, &pieces));
+    }
+    let merged = if pieces.is_empty() {
+        "(выписок нет)".to_string()
+    } else {
+        pieces.join("\n\n---\n\n")
+    };
+    generate(
+        &llm,
+        &merged,
+        merge_prompt,
+        tokens,
+        (slice * parts_n as u8, 100),
+        progress,
+        cancelled,
+    )
+}
+
+/// Итог из выписок кусков — кодом, без второго прохода модели.
+fn assemble(kind: &str, pieces: &[String]) -> String {
+    match kind {
+        "tasks" => assemble_tasks(pieces),
+        "outline" => assemble_outline(pieces),
+        _ => pieces.join("\n"),
+    }
+}
+
+/// Строки «Решение: …», «Задача: …», «Вопрос: …» — по разделам, без
+/// повторов; пустой раздел получает «нет».
+pub fn assemble_tasks(pieces: &[String]) -> String {
+    let mut groups: [Vec<String>; 3] = Default::default();
+    for line in pieces.iter().flat_map(|p| p.lines()) {
+        let line = line.trim().trim_start_matches(['-', '•', '*', ' ']).trim();
+        let lower = line.to_lowercase();
+        let (slot, rest) = if let Some(r) = strip_label(&lower, line, "решение") {
+            (0, r)
+        } else if let Some(r) = strip_label(&lower, line, "задача") {
+            (1, r)
+        } else if let Some(r) = strip_label(&lower, line, "вопрос") {
+            (2, r)
+        } else {
+            continue;
+        };
+        let rest = rest.trim().trim_matches(['*', '_']).trim().to_string();
+        if rest.is_empty() || rest.eq_ignore_ascii_case("нет") {
+            continue;
+        }
+        let key = rest.to_lowercase();
+        if !groups[slot].iter().any(|g| g.to_lowercase() == key) {
+            groups[slot].push(rest);
+        }
+    }
+    let mut out = String::new();
+    for (title, items) in ["Решения", "Задачи", "Открытые вопросы"].iter().zip(groups.iter()) {
+        out.push_str(&format!("## {title}\n"));
+        if items.is_empty() {
+            out.push_str("- нет\n");
+        }
+        for item in items {
+            out.push_str(&format!("- {item}\n"));
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// Остаток строки после метки вроде «Задача:» (регистр и звёздочки
+/// разметки не важны).
+fn strip_label<'a>(lower: &str, line: &'a str, label: &str) -> Option<&'a str> {
+    let start = lower.trim_start_matches(['*', '_', ' ']);
+    let skipped = lower.len() - start.len();
+    if !start.starts_with(label) {
+        return None;
+    }
+    let after = &line[skipped + label.len()..];
+    let after = after.trim_start_matches(['*', '_', ' ']);
+    after.strip_prefix(':').or_else(|| after.strip_prefix('—').or_else(|| after.strip_prefix('-')))
+}
+
+/// Строки «[мм:сс] тема — о чём» по времени, темы ближе трёх минут друг к
+/// другу склеиваются (остаётся первая), не больше тридцати.
+pub fn assemble_outline(pieces: &[String]) -> String {
+    const MIN_GAP: u32 = 180;
+    let mut rows: Vec<(u32, String)> = Vec::new();
+    for line in pieces.iter().flat_map(|p| p.lines()) {
+        let line = line.trim().trim_start_matches(['-', '•', '*', ' ']).trim();
+        let Some(close) = line.find(']') else { continue };
+        if !line.starts_with('[') {
+            continue;
+        }
+        let Some(secs) = clock_seconds(&line[1..close]) else { continue };
+        // После времени модель иногда ставит тире — оно тут лишнее.
+        let body = line[close + 1..].trim().trim_start_matches(['–', '—', '-', ' ']);
+        if body.is_empty() {
+            continue;
+        }
+        rows.push((secs, format!("[{}] {body}", &line[1..close])));
+    }
+    rows.sort_by_key(|(s, _)| *s);
+    let mut out: Vec<String> = Vec::new();
+    let mut last: Option<u32> = None;
+    for (secs, text) in rows {
+        if let Some(prev) = last {
+            if secs < prev + MIN_GAP {
+                continue;
+            }
+        }
+        last = Some(secs);
+        out.push(text);
+        if out.len() >= 30 {
+            break;
+        }
+    }
+    out.join("\n")
+}
+
+/// «12:40» или «1:02:34» → секунды.
+fn clock_seconds(text: &str) -> Option<u32> {
+    let mut total = 0u32;
+    for part in text.trim().split(':') {
+        total = total.checked_mul(60)?.checked_add(part.trim().parse().ok()?)?;
+    }
+    Some(total)
+}
+
 /// Короткое название записи по началу расшифровки. Контекст маленький —
 /// ради пары слов не разворачиваем гигабайтный KV-кэш.
 pub fn title(app: &AppHandle, transcript_head: &str) -> Result<String> {
@@ -470,4 +721,35 @@ fn split_into(text: &str, n: usize) -> Vec<String> {
     }
     parts.push(text[start..].to_string());
     parts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{assemble_outline, assemble_tasks};
+
+    #[test]
+    fn tasks_group_and_dedupe() {
+        let pieces = vec![
+            "Решение: делать гостиную [12:40]\n- **Задача:** Иван собирает список к пятнице [13:00]\nВопрос: как строить сообщество [40:08]".to_string(),
+            "задача: Иван собирает список к пятнице [13:00]\nнет".to_string(),
+        ];
+        let out = assemble_tasks(&pieces);
+        assert_eq!(
+            out,
+            "## Решения\n- делать гостиную [12:40]\n## Задачи\n- Иван собирает список к пятнице [13:00]\n## Открытые вопросы\n- как строить сообщество [40:08]"
+        );
+        assert!(assemble_tasks(&["нет".to_string()]).contains("## Задачи\n- нет"));
+    }
+
+    #[test]
+    fn outline_sorts_and_thins() {
+        let pieces = vec![
+            "[12:40] – Партнёры — о чём\n[13:10] Слишком близко — лишняя\n- [0:29] Вступление — начало".to_string(),
+            "[1:02:34] Тренды — вторая половина".to_string(),
+        ];
+        assert_eq!(
+            assemble_outline(&pieces),
+            "[0:29] Вступление — начало\n[12:40] Партнёры — о чём\n[1:02:34] Тренды — вторая половина"
+        );
+    }
 }

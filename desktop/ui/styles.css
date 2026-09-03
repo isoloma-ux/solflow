@@ -1515,12 +1515,12 @@ textarea {
 .meet-summary p { font-size: 14px; }
 
 /* Вопрос к записи: список пар вопрос/ответ и поле снизу. */
-.meet-ask .qa-q { font-weight: 500; margin-top: 14px; }
-.meet-ask .qa-q:first-child { margin-top: 0; }
-.meet-ask .qa-a { margin-top: 4px; }
-.meet-ask .qa-a p { margin-top: 4px; color: var(--fog); }
-.meet-ask .qa-a .summary-item { margin-top: 4px; }
-.meet-ask .qa-time {
+.meet-summary .qa-q { font-weight: 500; margin-top: 14px; }
+.meet-summary .qa-q:first-child { margin-top: 0; }
+.meet-summary .qa-a { margin-top: 4px; }
+.meet-summary .qa-a p { margin-top: 4px; color: var(--fog); }
+.meet-summary .qa-a .summary-item { margin-top: 4px; }
+.meet-summary .qa-time {
   color: var(--accent-solid);
   background: none;
   border: 0;
@@ -1529,7 +1529,9 @@ textarea {
   font-size: 13px;
   cursor: pointer;
 }
-.meet-ask .qa-time:hover { text-decoration: underline; }
+.meet-summary .qa-time:hover { text-decoration: underline; }
+.extra-tools { display: inline-flex; gap: 4px; }
+.meet-extra .qa-a p:first-child { margin-top: 0; }
 .ask-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
 .ask-row .search { flex: 1; }
 .segment.jumped { background: var(--graphite-2); border-radius: 8px; }
