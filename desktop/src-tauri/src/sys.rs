@@ -108,7 +108,8 @@ pub fn open_accessibility_settings() {
 pub fn open_accessibility_settings() {}
 
 /// Проигрывает готовый WAV-файл, не занимая свой аудиовыход: микрофон в
-/// этот момент уже слушает другой поток.
+/// этот момент уже слушает другой поток. Вызывается из отдельного потока
+/// и возвращается, как только звук начал играть.
 #[cfg(target_os = "macos")]
 pub fn play_wav(path: &Path) {
     let _ = Command::new("/usr/bin/afplay").arg(path).spawn();
@@ -124,7 +125,8 @@ pub fn play_wav(path: &Path) {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
-    // SND_ASYNC — не ждать конца звука: запись уже пошла.
+    // SND_ASYNC — вернуться, как только звук начал играть: по этому
+    // моменту и замеряется, сколько просыпалось устройство.
     unsafe {
         PlaySoundW(
             wide.as_ptr(),
@@ -132,6 +134,9 @@ pub fn play_wav(path: &Path) {
             SND_FILENAME | SND_ASYNC | SND_NODEFAULT,
         );
     }
+    // Асинхронное воспроизведение привязано к вызвавшему потоку: если он
+    // тут же завершится, звук оборвётся. Поток свой, подождать не жалко.
+    std::thread::sleep(std::time::Duration::from_millis(1500));
 }
 
 /// Название процессора — по нему в каталоге показывается ориентир по

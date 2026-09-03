@@ -1,8 +1,14 @@
 //! Запись с микрофона. cpal-поток живёт в собственном треде (Stream не Send),
 //! команды приходят по каналу. Звук копится как f32 моно на нативной частоте
 //! устройства и приводится к 16 кГц при остановке — движок ждёт только их.
+//!
+//! Поток открывается заранее и между записями стоит на паузе: открытие
+//! микрофона на Windows (WASAPI) занимает до секунд, и всё это время
+//! человек уже говорил в закрытый микрофон, а пилюля ждала. Запуск
+//! готового потока — миллисекунды. Пауза означает остановленный поток:
+//! система не считает микрофон занятым, индикатор не горит.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
@@ -15,6 +21,9 @@ enum Command {
     /// Имя микрофона из настроек; None — системный по умолчанию.
     Start(Option<String>, Sender<Result<()>>),
     Stop(Sender<Vec<f32>>),
+    /// Открыть поток заранее (или переоткрыть под другой микрофон), чтобы
+    /// следующий Start был мгновенным. Ничего не ждёт.
+    Prepare(Option<String>),
 }
 
 /// Микрофоны, которые видит система, — для списка в настройках.
@@ -77,12 +86,51 @@ impl Recorder {
     pub fn level(&self) -> f32 {
         f32::from_bits(self.level.load(Ordering::Relaxed))
     }
+
+    /// Открыть поток заранее — при старте приложения и после смены
+    /// микрофона в настройках.
+    pub fn prepare(&self, device: Option<String>) {
+        let _ = self.tx.send(Command::Prepare(device));
+    }
 }
 
 struct Active {
-    _stream: cpal::Stream,
+    stream: cpal::Stream,
     buf: Arc<Mutex<Vec<f32>>>,
     sample_rate: usize,
+    /// Какой микрофон просили и какой открылся на деле — чтобы заметить,
+    /// что настройка или системный микрофон сменились.
+    wanted: Option<String>,
+    device_name: String,
+    /// Поток пожаловался на ошибку (устройство вынули) — переоткрыть.
+    broken: Arc<AtomicBool>,
+    recording: bool,
+}
+
+impl Active {
+    /// Годится ли заранее открытый поток для следующей записи.
+    fn reusable(&self, wanted: &Option<String>) -> bool {
+        if self.recording || self.broken.load(Ordering::Relaxed) || &self.wanted != wanted {
+            return false;
+        }
+        // Без явного выбора микрофона поток был открыт на системном по
+        // умолчанию, а тот мог смениться (воткнули наушники). Сам вопрос
+        // системе дешёвый, в отличие от открытия потока.
+        if wanted.is_none() {
+            let current = cpal::default_host()
+                .default_input_device()
+                .and_then(|d| d.name().ok())
+                .unwrap_or_default();
+            if current != self.device_name {
+                log::info!(
+                    "системный микрофон сменился: «{}» → «{current}», открываю заново",
+                    self.device_name
+                );
+                return false;
+            }
+        }
+        true
+    }
 }
 
 fn audio_thread(rx: Receiver<Command>, level: Arc<AtomicU32>) {
@@ -91,27 +139,92 @@ fn audio_thread(rx: Receiver<Command>, level: Arc<AtomicU32>) {
     while let Ok(command) = rx.recv() {
         match command {
             Command::Start(device, reply) => {
-                let result = start_stream(level.clone(), device).map(|a| {
-                    active = Some(a);
-                });
-                let _ = reply.send(result);
+                let _ = reply.send(begin(&mut active, &level, device));
             }
             Command::Stop(reply) => {
                 level.store(0f32.to_bits(), Ordering::Relaxed);
-                let pcm = match active.take() {
-                    Some(a) => {
-                        let raw = a.buf.lock().map(|b| b.clone()).unwrap_or_default();
+                let pcm = match active.as_mut() {
+                    Some(a) if a.recording => {
+                        a.recording = false;
+                        // Поток остаётся открытым на паузе — следующая
+                        // запись начнётся сразу. Если пауза не удалась,
+                        // поток ненадёжен: закрываем.
+                        if let Err(e) = a.stream.pause() {
+                            log::warn!("микрофон не встал на паузу: {e}");
+                            a.broken.store(true, Ordering::Relaxed);
+                        }
+                        let raw = a
+                            .buf
+                            .lock()
+                            .map(|mut b| std::mem::take(&mut *b))
+                            .unwrap_or_default();
                         resample(&raw, a.sample_rate, TARGET_RATE)
                     }
-                    None => Vec::new(),
+                    _ => Vec::new(),
                 };
                 let _ = reply.send(pcm);
+                if active.as_ref().map(|a| a.broken.load(Ordering::Relaxed)) == Some(true) {
+                    active = None;
+                }
+            }
+            Command::Prepare(device) => {
+                let fresh = match &active {
+                    Some(a) => !a.reusable(&device),
+                    None => true,
+                };
+                if fresh && !active.as_ref().map(|a| a.recording).unwrap_or(false) {
+                    active = None;
+                    match open_stream(level.clone(), device) {
+                        Ok(a) => active = Some(a),
+                        Err(e) => log::warn!("микрофон заранее не открылся: {e}"),
+                    }
+                }
             }
         }
     }
 }
 
-fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active> {
+/// Начать запись: на готовом потоке — просто снять с паузы, иначе открыть.
+/// Если готовый поток не запустился (устройство вынули, пока стояли на
+/// паузе), пробуем один раз заново с нуля.
+fn begin(active: &mut Option<Active>, level: &Arc<AtomicU32>, wanted: Option<String>) -> Result<()> {
+    let reuse = active.as_ref().map(|a| a.reusable(&wanted)).unwrap_or(false);
+    if !reuse {
+        *active = None;
+        *active = Some(open_stream(level.clone(), wanted.clone())?);
+    }
+    let started = std::time::Instant::now();
+    let a = active.as_mut().expect("поток только что открыт");
+    if let Ok(mut b) = a.buf.lock() {
+        b.clear();
+    }
+    if let Err(e) = a.stream.play() {
+        if reuse {
+            log::warn!("готовый поток не запустился ({e}), открываю заново");
+            *active = None;
+            let mut fresh = open_stream(level.clone(), wanted)?;
+            fresh
+                .stream
+                .play()
+                .map_err(|e| anyhow!("поток не стартовал: {e}"))?;
+            fresh.recording = true;
+            *active = Some(fresh);
+            return Ok(());
+        }
+        *active = None;
+        return Err(anyhow!("поток не стартовал: {e}"));
+    }
+    a.recording = true;
+    log::info!(
+        "запись: поток {} запущен за {} мс",
+        if reuse { "заранее открытый" } else { "новый" },
+        started.elapsed().as_millis()
+    );
+    Ok(())
+}
+
+/// Открывает поток и оставляет его на паузе — запускает `begin`.
+fn open_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active> {
     // Каждый шаг открытия микрофона замеряется: на Windows между нажатием
     // сочетания и началом записи бывает пауза в секунды, и по одному
     // общему числу не понять, где она — в поиске устройства, в WASAPI
@@ -130,6 +243,8 @@ fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active>
     let buf: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
 
     let cb_buf = buf.clone();
+    let broken = Arc::new(AtomicBool::new(false));
+    let cb_broken = broken.clone();
     let stream = device
         .build_input_stream(
             &config.into(),
@@ -152,20 +267,20 @@ fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active>
                     b.extend_from_slice(&mono);
                 }
             },
-            |e| log::error!("ошибка аудиопотока: {e}"),
+            move |e| {
+                log::error!("ошибка аудиопотока: {e}");
+                cb_broken.store(true, Ordering::Relaxed);
+            },
             None,
         )
         .map_err(|e| anyhow!("не удалось открыть поток: {e}"))?;
     let built_ms = started.elapsed().as_millis() - picked_ms - config_ms;
 
-    stream.play().map_err(|e| anyhow!("поток не стартовал: {e}"))?;
-    let play_ms = started.elapsed().as_millis() - picked_ms - config_ms - built_ms;
-
     let total_ms = started.elapsed().as_millis();
+    let device_name = device.name().unwrap_or_default();
     let line = format!(
-        "микрофон «{}» {sample_rate} Гц, {channels} кан., {format:?}: открыт за {total_ms} мс \
-         (устройство {picked_ms}, формат {config_ms}, поток {built_ms}, старт {play_ms})",
-        device.name().unwrap_or_default()
+        "микрофон «{device_name}» {sample_rate} Гц, {channels} кан., {format:?}: открыт за \
+         {total_ms} мс (устройство {picked_ms}, формат {config_ms}, поток {built_ms})"
     );
     // Долгий старт — уже жалоба: пусть попадёт в отчёт о проблеме.
     if total_ms >= 500 {
@@ -175,9 +290,13 @@ fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active>
     }
 
     Ok(Active {
-        _stream: stream,
+        stream,
         buf,
         sample_rate,
+        wanted,
+        device_name,
+        broken,
+        recording: false,
     })
 }
 

@@ -4,7 +4,7 @@
 //! говоришь, отпустил — вставилось. Приложение живёт в меню-баре, во время
 //! записи внизу экрана появляется пилюля-оверлей.
 
-mod audio;
+pub mod audio;
 mod autostart;
 mod cleanup;
 /// Без фичи `diarize` подставляется заглушка: sherpa-onnx собран не везде.
@@ -808,6 +808,8 @@ fn set_input_device(app: AppHandle, device: Option<String>) {
     let mut s = state.settings.lock().unwrap();
     s.input_device = device.filter(|d| !d.is_empty());
     settings::save(&app, &s);
+    // Поток под новый микрофон открывается сразу, а не при первой записи.
+    state.recorder.prepare(s.input_device.clone());
 }
 
 /// Тема окна: "system", "light" или "dark".
@@ -1672,6 +1674,17 @@ pub fn run() {
                 last_used: Mutex::new(Instant::now()),
             };
             app.manage(state);
+            // На Windows микрофон открывается заранее, ещё при запуске:
+            // WASAPI поднимает поток секунды, и первая диктовка иначе
+            // начиналась бы с опозданием. На macOS первое открытие само по
+            // себе быстрое, а заранее открытый поток вызвал бы вопрос о
+            // доступе к микрофону прямо на вводном экране — там поток
+            // открывается первой записью и дальше живёт на паузе.
+            if cfg!(windows) {
+                app.state::<AppState>()
+                    .recorder
+                    .prepare(loaded_settings.input_device.clone());
+            }
             app.manage(models::ModelStore::new());
             app.manage(meetings::MeetingState::new());
             // После настроек и состояния встреч: синхронизация читает и то,

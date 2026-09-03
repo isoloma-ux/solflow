@@ -172,17 +172,32 @@ pub fn update_text(app: &AppHandle, at: i64, text: &str) {
 
 /// Сигнал начала записи — тот же pop, что в десктопном Handy. Играет его
 /// система (см. sys::play_wav), поэтому файл сначала кладётся на диск.
+/// Сигнал уходит в отдельный поток: на Windows PlaySound возвращается,
+/// только когда звуковое устройство проснулось и заиграло, а спящий
+/// после простоя выход просыпается до секунд. Раньше это ожидание сидело
+/// прямо перед открытием микрофона и задерживало старт записи.
 pub fn play_start_sound(app: &AppHandle) {
     const SOUND: &[u8] = include_bytes!("../sounds/start.wav");
     let Ok(dir) = app.path().app_data_dir() else {
         return;
     };
-    let file = dir.join("start.wav");
-    if file.metadata().map(|m| m.len()).unwrap_or(0) != SOUND.len() as u64 {
-        let _ = std::fs::create_dir_all(&dir);
-        if std::fs::write(&file, SOUND).is_err() {
-            return;
+    std::thread::spawn(move || {
+        let file = dir.join("start.wav");
+        if file.metadata().map(|m| m.len()).unwrap_or(0) != SOUND.len() as u64 {
+            let _ = std::fs::create_dir_all(&dir);
+            if std::fs::write(&file, SOUND).is_err() {
+                return;
+            }
         }
-    }
-    crate::sys::play_wav(&file);
+        let started = std::time::Instant::now();
+        crate::sys::play_wav(&file);
+        let ms = started.elapsed().as_millis();
+        // Долгое пробуждение звука — та же жалоба, что и долгий старт
+        // микрофона: пусть попадёт в отчёт о проблеме.
+        if ms >= 300 {
+            log::warn!("сигнал старта зазвучал через {ms} мс");
+        } else {
+            log::info!("сигнал старта зазвучал через {ms} мс");
+        }
+    });
 }
