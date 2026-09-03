@@ -101,6 +101,7 @@ mod summary {
 mod ttf;
 mod settings;
 mod sys;
+mod throttle;
 mod tools;
 /// pub — им пользуется проверочный пример wav_check.
 pub mod wav;

@@ -287,7 +287,7 @@ impl ModelStore {
                 let pct = ((done * 100) / file.size_bytes.max(1)).min(99) as u8;
                 let store = app.state::<ModelStore>();
                 store.progress.lock().unwrap().insert(file.filename.clone(), pct);
-                let _ = app.emit("solflow-models", ());
+                crate::throttle::emit(&app, "solflow-models");
             };
             let stop = || cancelled.load(Ordering::Relaxed);
 

@@ -338,6 +338,7 @@ function renderModels() {
 function modelRow(m, label) {
   const row = document.createElement("div");
   row.className = "model";
+  row.dataset.model = m.id;
 
   const text = document.createElement("div");
   text.className = "model-text";
@@ -407,8 +408,24 @@ function modelRow(m, label) {
   return row;
 }
 
+let modelStructure = "";
+
 async function refreshModels() {
   modelRows = await invoke("list_models");
+  // Загрузка шлёт проценты часто; список пересобираем, только когда
+  // изменилось что-то кроме них — иначе строки мерцали.
+  const structure = JSON.stringify(
+    modelRows.map((m) => [m.id, m.downloaded, m.active, m.progress != null])
+  );
+  if (structure === modelStructure) {
+    for (const row of el("modelList").querySelectorAll(".model[data-model]")) {
+      const m = modelRows.find((r) => r.id === row.dataset.model);
+      const bar = row.querySelector(".model-progress > div");
+      if (m && bar && m.progress != null) bar.style.width = `${m.progress}%`;
+    }
+    return;
+  }
+  modelStructure = structure;
   renderModels();
   renderModelPick();
 }
@@ -1308,6 +1325,7 @@ function renderMeetings() {
   for (const m of shown) {
     const row = document.createElement("div");
     row.className = "meeting";
+    row.dataset.id = String(m.id);
     // Тащить можно за всю строку — так запись кладут в проект сайдбара.
     row.onmousedown = (e) => {
       if (e.target.closest("button")) return;
@@ -1331,13 +1349,7 @@ function renderMeetings() {
     name.textContent = meetingTitle(m);
     const meta = document.createElement("p");
     meta.className = "model-meta";
-    const parts = [fmtDate(m.at)];
-    if (m.seconds > 0) parts.push(fmtDur(m.seconds));
-    const project = projectName(m.project);
-    if (project && projectFilter === null) parts.push(project);
-    const state = stateLabel(m);
-    if (state) parts.push(state);
-    meta.textContent = parts.join(" · ");
+    meta.textContent = meetingMeta(m);
     text.append(name, meta);
 
     let cancelButton = null;
@@ -1726,9 +1738,60 @@ async function refreshMeetings() {
         : t("Расшифровываю запись")
     : MEET_HINT;
 
-  renderProjects();
-  renderMeetings();
+  // Прогресс шлёт обновления по нескольку раз в секунду, а полная
+  // перерисовка списка и сайдбара уносила меню из-под курсора и рвала
+  // перетаскивание. Пока меняются только проценты, обновляем их на месте.
+  const structure = JSON.stringify({
+    rows: meetRows.map((m) => [
+      m.id, m.title, m.project, m.at, m.seconds, m.state, m.error, !!m.phase,
+      m.imported, m.audio,
+    ]),
+    projects: meetProjects.map((p) => [p.id, p.name]),
+    query,
+    hits: meetHits ? meetHits.map((h) => [h.id, h.count]) : null,
+    selected: [...selected],
+    filter: projectFilter,
+    detail: detailId,
+    open: [...openProjects],
+    page,
+  });
+  if (structure === listStructure) {
+    updateMeetingProgress();
+  } else {
+    renderProjects();
+    renderMeetings();
+    if (!rowMenuEl) listStructure = structure;
+  }
   renderDetail();
+}
+
+let listStructure = "";
+
+/** Подпись под названием записи: дата, длительность, проект, состояние. */
+function meetingMeta(m) {
+  const parts = [fmtDate(m.at)];
+  if (m.seconds > 0) parts.push(fmtDur(m.seconds));
+  const project = projectName(m.project);
+  if (project && projectFilter === null) parts.push(project);
+  const state = stateLabel(m);
+  if (state) parts.push(state);
+  return parts.join(" · ");
+}
+
+/** Только проценты и подписи состояния — без пересборки строк. */
+function updateMeetingProgress() {
+  for (const row of el("meetingList").querySelectorAll(".meeting[data-id]")) {
+    const m = meetRows.find((r) => String(r.id) === row.dataset.id);
+    if (!m) continue;
+    const meta = row.querySelector(".model-meta");
+    if (meta) meta.textContent = meetingMeta(m);
+    const barBox = row.querySelector(".model-progress");
+    if (barBox) {
+      barBox.classList.toggle("busy", m.progress == null);
+      const bar = barBox.firstElementChild;
+      if (bar) bar.style.width = m.progress == null ? "" : `${m.progress}%`;
+    }
+  }
 }
 
 // Удалить проект можно, стоя в нём: кнопка появляется в шапке раздела.
@@ -2315,46 +2378,20 @@ listen("solflow-summary-error", (e) => {
   el("meetDetailStatus").hidden = false;
 });
 
-async function renderDetail() {
-  if (detailId === null) return;
-  const m = meetRows.find((r) => r.id === detailId);
-  if (!m) {
-    closeMeeting();
-    return;
-  }
-  el("meetHome").hidden = true;
-  el("meetDetail").hidden = false;
-  if (el("meetTitleInput").hidden) {
-    el("meetTitle").textContent = meetingTitle(m);
-  }
+let detailStructure = "";
+let detailLastSpeaker = null;
 
+/** Подпись под заголовком открытой встречи. */
+function detailInfo(m) {
   const parts = [fmtDate(m.at)];
   if (m.seconds > 0) parts.push(fmtDur(m.seconds));
   const state = stateLabel(m);
   if (state) parts.push(state);
-  el("meetInfo").textContent = parts.join(" · ");
+  return parts.join(" · ");
+}
 
-  const select = el("meetProjectSelect");
-  select.textContent = "";
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = t("Без проекта");
-  select.appendChild(none);
-  for (const p of meetProjects) {
-    const option = document.createElement("option");
-    option.value = p.id;
-    option.textContent = p.name;
-    select.appendChild(option);
-  }
-  select.value = m.project || "";
-
-  // Встреча приехала по синхронизации без звука: расшифровать заново,
-  // разделить голоса и выгрузить .wav нечем — кнопок не показываем.
-  el("meetAgain").hidden = !m.audio;
-  el("meetSpeakers").hidden = !m.audio;
-  el("exportMenu").querySelector('[data-format="wav"]').hidden = !m.audio;
-
-  // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
+/** Полоса идущей работы в открытой встрече. */
+function renderDetailWork(m) {
   const working = !!m.phase;
   el("meetWorkRow").hidden = !working;
   if (working) {
@@ -2363,23 +2400,15 @@ async function renderDetail() {
     el("meetWorkFill").style.width = `${m.progress ?? 100}%`;
     el("meetWorkLabel").textContent = stateLabel(m);
   }
+}
 
-  renderSummary(m);
-  renderExtras(m);
-  renderQa(m);
-
-  detailSegments = await invoke("meeting_segments", { id: detailId });
-  renderSpeakersPanel(m, detailSegments);
-
-  const box = el("meetSegments");
-  box.textContent = "";
-
-  let lastSpeaker = null;
-  for (const s of detailSegments) {
+/** Реплики в таймлайн — при полной отрисовке и по мере расшифровки. */
+function appendSegmentRows(m, box, segs) {
+  for (const s of segs) {
     // Подпись говорящего — на смене голоса, как в пьесе. Клик по ней даёт
     // человеку имя; имя уходит и в экспорт.
-    if (s.spk !== null && s.spk !== undefined && s.spk !== lastSpeaker) {
-      lastSpeaker = s.spk;
+    if (s.spk !== null && s.spk !== undefined && s.spk !== detailLastSpeaker) {
+      detailLastSpeaker = s.spk;
       const head = document.createElement("button");
       head.className = `speaker speaker-${s.spk % 6}`;
       head.textContent = speakerName(m, s.spk);
@@ -2406,6 +2435,80 @@ async function renderDetail() {
     row.append(clock, body);
     box.appendChild(row);
   }
+}
+
+async function renderDetail() {
+  if (detailId === null) return;
+  const m = meetRows.find((r) => r.id === detailId);
+  if (!m) {
+    closeMeeting();
+    return;
+  }
+  el("meetHome").hidden = true;
+  el("meetDetail").hidden = false;
+  if (el("meetTitleInput").hidden) {
+    el("meetTitle").textContent = meetingTitle(m);
+  }
+  el("meetInfo").textContent = detailInfo(m);
+
+  // Та же встреча, поменялись только проценты: не пересобираем страницу,
+  // иначе она мерцала на каждом тике и не давала ничего нажать. Пока идёт
+  // расшифровка, новые реплики просто дописываются в конец.
+  const structure = JSON.stringify([
+    m.id, m.title, m.project, m.state, m.error, !!m.phase, m.summary, m.names,
+    m.speakers, m.audio, m.seconds, m.imported,
+    meetProjects.map((p) => [p.id, p.name]),
+    el("meetFind").value,
+  ]);
+  if (structure === detailStructure) {
+    renderDetailWork(m);
+    if (m.phase === "transcribing") {
+      const segs = await invoke("meeting_segments", { id: detailId });
+      if (segs.length > detailSegments.length) {
+        const box = el("meetSegments");
+        el("segHint")?.remove();
+        appendSegmentRows(m, box, segs.slice(detailSegments.length));
+        detailSegments = segs;
+      }
+    }
+    return;
+  }
+  detailStructure = structure;
+
+  const select = el("meetProjectSelect");
+  select.textContent = "";
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = t("Без проекта");
+  select.appendChild(none);
+  for (const p of meetProjects) {
+    const option = document.createElement("option");
+    option.value = p.id;
+    option.textContent = p.name;
+    select.appendChild(option);
+  }
+  select.value = m.project || "";
+
+  // Встреча приехала по синхронизации без звука: расшифровать заново,
+  // разделить голоса и выгрузить .wav нечем — кнопок не показываем.
+  el("meetAgain").hidden = !m.audio;
+  el("meetSpeakers").hidden = !m.audio;
+  el("exportMenu").querySelector('[data-format="wav"]').hidden = !m.audio;
+
+  // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
+  renderDetailWork(m);
+
+  renderSummary(m);
+  renderExtras(m);
+  renderQa(m);
+
+  detailSegments = await invoke("meeting_segments", { id: detailId });
+  renderSpeakersPanel(m, detailSegments);
+
+  const box = el("meetSegments");
+  box.textContent = "";
+  detailLastSpeaker = null;
+  appendSegmentRows(m, box, detailSegments);
   const needle = el("meetFind").value.trim();
   const found = box.querySelectorAll(".segment.found").length;
   el("meetFindCount").hidden = !needle;
@@ -2419,6 +2522,7 @@ async function renderDetail() {
   if (!detailSegments.length && m.phase) {
     const hint = document.createElement("p");
     hint.className = "muted small";
+    hint.id = "segHint";
     hint.textContent = t("Реплики появляются по мере расшифровки");
     box.appendChild(hint);
   }
@@ -3475,6 +3579,31 @@ const INTRO = [
           </div>
           <div class="shot-row wide"></div>
           <div class="shot-row mid"></div>
+        </div>
+      </div>`,
+  },
+  {
+    title: t("Умная модель на борту {0}", IS_MAC ? "Mac" : t("компьютера")),
+    text:
+      t("По вашему подтверждению приложение скачает языковую модель — около 2,5 ГБ, один раз. ") +
+      t("Она считает саммери и придумывает названия, отвечает на вопросы по расшифровке, ") +
+      t("выписывает тезисы, решения и задачи, цитаты, оглавление, пишет письмо по итогам ") +
+      t("и пересказ для поста — под тип записи: встреча, вебинар, интервью. ") +
+      t("Все это на вашем компьютере, ни одна строка не уходит в сеть."),
+    shot: `<div class="shot">
+        <div class="shot-side">
+          <div class="shot-line"></div><div class="shot-line on short"></div>
+          <div class="shot-line short"></div><div class="shot-line short"></div>
+        </div>
+        <div class="shot-main">
+          <div class="shot-title"></div>
+          <div class="shot-tags">
+            <span class="shot-pill filled"></span><span class="shot-pill"></span>
+            <span class="shot-pill"></span><span class="shot-pill"></span>
+          </div>
+          <div class="shot-row wide"></div>
+          <div class="shot-row mid"></div>
+          <div class="shot-row wide"></div>
         </div>
       </div>`,
   },

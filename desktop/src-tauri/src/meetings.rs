@@ -169,7 +169,7 @@ impl MeetingState {
 }
 
 pub fn notify(app: &AppHandle) {
-    let _ = app.emit("solflow-meetings", ());
+    crate::throttle::emit(app, "solflow-meetings");
 }
 
 // --- каталоги и файлы ------------------------------------------------------
