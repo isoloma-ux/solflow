@@ -321,6 +321,8 @@ const EN = {
   "С наушниками система выбирает их микрофон — здесь можно закрепить нужный": "With headphones the system picks their microphone — you can fix the one you want here",
   "Звук в начале записи": "Sound when recording starts",
   "Короткий сигнал, чтобы не гадать, слышит ли": "A short beep so you don't wonder whether it hears you",
+  "Держать звук наготове": "Keep audio ready",
+  "Спящая звуковая карта просыпается до двух секунд, и сигнал запаздывает. Пока приложение работает, выход остается включенным": "A sleeping sound card takes up to two seconds to wake up, and the beep comes late. While the app runs, the output stays awake",
   "Включен": "On",
   "Глушить звук на время записи": "Mute sound while recording",
   "Музыка из колонок не попадет в микрофон": "Music from the speakers won't get into the microphone",

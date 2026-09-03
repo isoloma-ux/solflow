@@ -300,6 +300,100 @@ fn open_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active> 
     })
 }
 
+/// Держит звуковой выход проснувшимся: тихий поток нулей в системное
+/// устройство вывода. На Windows звуковая карта после простоя уходит в сон
+/// и просыпается до двух секунд — ровно настолько запаздывал сигнал начала
+/// записи, хотя сама запись уже шла. Пока поток играет тишину, устройство
+/// не засыпает и сигнал звучит сразу.
+///
+/// Поток живёт в своём треде (cpal::Stream не Send) и раз в несколько
+/// минут переоткрывается: системное устройство вывода могло смениться —
+/// воткнули наушники, — а тишина продолжала бы идти в колонки.
+pub struct OutputKeeper {
+    tx: Sender<bool>,
+}
+
+impl OutputKeeper {
+    pub fn spawn() -> Self {
+        let (tx, rx) = channel();
+        std::thread::spawn(move || keeper_thread(rx));
+        Self { tx }
+    }
+
+    /// Включить или отпустить выход. Ничего не ждёт.
+    pub fn set(&self, on: bool) {
+        let _ = self.tx.send(on);
+    }
+}
+
+const KEEPER_REOPEN: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn keeper_thread(rx: Receiver<bool>) {
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let mut wanted = false;
+    let mut stream: Option<cpal::Stream> = None;
+    loop {
+        match rx.recv_timeout(KEEPER_REOPEN) {
+            Ok(on) => wanted = on,
+            // Плановое переоткрытие под текущее системное устройство.
+            Err(RecvTimeoutError::Timeout) => stream = None,
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if !wanted {
+            stream = None;
+            continue;
+        }
+        if stream.is_none() {
+            match open_silence() {
+                Ok(s) => stream = Some(s),
+                Err(e) => log::warn!("звуковой выход не удалось держать наготове: {e}"),
+            }
+        }
+    }
+}
+
+fn open_silence() -> Result<cpal::Stream> {
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| anyhow!("устройство вывода не найдено"))?;
+    let config = device
+        .default_output_config()
+        .map_err(|e| anyhow!("выход не открылся: {e}"))?;
+    let format = config.sample_format();
+    let config: cpal::StreamConfig = config.into();
+    let err = |e| log::warn!("тихий поток: {e}");
+    let stream = match format {
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            &config,
+            |data: &mut [i16], _| data.fill(0),
+            err,
+            None,
+        ),
+        cpal::SampleFormat::U16 => device.build_output_stream(
+            &config,
+            |data: &mut [u16], _| data.fill(u16::MAX / 2),
+            err,
+            None,
+        ),
+        _ => device.build_output_stream(
+            &config,
+            |data: &mut [f32], _| data.fill(0.0),
+            err,
+            None,
+        ),
+    }
+    .map_err(|e| anyhow!("тихий поток не открылся: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| anyhow!("тихий поток не стартовал: {e}"))?;
+    log::info!(
+        "звуковой выход «{}» держится наготове",
+        device.name().unwrap_or_default()
+    );
+    Ok(stream)
+}
+
 /// Эталон для теста потокового ресемплера встреч.
 #[cfg(test)]
 pub fn resample_for_test(input: &[f32], src: usize, dst: usize) -> Vec<f32> {

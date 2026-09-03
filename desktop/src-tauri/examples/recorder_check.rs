@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use solflow_lib::audio::Recorder;
+use solflow_lib::audio::{OutputKeeper, Recorder};
 
 fn shot(dir: &Option<String>, name: &str) {
     if let Some(dir) = dir {
@@ -22,6 +22,11 @@ fn main() {
     env_logger::init();
     let shot_dir = std::env::args().nth(1);
     shot(&shot_dir, "0-before");
+    // Тихий поток, который держит выход наготове: должен открыться без
+    // ошибок и не мешать записи.
+    let keeper = OutputKeeper::spawn();
+    keeper.set(true);
+    std::thread::sleep(Duration::from_millis(700));
     let recorder = Recorder::spawn();
 
     for round in 1..=3 {
@@ -53,6 +58,7 @@ fn main() {
     let pcm = recorder.stop().expect("стоп");
     println!("записано {:.2} с", pcm.len() as f32 / 16_000.0);
     drop(recorder);
+    keeper.set(false);
     std::thread::sleep(Duration::from_millis(1500));
     shot(&shot_dir, "3-dropped-1500");
     std::thread::sleep(Duration::from_millis(3500));

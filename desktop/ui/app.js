@@ -2618,6 +2618,13 @@ async function refreshSettings(reloadDevices = false) {
   el("autostartLabel").textContent = autostart ? t("Включен") : t("Выключен");
   el("startSound").classList.toggle("on", settings.start_sound);
   el("startSoundLabel").textContent = settings.start_sound ? t("Включен") : t("Выключен");
+  markToggle(
+    "keepAwake",
+    "keepAwakeLabel",
+    [t("Включено"), t("Выключено")],
+    settings.keep_audio_awake
+  );
+  el("keepAwakeRow").hidden = (await invoke("os_name")) !== "Windows";
 
   const keep = settings.downloads_dir;
   el("downloadsHint").textContent = keep
@@ -2916,6 +2923,9 @@ bindToggle("trayIcon", "trayIconLabel", [t("Показана"), t("Скрыта"
 });
 bindToggle("muteRecording", "muteRecordingLabel", [t("Включено"), t("Выключено")], (on) =>
   option("mute_while_recording", on)
+);
+bindToggle("keepAwake", "keepAwakeLabel", [t("Включено"), t("Выключено")], (on) =>
+  option("keep_audio_awake", on)
 );
 bindToggle("removeFillers", "removeFillersLabel", [t("Включено"), t("Выключено")], (on) =>
   option("remove_fillers", on)

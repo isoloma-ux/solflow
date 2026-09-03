@@ -556,6 +556,23 @@
               <span id="startSoundLabel">Включен</span>
             </button>
           </div>
+          <!-- Только Windows: спящая звуковая карта просыпается до двух
+               секунд, и сигнал запаздывал. На macOS строка скрыта. -->
+          <div class="perm" id="keepAwakeRow" hidden>
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M3 12h3l3-7 4 14 3-7h5"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Держать звук наготове</p>
+              <p class="muted small">Спящая звуковая карта просыпается до двух секунд, и сигнал запаздывает. Пока приложение работает, выход остается включенным</p>
+            </div>
+            <button class="toggle" id="keepAwake">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="keepAwakeLabel">Включено</span>
+            </button>
+          </div>
           <div class="perm">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"

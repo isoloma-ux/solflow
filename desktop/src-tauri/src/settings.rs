@@ -20,6 +20,11 @@ pub struct Settings {
     /// Короткий сигнал в начале записи — чтобы не гадать, слышит ли она.
     #[serde(default = "yes")]
     pub start_sound: bool,
+    /// Держать звуковой выход проснувшимся тихим потоком: на Windows
+    /// спящая после простоя звуковая карта просыпается до двух секунд, и
+    /// сигнал начала записи запаздывал. Действует только вместе с сигналом.
+    #[serde(default = "yes")]
+    pub keep_audio_awake: bool,
     /// Тема окна: "system" — как в macOS, иначе "light" или "dark".
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -229,6 +234,7 @@ impl Default for Settings {
             active_model: None,
             input_device: None,
             start_sound: true,
+            keep_audio_awake: true,
             theme: default_theme(),
             downloads_dir: None,
             export_dir: None,

@@ -202,6 +202,7 @@ const PHASE_BUSY: u8 = 5;
 struct AppState {
     engine: Arc<Engine>,
     recorder: Recorder,
+    output_keeper: audio::OutputKeeper,
     phase: AtomicU8,
     /// Момент нажатия, начавшего запись, — различает тап и удержание.
     press_started: Mutex<Option<Instant>>,
@@ -831,10 +832,29 @@ fn set_start_sound(app: AppHandle, enabled: bool) {
     s.start_sound = enabled;
     settings::save(&app, &s);
     drop(s);
+    apply_audio_keeper(&app);
     // Сразу проигрываем, чтобы было слышно, что именно включили.
     if enabled {
         history::play_start_sound(&app);
     }
+}
+
+/// Тихий поток держит звуковой выход только на Windows и только пока
+/// включён сигнал начала записи: без сигнала ему нечего ускорять, а на
+/// macOS выход и так отвечает сразу.
+fn apply_audio_keeper(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let on = {
+        let s = state.settings.lock().unwrap();
+        cfg!(windows) && s.start_sound && s.keep_audio_awake
+    };
+    state.output_keeper.set(on);
+}
+
+/// Название системы для окна: часть настроек есть только на одной из них.
+#[tauri::command]
+fn os_name() -> &'static str {
+    sys::OS_NAME
 }
 
 /// Пачка настроек одной командой: окно правит их по одной, но каждая
@@ -856,6 +876,7 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
             "auto_submit" => s.auto_submit = value.as_bool().unwrap_or(false),
             "auto_submit_key" => s.auto_submit_key = text(),
             "mute_while_recording" => s.mute_while_recording = value.as_bool().unwrap_or(false),
+            "keep_audio_awake" => s.keep_audio_awake = value.as_bool().unwrap_or(true),
             "remove_fillers" => s.remove_fillers = value.as_bool().unwrap_or(false),
             "history_limit" => {
                 s.history_limit = value.as_u64().unwrap_or(50).clamp(1, 1000) as usize
@@ -873,6 +894,7 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
     // Часть настроек должна подействовать сейчас, а не при следующем запуске.
     match key.as_str() {
         "show_tray_icon" => apply_tray(&app),
+        "keep_audio_awake" => apply_audio_keeper(&app),
         "history_limit" | "history_retention" => history::apply_limits(&app),
         // Включили звук — он должен поехать сейчас, а не через пять минут.
         "sync_audio" => sync::sync_now(&app),
@@ -1573,6 +1595,7 @@ pub fn run() {
             get_settings,
             set_input_device,
             set_start_sound,
+            os_name,
             set_theme,
             history_list,
             history_audio,
@@ -1668,6 +1691,7 @@ pub fn run() {
             let state = AppState {
                 engine: Arc::new(Engine::new()),
                 recorder: Recorder::spawn(),
+                output_keeper: audio::OutputKeeper::spawn(),
                 phase: AtomicU8::new(PHASE_NO_MODEL),
                 press_started: Mutex::new(None),
                 settings: Mutex::new(loaded_settings.clone()),
@@ -1685,6 +1709,7 @@ pub fn run() {
                     .recorder
                     .prepare(loaded_settings.input_device.clone());
             }
+            apply_audio_keeper(app.handle());
             app.manage(models::ModelStore::new());
             app.manage(meetings::MeetingState::new());
             // После настроек и состояния встреч: синхронизация читает и то,
