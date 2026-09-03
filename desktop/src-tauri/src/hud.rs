@@ -96,7 +96,16 @@ pub fn show(app: &AppHandle) {
     }
 
     let handle = app.clone();
+    // Пилюля просится на главный поток; если он занят, она появится с
+    // опозданием — замер показывает, сколько именно ждала.
+    let asked = std::time::Instant::now();
     let _ = app.run_on_main_thread(move || {
+        let waited = asked.elapsed().as_millis();
+        if waited >= 300 {
+            log::warn!("пилюля ждала главный поток {waited} мс");
+        } else {
+            log::info!("пилюля показана через {waited} мс");
+        }
         if let Ok(panel) = handle.get_webview_panel("hud") {
             // Экран мог смениться — позиция пересчитывается на каждый показ.
             if let Some((x, y)) = position(&handle) {

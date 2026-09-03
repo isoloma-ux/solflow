@@ -112,13 +112,21 @@ fn audio_thread(rx: Receiver<Command>, level: Arc<AtomicU32>) {
 }
 
 fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active> {
+    // Каждый шаг открытия микрофона замеряется: на Windows между нажатием
+    // сочетания и началом записи бывает пауза в секунды, и по одному
+    // общему числу не понять, где она — в поиске устройства, в WASAPI
+    // или в запуске потока.
+    let started = std::time::Instant::now();
     let device = pick_device(&wanted).ok_or_else(|| anyhow!("микрофон не найден"))?;
+    let picked_ms = started.elapsed().as_millis();
     let config = device
         .default_input_config()
         .map_err(|e| anyhow!("микрофон не открылся: {e}"))?;
+    let config_ms = started.elapsed().as_millis() - picked_ms;
 
     let sample_rate = config.sample_rate().0 as usize;
     let channels = config.channels() as usize;
+    let format = config.sample_format();
     let buf: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
 
     let cb_buf = buf.clone();
@@ -148,8 +156,23 @@ fn start_stream(level: Arc<AtomicU32>, wanted: Option<String>) -> Result<Active>
             None,
         )
         .map_err(|e| anyhow!("не удалось открыть поток: {e}"))?;
+    let built_ms = started.elapsed().as_millis() - picked_ms - config_ms;
 
     stream.play().map_err(|e| anyhow!("поток не стартовал: {e}"))?;
+    let play_ms = started.elapsed().as_millis() - picked_ms - config_ms - built_ms;
+
+    let total_ms = started.elapsed().as_millis();
+    let line = format!(
+        "микрофон «{}» {sample_rate} Гц, {channels} кан., {format:?}: открыт за {total_ms} мс \
+         (устройство {picked_ms}, формат {config_ms}, поток {built_ms}, старт {play_ms})",
+        device.name().unwrap_or_default()
+    );
+    // Долгий старт — уже жалоба: пусть попадёт в отчёт о проблеме.
+    if total_ms >= 500 {
+        log::warn!("{line}");
+    } else {
+        log::info!("{line}");
+    }
 
     Ok(Active {
         _stream: stream,

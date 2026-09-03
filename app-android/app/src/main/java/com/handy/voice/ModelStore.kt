@@ -28,8 +28,15 @@ object ModelStore {
         return f.exists() && f.length() == file.sizeBytes
     }
 
+    /**
+     * Только файлы из каталога речевых моделей: в той же папке сборки 0.5.x
+     * держали языковую модель для саммери, и она попадала в список
+     * речевых — выбрать её было можно, работать она не могла.
+     */
     fun downloadedFilenames(context: Context): Set<String> =
-        dir(context).listFiles()?.filter { it.name.endsWith(".gguf") }?.map { it.name }?.toSet()
+        dir(context).listFiles()
+            ?.filter { it.name.endsWith(".gguf") && Catalog.findByFilename(context, it.name) != null }
+            ?.map { it.name }?.toSet()
             ?: emptySet()
 
     fun activeFile(context: Context): File? {
@@ -56,6 +63,7 @@ object ModelStore {
      * Иначе пользователь качал бы уже скачанные 174 МБ заново.
      */
     fun migrateLegacyLayout(context: Context) {
+        dropSummaryModel(context)
         val legacy = context.filesDir.listFiles()?.filter { it.isFile && it.name.endsWith(".gguf") }
             ?: return
         for (f in legacy) {
@@ -63,6 +71,25 @@ object ModelStore {
             if (!target.exists() && f.renameTo(target) && activeFilename(context) == null) {
                 setActive(context, target.name)
             }
+        }
+    }
+
+    /**
+     * Языковой модели на телефоне больше нет (0.6.0), а её файл от сборок
+     * 0.5.x — 2,4 ГБ — так и лежал в папке моделей. Убираем его вместе с
+     * недокачанным хвостом; речевые модели из каталога не трогаем.
+     */
+    private fun dropSummaryModel(context: Context) {
+        dir(context).listFiles()?.forEach { f ->
+            val name = f.name.removeSuffix(".part")
+            val leftover = name.startsWith("Qwen3-", ignoreCase = true) &&
+                name.endsWith(".gguf") &&
+                Catalog.findByFilename(context, name) == null
+            if (leftover) f.delete()
+        }
+        val active = prefs(context).getString(KEY_ACTIVE, null) ?: return
+        if (Catalog.findByFilename(context, active) == null) {
+            prefs(context).edit().remove(KEY_ACTIVE).apply()
         }
     }
 

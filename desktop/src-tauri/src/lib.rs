@@ -399,6 +399,7 @@ fn unmute_system(app: &AppHandle) {
 }
 
 fn start_recording(app: &AppHandle, from_hotkey: bool) {
+    let pressed = Instant::now();
     let state = app.state::<AppState>();
     let (device, sound) = {
         let settings = state.settings.lock().unwrap();
@@ -421,9 +422,19 @@ fn start_recording(app: &AppHandle, from_hotkey: bool) {
     } else {
         mute_system(app);
     }
+    let before_mic = pressed.elapsed().as_millis();
     match state.recorder.start(device) {
         Ok(()) => {
-            log::info!("запись пошла (hotkey={from_hotkey})");
+            let total = pressed.elapsed().as_millis();
+            let line = format!(
+                "запись пошла (hotkey={from_hotkey}) через {total} мс после нажатия, \
+                 из них до микрофона {before_mic}"
+            );
+            if total >= 500 {
+                log::warn!("{line}");
+            } else {
+                log::info!("{line}");
+            }
             state.phase.store(
                 if from_hotkey { PHASE_REC_HOTKEY } else { PHASE_REC_UI },
                 Ordering::SeqCst,
