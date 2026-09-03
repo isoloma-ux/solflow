@@ -76,6 +76,16 @@ finds updates itself and offers to install them.
 - **Export.** txt, markdown, pdf and docx; several meetings as separate
   files or one; the summary and the wav audio separately. The phone has the
   system Share sheet.
+- **Ask the recording.** On Mac and Windows there is a field under the
+  summary: "what was decided about the budget", "which deadlines did Sergey
+  name". The same local model answers, and the times in the answer lead to
+  the lines.
+- **Recording type and breakdowns.** The model detects what it is looking
+  at: a meeting, a webinar or lecture, an interview or podcast. The summary
+  and the "Break down" menu adapt to the type: decisions and tasks, a
+  follow-up letter, an outline with timecodes, key points, advice, cases and
+  numbers, questions and answers, quotes, about the guest, a glossary, a
+  recap for a post.
 - **Model catalogue.** Fifty models covering a hundred and three languages,
   with search and a language filter; downloads run in the background,
   several at once, with cancel.
