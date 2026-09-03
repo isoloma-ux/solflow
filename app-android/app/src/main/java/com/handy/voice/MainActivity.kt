@@ -261,6 +261,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(34, "0.7.1", R.string.whatsnew_body_071),
             Triple(33, "0.7.0", R.string.whatsnew_body_070),
             Triple(32, "0.6.1", R.string.whatsnew_body_061),
             Triple(31, "0.6.0", R.string.whatsnew_body_060),
