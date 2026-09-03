@@ -91,16 +91,16 @@ pub struct QaItem {
     pub at: i64,
 }
 
-/// Разборы записи моделью — в extras.json рядом со встречей, как и
-/// вопросы: десктоп считает, десктоп и показывает.
+/// Разборы записи моделью и её тип — в extras.json рядом со встречей,
+/// как и вопросы: десктоп считает, десктоп и показывает.
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Extras {
+    /// "meeting", "talk", "interview", "other"; пусто — ещё не определяли.
     #[serde(default)]
-    pub tasks: String,
+    pub kind: String,
+    /// Готовые разборы по id из summary::BREAKDOWNS.
     #[serde(default)]
-    pub letter: String,
-    #[serde(default)]
-    pub outline: String,
+    pub items: HashMap<String, String>,
 }
 
 /// Строка списка встреч для интерфейса.
@@ -288,13 +288,76 @@ fn save_extras(app: &AppHandle, id: i64, extras: &Extras) {
 
 pub fn clear_extra(app: &AppHandle, id: i64, kind: &str) {
     let mut extras = load_extras(app, id);
-    match kind {
-        "tasks" => extras.tasks.clear(),
-        "letter" => extras.letter.clear(),
-        "outline" => extras.outline.clear(),
-        _ => return,
+    if extras.items.remove(kind).is_some() {
+        save_extras(app, id, &extras);
     }
+}
+
+/// Тип записи руками — из списка в шапке встречи.
+pub fn set_kind(app: &AppHandle, id: i64, kind: &str) {
+    if !["meeting", "talk", "interview", "other"].contains(&kind) {
+        return;
+    }
+    let mut extras = load_extras(app, id);
+    extras.kind = kind.to_string();
     save_extras(app, id, &extras);
+}
+
+/// Начало расшифровки для коротких запросов к модели — названия и типа.
+fn transcript_head(segments: &[Segment]) -> String {
+    let mut head = String::new();
+    for s in segments {
+        head.push_str(&s.text);
+        head.push(' ');
+        if head.len() > 6000 {
+            break;
+        }
+    }
+    head
+}
+
+/// Определить тип записи моделью, если ещё не определён. Ошибка не
+/// страшна — окно считает запись встречей, а тип можно выбрать руками.
+fn classify_if_needed(app: &AppHandle, id: i64, segments: &[Segment]) {
+    let mut extras = load_extras(app, id);
+    if !extras.kind.is_empty() {
+        return;
+    }
+    match crate::summary::classify(app, &transcript_head(segments)) {
+        Ok(kind) => {
+            extras.kind = kind;
+            save_extras(app, id, &extras);
+        }
+        Err(e) => log::warn!("тип записи не определился: {e}"),
+    }
+}
+
+/// Тип записи по кнопке окна — для встреч, расшифрованных до того, как
+/// тип появился. Модель должна быть уже скачана — проверяет окно.
+pub fn detect_kind(app: &AppHandle, id: i64) {
+    let state = app.state::<MeetingState>();
+    if state.phase.lock().unwrap().contains_key(&id) {
+        return;
+    }
+    if !load_extras(app, id).kind.is_empty() {
+        return;
+    }
+    state.phase.lock().unwrap().insert(id, "classifying");
+    notify(app);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let gate = app.state::<MeetingState>().engine_gate.clone();
+        let _turn = gate.lock().unwrap();
+        let segments = load_transcript(&app, id);
+        if !segments.is_empty() {
+            classify_if_needed(&app, id, &segments);
+        }
+        let state = app.state::<MeetingState>();
+        state.phase.lock().unwrap().remove(&id);
+        use tauri::Emitter;
+        let _ = app.emit("solflow-extras", id);
+        notify(&app);
+    });
 }
 
 /// Расшифровка со временем в начале строк — для вопросов к записи. Реплики
@@ -1198,22 +1261,16 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
     // Ошибка названия не должна валить готовую расшифровку — молча живём
     // с «Встречей 1 сентября».
     if meta.title.trim().is_empty() && crate::summary::model_ready(app) {
-        let head: String = {
-            let mut text = String::new();
-            for s in &segments {
-                text.push_str(&s.text);
-                text.push(' ');
-                if text.len() > 6000 {
-                    break;
-                }
-            }
-            text
-        };
-        match crate::summary::title(app, &head) {
+        match crate::summary::title(app, &transcript_head(&segments)) {
             Ok(title) if !title.is_empty() => meta.title = title,
             Ok(_) => {}
             Err(e) => log::warn!("автоназвание не удалось: {e}"),
         }
+    }
+    // Тип записи — тем же коротким заходом: от него зависят саммери и
+    // набор разборов.
+    if crate::summary::model_ready(app) {
+        classify_if_needed(app, id, &segments);
     }
 
     save_meta(app, id, &meta);
@@ -1238,12 +1295,10 @@ pub fn ask(app: &AppHandle, id: i64, question: String) {
 
 /// Разбор записи: решения и задачи, письмо по итогам или оглавление.
 pub fn derive(app: &AppHandle, id: i64, kind: String) {
-    let phase: &'static str = match kind.as_str() {
-        "tasks" => "tasks",
-        "letter" => "letter",
-        "outline" => "outline",
-        _ => return,
+    let Some(b) = crate::summary::breakdown(&kind) else {
+        return;
     };
+    let phase: &'static str = b.id;
     llm_job(app, id, "solflow-extras-error", "разбор записи", move |app, id, flag| {
         derive_job(app, id, phase, flag)
     });
@@ -1261,15 +1316,17 @@ fn derive_job(app: &AppHandle, id: i64, kind: &'static str, flag: Arc<AtomicBool
     if segments.is_empty() {
         return Err(anyhow!("расшифровки ещё нет"));
     }
-    // Письму время реплик ни к чему, остальным — опора для ссылок.
-    let text = if kind == "letter" {
+    // Композициям (письмо, пост) время реплик ни к чему, выпискам — опора
+    // для ссылок.
+    let timed = crate::summary::breakdown(kind).map(|b| b.timed).unwrap_or(true);
+    let text = if timed {
+        timed_text(&meta, &segments)
+    } else {
         segments
             .iter()
             .map(|s| s.text.as_str())
             .collect::<Vec<_>>()
             .join(" ")
-    } else {
-        timed_text(&meta, &segments)
     };
 
     let progress_app = app.clone();
@@ -1286,11 +1343,7 @@ fn derive_job(app: &AppHandle, id: i64, kind: &'static str, flag: Arc<AtomicBool
     )?;
 
     let mut extras = load_extras(app, id);
-    match kind {
-        "tasks" => extras.tasks = result,
-        "letter" => extras.letter = result,
-        _ => extras.outline = result,
-    }
+    extras.items.insert(kind.to_string(), result);
     save_extras(app, id, &extras);
     use tauri::Emitter;
     let _ = app.emit("solflow-extras", id);
@@ -1441,10 +1494,15 @@ fn summarize_job(app: &AppHandle, id: i64, flag: Arc<AtomicBool>) -> Result<()> 
         .collect::<Vec<_>>()
         .join(" ");
 
+    if load_extras(app, id).kind.is_empty() {
+        classify_if_needed(app, id, &segments);
+    }
+    let kind = load_extras(app, id).kind;
     let progress_app = app.clone();
     let summary = crate::summary::summarize(
         app,
         &text,
+        &kind,
         move |pct| {
             let state = progress_app.state::<MeetingState>();
             state.progress.lock().unwrap().insert(id, pct);
@@ -1497,15 +1555,7 @@ pub fn summarize_and_title(app: &AppHandle, id: i64) {
                 let mut meta = load_meta(&app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
                 if meta.title.trim().is_empty() {
                     let segments = load_transcript(&app, id);
-                    let mut head = String::new();
-                    for s in &segments {
-                        head.push_str(&s.text);
-                        head.push(' ');
-                        if head.len() > 6000 {
-                            break;
-                        }
-                    }
-                    match crate::summary::title(&app, &head) {
+                    match crate::summary::title(&app, &transcript_head(&segments)) {
                         Ok(title) if !title.is_empty() => {
                             meta.title = title;
                             save_meta(&app, id, &meta);
@@ -1550,15 +1600,7 @@ pub fn autotitle(app: &AppHandle, id: i64) {
             if segments.is_empty() {
                 return Err(anyhow!("расшифровки ещё нет"));
             }
-            let mut head = String::new();
-            for s in &segments {
-                head.push_str(&s.text);
-                head.push(' ');
-                if head.len() > 6000 {
-                    break;
-                }
-            }
-            let title = crate::summary::title(&app, &head)?;
+            let title = crate::summary::title(&app, &transcript_head(&segments))?;
             if title.is_empty() {
                 return Err(anyhow!("название не придумалось"));
             }

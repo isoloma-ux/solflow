@@ -60,6 +60,7 @@ mod summary {
     pub fn summarize(
         _app: &AppHandle,
         _transcript: &str,
+        _kind: &str,
         _progress: impl Fn(u8) + Send + Sync + Clone + 'static,
         _cancelled: Arc<AtomicBool>,
     ) -> Result<String> {
@@ -67,6 +68,16 @@ mod summary {
     }
     pub fn title(_app: &AppHandle, _transcript_head: &str) -> Result<String> {
         Err(anyhow!("сборка без модели саммери"))
+    }
+    pub fn classify(_app: &AppHandle, _transcript_head: &str) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
+    pub struct Breakdown {
+        pub id: &'static str,
+        pub timed: bool,
+    }
+    pub fn breakdown(_id: &str) -> Option<&'static Breakdown> {
+        None
     }
     pub fn ask(
         _app: &AppHandle,
@@ -1208,6 +1219,20 @@ fn meeting_extras_clear(app: AppHandle, id: i64, kind: String) {
     meetings::clear_extra(&app, id, &kind);
 }
 
+/// Тип записи руками: "meeting", "talk", "interview", "other".
+#[tauri::command]
+fn meeting_set_kind(app: AppHandle, id: i64, kind: String) {
+    meetings::set_kind(&app, id, &kind);
+}
+
+/// Тип записи моделью — для встреч без него; без модели ничего не делает.
+#[tauri::command]
+fn meeting_kind_detect(app: AppHandle, id: i64) {
+    if summary::model_ready(&app) {
+        meetings::detect_kind(&app, id);
+    }
+}
+
 /// Придумать название по кнопке — для готовых встреч.
 #[tauri::command]
 fn meeting_autotitle(app: AppHandle, id: i64) {
@@ -1675,6 +1700,8 @@ pub fn run() {
             meeting_derive,
             meeting_extras,
             meeting_extras_clear,
+            meeting_set_kind,
+            meeting_kind_detect,
             meeting_autotitle,
             meeting_import,
             meeting_import_paths,

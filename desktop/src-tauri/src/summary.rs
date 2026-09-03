@@ -32,6 +32,28 @@ const SYSTEM_PROMPT: &str = "Ты помощник, который делает 
 Правила: пиши только то, что есть в расшифровке; не выдумывай имена, цифры и факты; не \
 цитируй длинные куски; после раздела «Задачи» ничего не добавляй.";
 
+/// Те же саммери для вебинара, интервью, подкаста: разделов «Решения» и
+/// «Задачи» там не бывает, вместо них — главные мысли и что взять на
+/// заметку (советы, цифры, цитаты).
+const SYSTEM_PROMPT_TALK: &str = "Ты помощник, который делает саммери записей: вебинаров, \
+лекций, интервью, подкастов. Тебе дают автоматическую расшифровку — в ней бывают ошибки \
+распознавания и нет знаков различия говорящих.\n\nСоставь саммери на русском строго в таком \
+виде:\n\n## О чем говорили\n- от четырех до восьми пунктов, пропорционально длине и \
+насыщенности записи; каждый пункт — конкретная мысль или вывод, с именами и цифрами, если \
+они прозвучали\n\n## Главное\n- три-пять самых важных мыслей записи\n\n## На заметку\n- \
+советы, цифры, примеры и цитаты, которые стоит запомнить; если таких нет, напиши: «Ничего \
+отдельного»\n\nПравила: пиши только то, что есть в расшифровке; не выдумывай имена, цифры и \
+факты; не цитируй длинные куски; после раздела «На заметку» ничего не добавляй.";
+
+const MERGE_PROMPT_TALK: &str = "Ниже — ключевые пункты последовательных частей одной \
+длинной записи (вебинар, лекция, интервью или подкаст). Собери из них подробный конспект на \
+русском строго в таком виде:\n\n## Главное\n- три-пять предложений: о чём запись в целом и \
+какие главные выводы\n\n## Ключевые пункты\nсгруппируй пункты по темам; каждая тема — \
+подзаголовок «### …» и от двух до пяти пунктов под ним; сохрани конкретику (имена, цифры, \
+примеры) и не выбрасывай темы\n\n## На заметку\n- советы, цифры, примеры и цитаты, которые \
+стоит запомнить; если их нет — «Ничего отдельного»\n\nЭто подробный конспект, а не краткая \
+аннотация: не сжимай всё до трёх пунктов. Ничего не выдумывай и не добавляй от себя.";
+
 /// Кусок длинной записи: не сжимать, а выписать конкретику — из этих
 /// пунктов потом собирается общий конспект.
 const PART_PROMPT: &str = "Тебе дают фрагмент автоматической расшифровки длинного разговора \
@@ -354,14 +376,20 @@ fn parts_for_budget(llm: &Llm, text: &str, budget: usize) -> Result<usize> {
 pub fn summarize(
     app: &AppHandle,
     transcript: &str,
+    kind: &str,
     progress: impl Fn(u8) + Send + Sync + Clone + 'static,
     cancelled: Arc<AtomicBool>,
 ) -> Result<String> {
     let llm = load(app, N_CTX)?;
     let parts_n = parts_for(&llm, transcript)?;
+    let (system, merge) = if kind == "meeting" || kind.is_empty() {
+        (SYSTEM_PROMPT, MERGE_PROMPT)
+    } else {
+        (SYSTEM_PROMPT_TALK, MERGE_PROMPT_TALK)
+    };
 
     if parts_n == 1 {
-        return generate(&llm, transcript, SYSTEM_PROMPT, MAX_TOKENS, (0, 100), progress, cancelled);
+        return generate(&llm, transcript, system, MAX_TOKENS, (0, 100), progress, cancelled);
     }
 
     // Куски + финальный свод делят полосу прогресса поровну.
@@ -384,7 +412,7 @@ pub fn summarize(
     generate(
         &llm,
         &merged,
-        MERGE_PROMPT,
+        merge,
         MERGE_TOKENS,
         (slice * parts_n as u8, 100),
         progress,
@@ -471,9 +499,130 @@ pub fn ask_with(
     )
 }
 
-/// Разбор записи: "tasks" — решения и задачи (текст со временем), "letter" —
-/// письмо по итогам (текст без времени), "outline" — оглавление (текст со
-/// временем; куски просто склеиваются — темы и так идут по порядку).
+/// Один разбор записи: промпт для куска (он же для короткой записи),
+/// бюджет куска, что делать с выписками — склеить кодом или свести
+/// вторым проходом модели.
+pub struct Breakdown {
+    pub id: &'static str,
+    part_prompt: &'static str,
+    merge_prompt: Option<&'static str>,
+    tokens: c_int,
+    budget: usize,
+    assemble: fn(&[String]) -> String,
+    /// Нужно ли время в начале строк расшифровки.
+    pub timed: bool,
+}
+
+/// Все разборы; какие показывать — решает окно по типу записи.
+pub const BREAKDOWNS: &[Breakdown] = &[
+    Breakdown { id: "tasks", part_prompt: TASKS_PART_PROMPT, merge_prompt: None, tokens: TASKS_TOKENS, budget: PART_BUDGET, assemble: assemble_tasks, timed: true },
+    Breakdown { id: "letter", part_prompt: LETTER_PART_PROMPT, merge_prompt: Some(LETTER_MERGE_PROMPT), tokens: LETTER_TOKENS, budget: PART_BUDGET, assemble: assemble_plain, timed: false },
+    Breakdown { id: "outline", part_prompt: OUTLINE_PROMPT, merge_prompt: None, tokens: OUTLINE_TOKENS, budget: PART_BUDGET / 2, assemble: assemble_outline, timed: true },
+    Breakdown { id: "theses", part_prompt: THESES_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_theses, timed: true },
+    Breakdown { id: "advice", part_prompt: ADVICE_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_advice, timed: true },
+    Breakdown { id: "cases", part_prompt: CASES_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_cases, timed: true },
+    Breakdown { id: "qa_session", part_prompt: QA_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_qa, timed: true },
+    Breakdown { id: "quotes", part_prompt: QUOTES_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_quotes, timed: true },
+    Breakdown { id: "guest", part_prompt: GUEST_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_guest, timed: true },
+    Breakdown { id: "glossary", part_prompt: GLOSSARY_PROMPT, merge_prompt: None, tokens: LINES_TOKENS, budget: PART_BUDGET, assemble: assemble_glossary, timed: true },
+    Breakdown { id: "post", part_prompt: LETTER_PART_PROMPT, merge_prompt: Some(POST_MERGE_PROMPT), tokens: POST_TOKENS, budget: PART_BUDGET, assemble: assemble_plain, timed: false },
+];
+
+pub fn breakdown(id: &str) -> Option<&'static Breakdown> {
+    BREAKDOWNS.iter().find(|b| b.id == id)
+}
+
+const LINES_TOKENS: c_int = 1200;
+const POST_TOKENS: c_int = 600;
+
+/// Все промпты-выписки устроены одинаково: строка начинается со
+/// слова-метки, заканчивается временем в квадратных скобках; ни примеров,
+/// ни шаблонов — модель копирует их буквально.
+const THESES_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выпиши главные ",
+    "мысли этого текста по порядку — от четырёх до восьми, каждая мысль законченным ",
+    "предложением с конкретикой. Строка о мысли начинается со слова «Тезис:».",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Своими словами по тексту, ничего ",
+    "не выдумывай — ни имён, ни цифр. Если ничего такого в тексте нет, ответь одним словом: ",
+    "нет. /no_think"
+);
+const ADVICE_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выпиши советы и ",
+    "рекомендации — что говорящий предлагает делать или не делать. Строка о совете начинается ",
+    "со слова «Совет:» и формулируется как действие. Не больше десяти строк.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Своими словами по тексту, ничего ",
+    "не выдумывай — ни имён, ни цифр. Если ничего такого в тексте нет, ответь одним словом: ",
+    "нет. /no_think"
+);
+const CASES_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выпиши примеры ",
+    "и цифры: строка о примере или кейсе (название компании, продукта, что сделали и что ",
+    "получилось) начинается со слова «Кейс:», строка о цифре (проценты, суммы, сроки, ",
+    "количества — и к чему они относятся) начинается со слова «Цифра:». Не больше двенадцати ",
+    "строк.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Своими словами по тексту, ничего ",
+    "не выдумывай — ни имён, ни цифр. Если ничего такого в тексте нет, ответь одним словом: ",
+    "нет. /no_think"
+);
+const QA_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выпиши вопросы, ",
+    "которые задавали (ведущий, слушатели, зал), и ответы на них — по порядку. Строка с ",
+    "вопросом начинается со слова «Вопрос:», строка с ответом на него — сразу следом и ",
+    "начинается со слова «Ответ:», ответ — суть в одном-двух предложениях. Не больше восьми ",
+    "пар.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Своими словами по тексту, ничего ",
+    "не выдумывай — ни имён, ни цифр. Если ничего такого в тексте нет, ответь одним словом: ",
+    "нет. /no_think"
+);
+const QUOTES_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выбери самые ",
+    "сильные, точные и запоминающиеся фразы говорящих — такие, что годятся в заголовок или ",
+    "пост. Строка начинается со слова «Цитата:», дальше фраза, как в тексте, в кавычках «», ",
+    "не длиннее двадцати пяти слов; убери запинки и слова-паразиты (э-э, а-а, ну, вот, да), ",
+    "поправь явные ошибки распознавания, но не смысл. От трёх до восьми строк.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Ничего не выдумывай. Если ",
+    "ничего такого в тексте нет, ответь одним словом: нет. /no_think"
+);
+const GUEST_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка интервью или подкаста, либо её фрагмент; в тексте ",
+    "бывают ошибки распознавания, каждая строка начинается с времени в квадратных скобках. ",
+    "Выпиши, что стало известно о госте — о том, кому задают вопросы: кто он, чем занимается, ",
+    "его опыт, проекты, позиция и взгляды, которые он высказал. Строка начинается со слова ",
+    "«Факт:». Не больше десяти строк.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Своими словами по тексту, ничего ",
+    "не выдумывай — ни имён, ни цифр. Если ничего такого в тексте нет, ответь одним словом: ",
+    "нет. /no_think"
+);
+const GLOSSARY_PROMPT: &str = concat!(
+    "Ниже — автоматическая расшифровка записи или её фрагмент; в тексте бывают ошибки ",
+    "распознавания, каждая строка начинается с времени в квадратных скобках. Выпиши термины, ",
+    "названия продуктов, компаний, инструментов и имена людей, которые встречаются в тексте и ",
+    "требуют пояснения. Строка начинается со слова «Термин:», потом сам термин, тире и ",
+    "короткое пояснение из контекста; если распознавание явно исказило слово, напиши, как оно ",
+    "звучит правильно. Не больше двенадцати строк.",
+    " Каждая находка — отдельная строка, каждую строку заканчивай временем в квадратных ",
+    "скобках — временем той строки текста, откуда она взята. Ничего не выдумывай. Если ",
+    "ничего такого в тексте нет, ответь одним словом: нет. /no_think"
+);
+const POST_MERGE_PROMPT: &str = "Ниже — ключевые пункты одной записи (выступление, интервью, \
+подкаст или встреча). Напиши по ним короткий пересказ для поста в канале или соцсети на \
+русском: пять-семь предложений живым языком, без заголовков, списков и вводных слов вроде \
+«в этой записи», сначала главная мысль, потом два-три самых интересных факта или совета, в \
+конце — вывод. Только по пунктам, ничего не выдумывай, без времени в скобках. /no_think";
+
+/// Разбор записи по его id из [BREAKDOWNS]: текст со временем или без —
+/// решает вызывающий по `timed`.
 pub fn derive(
     app: &AppHandle,
     kind: &str,
@@ -491,30 +640,24 @@ pub fn derive_with(
     progress: impl Fn(u8) + Send + Sync + Clone + 'static,
     cancelled: Arc<AtomicBool>,
 ) -> Result<String> {
+    let b = breakdown(kind).ok_or_else(|| anyhow!("неизвестный разбор «{kind}»"))?;
     let llm = load_path(model, N_CTX)?;
-    // Выписки для письма — без размышлений: с ними куски считались вдвое
-    // дольше, а качества письму это не прибавляло.
-    let (whole, part_prompt, merge_prompt, tokens, budget) = match kind {
-        "tasks" => (TASKS_PART_PROMPT, TASKS_PART_PROMPT, "", TASKS_TOKENS, PART_BUDGET),
-        "letter" => (
-            LETTER_PROMPT,
-            LETTER_PART_PROMPT,
-            LETTER_MERGE_PROMPT,
-            LETTER_TOKENS,
-            PART_BUDGET,
-        ),
-        "outline" => (OUTLINE_PROMPT, OUTLINE_PROMPT, "", OUTLINE_TOKENS, PART_BUDGET / 2),
-        other => return Err(anyhow!("неизвестный разбор «{other}»")),
-    };
-    let parts_n = parts_for_budget(&llm, text, budget)?;
+    let parts_n = parts_for_budget(&llm, text, b.budget)?;
 
+    // Короткая запись, композиция (письмо, пост): один проход по тексту с
+    // промптом «целиком», если он есть, иначе выписки и сборка кодом.
     if parts_n == 1 {
-        let out = generate(&llm, text, whole, tokens, (0, 100), progress, cancelled)?;
-        return Ok(assemble(kind, &[out]));
+        let whole = match b.id {
+            "letter" => LETTER_PROMPT,
+            "post" => POST_WHOLE_PROMPT,
+            _ => b.part_prompt,
+        };
+        let out = generate(&llm, text, whole, b.tokens, (0, 100), progress, cancelled)?;
+        return Ok((b.assemble)(&[out]));
     }
 
     let parts = split_into(text, parts_n);
-    let merged_pass = if merge_prompt.is_empty() { 0 } else { 1 };
+    let merged_pass = if b.merge_prompt.is_some() { 1 } else { 0 };
     let slice = 100 / (parts_n + merged_pass) as u8;
     let mut pieces = Vec::new();
     for (i, part) in parts.iter().enumerate() {
@@ -522,8 +665,8 @@ pub fn derive_with(
         let found = generate(
             &llm,
             part,
-            part_prompt,
-            tokens,
+            b.part_prompt,
+            b.tokens,
             (from, from + slice),
             progress.clone(),
             cancelled.clone(),
@@ -534,31 +677,154 @@ pub fn derive_with(
             pieces.push(found);
         }
     }
-    if merge_prompt.is_empty() {
-        return Ok(assemble(kind, &pieces));
-    }
+    let Some(merge_prompt) = b.merge_prompt else {
+        return Ok((b.assemble)(&pieces));
+    };
     let merged = if pieces.is_empty() {
         "(выписок нет)".to_string()
     } else {
         pieces.join("\n\n---\n\n")
     };
-    generate(
+    let out = generate(
         &llm,
         &merged,
         merge_prompt,
-        tokens,
+        b.tokens,
         (slice * parts_n as u8, 100),
         progress,
         cancelled,
+    )?;
+    Ok((b.assemble)(&[out]))
+}
+
+const POST_WHOLE_PROMPT: &str = "Тебе дают автоматическую расшифровку записи (выступление, \
+интервью, подкаст или встреча); в тексте бывают ошибки распознавания. Напиши короткий \
+пересказ для поста в канале или соцсети на русском: пять-семь предложений живым языком, без \
+заголовков, списков и вводных слов вроде «в этой записи», сначала главная мысль, потом \
+два-три самых интересных факта или совета, в конце — вывод. Только по тексту, ничего не \
+выдумывай. /no_think";
+
+/// Строка выписки как есть: маркер списка долой, а время, которое модель
+/// иногда ставит в начале строки, переезжает в конец — метки в окне и
+/// сборщики ждут его там.
+fn normalize_line(raw: &str) -> String {
+    let line = raw.trim().trim_start_matches(['-', '•', '*', ' ']).trim();
+    if line.starts_with('[') {
+        if let Some(close) = line.find(']') {
+            let clock = &line[1..close];
+            if clock_seconds(clock).is_some() {
+                let rest = line[close + 1..].trim().trim_start_matches([':', '—', '–', '-', ' ']);
+                if rest.ends_with(']') {
+                    return rest.to_string();
+                }
+                return format!("{rest} [{clock}]");
+            }
+        }
+    }
+    line.to_string()
+}
+
+/// Не больше n строк: модель выписывает по восемь на кусок, и на долгой
+/// записи список раздувается до полусотни.
+fn take(items: Vec<String>, n: usize) -> Vec<String> {
+    items.into_iter().take(n).collect()
+}
+
+fn assemble_plain(pieces: &[String]) -> String {
+    pieces.join("\n").trim().to_string()
+}
+
+/// Строки с одной меткой («Тезис:», «Совет:», …) — плоский список без
+/// повторов; пусто — «нет».
+fn labeled_list(pieces: &[String], label: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in pieces.iter().flat_map(|p| p.lines()) {
+        let line = normalize_line(raw);
+        let line = line.as_str();
+        let lower = line.to_lowercase();
+        let Some(rest) = strip_label(&lower, line, label) else { continue };
+        let rest = rest.trim().trim_matches(['*', '_']).trim().to_string();
+        if rest.is_empty() || rest.eq_ignore_ascii_case("нет") {
+            continue;
+        }
+        let key = rest.to_lowercase();
+        if !out.iter().any(|g| g.to_lowercase() == key) {
+            out.push(rest);
+        }
+    }
+    out
+}
+
+fn bullets(items: &[String]) -> String {
+    if items.is_empty() {
+        return "- нет".to_string();
+    }
+    items.iter().map(|i| format!("- {i}")).collect::<Vec<_>>().join("\n")
+}
+
+fn assemble_theses(pieces: &[String]) -> String {
+    bullets(&take(labeled_list(pieces, "тезис"), 20))
+}
+fn assemble_advice(pieces: &[String]) -> String {
+    bullets(&take(labeled_list(pieces, "совет"), 16))
+}
+/// Цитаты модель часто выписывает без метки — просто фразой в кавычках,
+/// иногда с именем говорящего впереди. Берём и такие.
+pub fn assemble_quotes(pieces: &[String]) -> String {
+    let mut items = labeled_list(pieces, "цитата");
+    for raw in pieces.iter().flat_map(|p| p.lines()) {
+        let line = normalize_line(raw);
+        let has_quote = line.contains('«') || line.matches('"').count() >= 2;
+        if !has_quote || line.eq_ignore_ascii_case("нет") {
+            continue;
+        }
+        let key = line.to_lowercase();
+        if !items.iter().any(|i| i.to_lowercase() == key) {
+            items.push(line);
+        }
+    }
+    bullets(&take(items, 12))
+}
+fn assemble_guest(pieces: &[String]) -> String {
+    bullets(&take(labeled_list(pieces, "факт"), 15))
+}
+fn assemble_glossary(pieces: &[String]) -> String {
+    bullets(&take(labeled_list(pieces, "термин"), 20))
+}
+fn assemble_cases(pieces: &[String]) -> String {
+    format!(
+        "## Кейсы\n{}\n## Цифры\n{}",
+        bullets(&take(labeled_list(pieces, "кейс"), 12)),
+        bullets(&take(labeled_list(pieces, "цифра"), 12))
     )
 }
 
-/// Итог из выписок кусков — кодом, без второго прохода модели.
-fn assemble(kind: &str, pieces: &[String]) -> String {
-    match kind {
-        "tasks" => assemble_tasks(pieces),
-        "outline" => assemble_outline(pieces),
-        _ => pieces.join("\n"),
+/// Вопросы и ответы — по порядку: вопрос пунктом, ответ строкой под ним.
+pub fn assemble_qa(pieces: &[String]) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for raw in pieces.iter().flat_map(|p| p.lines()) {
+        let line = normalize_line(raw);
+        let line = line.as_str();
+        let lower = line.to_lowercase();
+        if let Some(q) = strip_label(&lower, line, "вопрос") {
+            let q = q.trim().trim_matches(['*', '_']).trim();
+            if q.is_empty() || seen.iter().any(|s| s == &q.to_lowercase()) {
+                continue;
+            }
+            seen.push(q.to_lowercase());
+            out.push(format!("- {q}"));
+        } else if let Some(a) = strip_label(&lower, line, "ответ") {
+            let a = a.trim().trim_matches(['*', '_']).trim();
+            if !a.is_empty() && !out.is_empty() {
+                out.push(format!("Ответ: {a}"));
+            }
+        }
+    }
+    if out.is_empty() {
+        "- нет".to_string()
+    } else {
+        out.join("\n")
     }
 }
 
@@ -566,8 +832,9 @@ fn assemble(kind: &str, pieces: &[String]) -> String {
 /// повторов; пустой раздел получает «нет».
 pub fn assemble_tasks(pieces: &[String]) -> String {
     let mut groups: [Vec<String>; 3] = Default::default();
-    for line in pieces.iter().flat_map(|p| p.lines()) {
-        let line = line.trim().trim_start_matches(['-', '•', '*', ' ']).trim();
+    for raw in pieces.iter().flat_map(|p| p.lines()) {
+        let line = normalize_line(raw);
+        let line = line.as_str();
         let lower = line.to_lowercase();
         let (slot, rest) = if let Some(r) = strip_label(&lower, line, "решение") {
             (0, r)
@@ -659,6 +926,42 @@ fn clock_seconds(text: &str) -> Option<u32> {
     Some(total)
 }
 
+/// Тип записи по её началу: "meeting", "talk" (вебинар, лекция,
+/// выступление), "interview" (интервью, подкаст) или "other". Как и
+/// название — маленький контекст и без размышлений.
+pub fn classify(app: &AppHandle, transcript_head: &str) -> Result<String> {
+    classify_with(&model_path(app), transcript_head)
+}
+
+pub fn classify_with(model: &std::path::Path, transcript_head: &str) -> Result<String> {
+    let llm = load_path(model, 4096)?;
+    let raw = generate(
+        &llm,
+        transcript_head,
+        "Тебе дают начало автоматической расшифровки записи; в тексте бывают ошибки \
+         распознавания. Определи, что это за запись, и ответь одним словом из четырёх: \
+         встреча — рабочее обсуждение нескольких людей, где что-то решают или планируют; \
+         вебинар — выступление, лекция, доклад или обучение, где один говорит для многих; \
+         интервью — беседа с гостем, подкаст, вопросы и ответы; другое — всё остальное. \
+         Только одно слово, без пояснений. /no_think",
+        24,
+        (0, 100),
+        |_| {},
+        Arc::new(AtomicBool::new(false)),
+    )?;
+    let word = raw.to_lowercase();
+    let kind = if word.contains("встреч") {
+        "meeting"
+    } else if word.contains("вебинар") || word.contains("лекци") {
+        "talk"
+    } else if word.contains("интервью") || word.contains("подкаст") {
+        "interview"
+    } else {
+        "other"
+    };
+    Ok(kind.to_string())
+}
+
 /// Короткое название записи по началу расшифровки. Контекст маленький —
 /// ради пары слов не разворачиваем гигабайтный KV-кэш.
 pub fn title(app: &AppHandle, transcript_head: &str) -> Result<String> {
@@ -739,6 +1042,29 @@ mod tests {
             "## Решения\n- делать гостиную [12:40]\n## Задачи\n- Иван собирает список к пятнице [13:00]\n## Открытые вопросы\n- как строить сообщество [40:08]"
         );
         assert!(assemble_tasks(&["нет".to_string()]).contains("## Задачи\n- нет"));
+    }
+
+    #[test]
+    fn qa_keeps_order_and_lists_are_flat() {
+        let pieces = vec![
+            "Вопрос: как строить сообщество [40:08]\nОтвет: начинать с личных встреч [40:30]\nТезис: лишнее".to_string(),
+        ];
+        assert_eq!(
+            super::assemble_qa(&pieces),
+            "- как строить сообщество [40:08]\nОтвет: начинать с личных встреч [40:30]"
+        );
+        assert_eq!(super::assemble_theses(&["- **Тезис:** рынок сжимается [1:00]\nнет".to_string()]), "- рынок сжимается [1:00]");
+        assert_eq!(super::assemble_advice(&["нет".to_string()]), "- нет");
+        // Время в начале строки переезжает в конец, ответ без метки не теряется.
+        assert_eq!(
+            super::assemble_qa(&["[5:22] Вопрос: что делать? [5:22]\n[5:40] Ответ: работать".to_string()]),
+            "- что делать? [5:22]\nОтвет: работать [5:40]"
+        );
+        // Цитаты без метки, но в кавычках — тоже цитаты.
+        assert_eq!(
+            super::assemble_quotes(&["[30:30] Иван: «Я побил рекорд»\n\"Я не верю\" [40:00]".to_string()]),
+            "- Иван: «Я побил рекорд» [30:30]\n- \"Я не верю\" [40:00]"
+        );
     }
 
     #[test]

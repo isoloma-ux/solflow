@@ -21,7 +21,15 @@ fn main() {
     let segments: Vec<Segment> =
         serde_json::from_str(&std::fs::read_to_string(dir.join("transcript.json")).unwrap())
             .unwrap();
-    let text = if kind == "letter" {
+    if kind == "classify" {
+        let head: String = segments.iter().take(60).map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
+        let started = std::time::Instant::now();
+        let out = solflow_lib::summary::classify_with(&model, &head).expect("тип");
+        println!("тип записи: {out} за {:.1} с", started.elapsed().as_secs_f32());
+        return;
+    }
+    let timed_kind = solflow_lib::summary::breakdown(&kind).map(|b| b.timed).unwrap_or(true);
+    let text = if !timed_kind {
         segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ")
     } else {
         timed_text(&meta, &segments)

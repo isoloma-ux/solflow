@@ -774,9 +774,8 @@ function stateLabel(m) {
   if (m.phase === "llm_downloading") return t("Качаю модель саммери{0}", pct);
   if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
   if (m.phase === "asking") return t("Отвечаю на вопрос{0}", pct);
-  if (m.phase === "tasks") return t("Ищу решения и задачи{0}", pct);
-  if (m.phase === "letter") return t("Пишу письмо по итогам{0}", pct);
-  if (m.phase === "outline") return t("Составляю оглавление{0}", pct);
+  if (m.phase === "classifying") return t("Определяю тип записи{0}", pct);
+  if (m.phase && DERIVE_PHASES[m.phase]) return t(DERIVE_PHASES[m.phase], pct);
   if (m.phase === "titling") return t("Придумываю название");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
@@ -1964,11 +1963,40 @@ async function exportFromList(meeting, format) {
 
 // --- разборы записи: решения и задачи, письмо, оглавление -------------------
 
-const EXTRA_KINDS = [
-  ["tasks", "Решения и задачи"],
-  ["letter", "Письмо по итогам"],
-  ["outline", "Оглавление"],
-];
+// Заголовки карточек и подписи фаз — по id разбора из summary::BREAKDOWNS.
+const EXTRA_TITLES = {
+  tasks: "Решения и задачи",
+  letter: "Письмо по итогам",
+  outline: "Оглавление",
+  theses: "Тезисы",
+  advice: "Советы и рекомендации",
+  cases: "Кейсы и цифры",
+  qa_session: "Вопросы и ответы",
+  quotes: "Цитаты",
+  guest: "О собеседнике",
+  glossary: "Глоссарий",
+  post: "Пересказ для поста",
+};
+const DERIVE_PHASES = {
+  tasks: "Ищу решения и задачи{0}",
+  letter: "Пишу письмо по итогам{0}",
+  outline: "Составляю оглавление{0}",
+  theses: "Выписываю тезисы{0}",
+  advice: "Собираю советы{0}",
+  cases: "Ищу кейсы и цифры{0}",
+  qa_session: "Собираю вопросы и ответы{0}",
+  quotes: "Выбираю цитаты{0}",
+  guest: "Собираю факты о собеседнике{0}",
+  glossary: "Составляю глоссарий{0}",
+  post: "Пишу пересказ{0}",
+};
+// Какие разборы предлагать какому типу записи.
+const KIND_MENUS = {
+  meeting: ["tasks", "letter", "outline", "glossary"],
+  talk: ["theses", "advice", "cases", "qa_session", "outline", "post", "glossary"],
+  interview: ["quotes", "qa_session", "guest", "theses", "outline", "post", "glossary"],
+  other: ["theses", "quotes", "outline", "post", "glossary"],
+};
 
 /** Карточка разбора: заголовок, копирование, удаление, текст с метками. */
 function extraCard(kind, title, text) {
@@ -2025,18 +2053,54 @@ function extraCard(kind, title, text) {
   return card;
 }
 
+// Тип записи спрашиваем у модели один раз на встречу — и только если
+// модель уже скачана: ради типа гигабайты не качаются.
+const kindAsked = new Set();
+
 async function renderExtras(m) {
   const done = m.state === "done";
   el("meetDerive").hidden = !done;
   el("meetDerive").disabled = !!m.phase;
+  el("meetKindSelect").hidden = !done;
   const box = el("meetExtras");
   box.textContent = "";
   if (!done) return;
   const extras = await invoke("meeting_extras", { id: m.id });
-  for (const [kind, title] of EXTRA_KINDS) {
-    if (extras[kind]) box.appendChild(extraCard(kind, title, extras[kind]));
+  const kind = extras.kind || "meeting";
+  el("meetKindSelect").value = kind;
+  if (!extras.kind && !m.phase && !kindAsked.has(m.id)) {
+    kindAsked.add(m.id);
+    invoke("meeting_kind_detect", { id: m.id });
+  }
+
+  const items = el("deriveItems");
+  items.textContent = "";
+  for (const id of KIND_MENUS[kind] || KIND_MENUS.other) {
+    const row = document.createElement("button");
+    row.className = "lang-row";
+    row.dataset.derive = id;
+    const name = document.createElement("span");
+    name.className = "lang-name";
+    name.textContent = t(EXTRA_TITLES[id]);
+    row.appendChild(name);
+    items.appendChild(row);
+  }
+
+  const order = [...(KIND_MENUS[kind] || []), ...Object.keys(EXTRA_TITLES)];
+  const shown = new Set();
+  for (const id of order) {
+    if (shown.has(id) || !extras.items?.[id]) continue;
+    shown.add(id);
+    box.appendChild(extraCard(id, EXTRA_TITLES[id], extras.items[id]));
   }
 }
+
+el("meetKindSelect").addEventListener("change", async () => {
+  if (detailId === null) return;
+  await invoke("meeting_set_kind", { id: detailId, kind: el("meetKindSelect").value });
+  const m = meetRows.find((r) => r.id === detailId);
+  if (m) renderExtras(m);
+});
 
 el("meetDerive").addEventListener("click", async (e) => {
   e.stopPropagation();

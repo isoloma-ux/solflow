@@ -249,6 +249,12 @@
 
           <div class="meet-actions">
             <select id="meetProjectSelect" class="meet-select"></select>
+            <select id="meetKindSelect" class="meet-select" title="Тип записи: от него зависят саммери и разборы" hidden>
+              <option value="meeting">Встреча</option>
+              <option value="talk">Вебинар или лекция</option>
+              <option value="interview">Интервью или подкаст</option>
+              <option value="other">Другая запись</option>
+            </select>
             <button class="tool-button icon-button" id="meetCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span id="meetCopyLabel">Скопировать</span></button>
             <div class="filter-anchor">
               <button class="tool-button icon-button" id="meetExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 19.5h15"/></svg><span id="meetExportLabel">Экспорт ▾</span></button>
@@ -301,15 +307,8 @@
             <div class="filter-anchor">
               <button class="tool-button icon-button" id="meetDerive" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7M17 15l2 2 4-4"/></svg><span id="meetDeriveLabel">Разобрать ▾</span></button>
               <div id="deriveMenu" class="lang-panel menu" hidden>
-                <button class="lang-row" data-derive="tasks">
-                  <span class="lang-name">Решения и задачи</span>
-                </button>
-                <button class="lang-row" data-derive="letter">
-                  <span class="lang-name">Письмо по итогам</span>
-                </button>
-                <button class="lang-row" data-derive="outline">
-                  <span class="lang-name">Оглавление</span>
-                </button>
+                <!-- Пункты строит окно по типу записи. -->
+                <div id="deriveItems"></div>
                 <p class="lang-empty" id="deriveHint"></p>
               </div>
             </div>
