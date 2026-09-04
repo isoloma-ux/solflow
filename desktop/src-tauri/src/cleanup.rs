@@ -92,15 +92,44 @@ fn drop_glued_dashes(text: &str) -> String {
         .join(" ")
 }
 
-/// Междометия выкидываются вместе с прилипшей к ним запятой.
+/// Мычание, которое распознавание пишет как есть: «э-э», «а-аа», «э-ээ»,
+/// «м-м», «эээ». Одна повторяющаяся гласная (или «м») с дефисами или без —
+/// не слово. Одиночные «а», «о», «у» — настоящие слова, их не трогаем;
+/// одиночное «э» — только мычание.
+fn is_hesitation(bare: &str) -> bool {
+    let letters: Vec<char> = bare.chars().filter(|c| *c != '-').collect();
+    let Some(&first) = letters.first() else { return false };
+    if !"эаоум".contains(first) || letters.iter().any(|c| *c != first) {
+        return false;
+    }
+    bare.contains('-') || first == 'э' || letters.len() >= 2
+}
+
+/// Междометия и мычание выкидываются вместе с прилипшей к ним запятой.
+/// Если выкинутое стояло с большой буквы — начинало фразу, — заглавная
+/// переходит к следующему слову: «А-а, послушать» → «Послушать».
 fn drop_fillers(text: &str) -> String {
-    text.split(' ')
-        .filter(|word| {
-            let bare = word.trim_matches(PUNCT).to_lowercase();
-            bare.is_empty() || !FILLERS.contains(&bare.as_str())
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut out: Vec<String> = Vec::new();
+    let mut capitalize_next = false;
+    for word in text.split(' ') {
+        let bare = word.trim_matches(PUNCT).to_lowercase();
+        let filler = !bare.is_empty() && (FILLERS.contains(&bare.as_str()) || is_hesitation(&bare));
+        if filler {
+            if word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                capitalize_next = true;
+            }
+            continue;
+        }
+        if capitalize_next && !word.is_empty() {
+            capitalize_next = false;
+            let mut chars = word.chars();
+            let first = chars.next().unwrap();
+            out.push(first.to_uppercase().collect::<String>() + chars.as_str());
+        } else {
+            out.push(word.to_string());
+        }
+    }
+    out.join(" ")
 }
 
 /// Три и более одинаковых слова подряд — почти всегда заикание; два — часто
@@ -165,4 +194,28 @@ fn normalize_spaces_and_punct(text: &str) -> String {
         prev_punct = None;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clean, is_hesitation};
+
+    #[test]
+    fn hesitations_are_recognised() {
+        for w in ["э", "ээ", "э-э", "э-ээ", "а-а", "а-аа", "м-м", "ммм", "у-у"] {
+            assert!(is_hesitation(w), "{w}");
+        }
+        for w in ["а", "о", "у", "ага", "угу", "эх", "мама", "а-то"] {
+            assert!(!is_hesitation(w), "{w}");
+        }
+    }
+
+    #[test]
+    fn hesitations_drop_and_capital_moves_on() {
+        assert_eq!(
+            clean("А-а, послушать нас с Иваном, а-а, на такую тему. Э-ээ, и всё."),
+            "Послушать нас с Иваном, на такую тему. И всё."
+        );
+        assert_eq!(clean("Ну и всё. Тогда давайте, ага. А рынок сжимается."), "Ну и всё. Тогда давайте, ага. А рынок сжимается.");
+    }
 }

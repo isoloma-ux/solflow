@@ -48,3 +48,6 @@ tcpp/
 /llama.cpp/
 /desktop/src-tauri/llama/
 /app-android/app/src/main/jniLibs/
+
+# Ключи Google OAuth: GitHub не пускает их в публичный репозиторий, CI берёт из секрета GOOGLE_OAUTH_JSON
+google-oauth.json

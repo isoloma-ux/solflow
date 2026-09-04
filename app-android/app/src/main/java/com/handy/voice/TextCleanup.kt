@@ -83,13 +83,43 @@ object TextCleanup {
         }
 
     /** Выкидывает междометия вместе с прилипшей к ним запятой. */
-    private fun dropFillers(text: String): String =
-        text.split(" ")
-            .filter { word ->
-                val bare = word.trim(',', '.', '!', '?', ';', ':').lowercase()
-                bare.isEmpty() || bare !in FILLERS
+    /**
+     * Мычание, которое распознавание пишет как есть: «э-э», «а-аа», «м-м»,
+     * «эээ». Одна повторяющаяся гласная (или «м») с дефисами или без — не
+     * слово. Одиночные «а», «о», «у» — настоящие слова; одиночное «э» —
+     * только мычание.
+     */
+    private fun isHesitation(bare: String): Boolean {
+        val letters = bare.filter { it != '-' }
+        val first = letters.firstOrNull() ?: return false
+        if (first !in "эаоум" || letters.any { it != first }) return false
+        return '-' in bare || first == 'э' || letters.length >= 2
+    }
+
+    /**
+     * Междометия и мычание выкидываются вместе с прилипшей запятой. Если
+     * выкинутое стояло с большой буквы — начинало фразу, — заглавная
+     * переходит к следующему слову: «А-а, послушать» → «Послушать».
+     */
+    private fun dropFillers(text: String): String {
+        val out = ArrayList<String>()
+        var capitalizeNext = false
+        for (word in text.split(" ")) {
+            val bare = word.trim(',', '.', '!', '?', ';', ':').lowercase()
+            val filler = bare.isNotEmpty() && (bare in FILLERS || isHesitation(bare))
+            if (filler) {
+                if (word.firstOrNull()?.isUpperCase() == true) capitalizeNext = true
+                continue
             }
-            .joinToString(" ")
+            if (capitalizeNext && word.isNotEmpty()) {
+                capitalizeNext = false
+                out.add(word.replaceFirstChar { it.uppercaseChar() })
+            } else {
+                out.add(word)
+            }
+        }
+        return out.joinToString(" ")
+    }
 
     /**
      * Убирает слова-паразиты вместе с прилипшей к ним запятой. Ищем по
