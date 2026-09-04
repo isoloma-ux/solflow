@@ -67,10 +67,14 @@ finds updates itself and offers to install them.
   NVIDIA or AMD graphics card does the computing.
 - **Projects.** Recordings go into folders; drag a recording onto
   "+ Project" and the folder is created.
-- **Sync through your own Yandex.Disk.** Meetings and projects are the same
-  on the phone and the computer; the app has no server of its own. The phone
-  records and transcribes, the computer writes the summary and the title and
-  sends them back. Audio is sent by a separate switch.
+- **Sync through your own cloud.** Yandex.Disk or Google Drive, signing in
+  with a short code; the app has no server of its own. Meetings and projects
+  are the same on the phone and the computer: the phone records and
+  transcribes, the computer writes the summary and the title and sends them
+  back. Audio is sent by a separate switch.
+- **Translation.** On Mac and Windows the transcript and summary can be
+  translated into one of twelve languages by the same local model; the
+  translation is shown in place of the original and goes into the export.
 - **Your own recordings.** Import audio and video from disk, transcribe by
   link (on the computer also YouTube and VK through a separate downloader).
 - **Export.** txt, markdown, pdf and docx; several meetings as separate
