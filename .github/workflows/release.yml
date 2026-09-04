@@ -19,6 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Ключи Google OAuth: в репозитории их нет (защита GitHub от утечек),
+      # файл собирается из секрета. Без секрета — пустые ключи, Google Drive
+      # в интерфейсе объяснит, что не настроен.
+      - name: Ключи Google
+        shell: bash
+        env:
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+        run: |
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > google-oauth.json; \
+          else echo '{"client_id":"","client_secret":""}' > google-oauth.json; fi
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -139,6 +150,17 @@ jobs:
         working-directory: desktop/src-tauri
     steps:
       - uses: actions/checkout@v4
+
+      # Ключи Google OAuth: в репозитории их нет (защита GitHub от утечек),
+      # файл собирается из секрета. Без секрета — пустые ключи, Google Drive
+      # в интерфейсе объяснит, что не настроен.
+      - name: Ключи Google
+        shell: bash
+        env:
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+        run: |
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > google-oauth.json; \
+          else echo '{"client_id":"","client_secret":""}' > google-oauth.json; fi
 
       - uses: actions/cache@v4
         with:
