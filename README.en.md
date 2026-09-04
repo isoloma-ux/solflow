@@ -57,7 +57,8 @@ finds updates itself and offers to install them.
   be automated.
 - **Meetings.** Hours of recording with pause, transcription after you stop
   with time markers, search across all recordings that jumps to the exact
-  line. Transcriptions run in a queue; any job can be cancelled.
+  line. Hesitations like "uh" and "um" stay out of the transcript.
+  Transcriptions run in a queue; any job can be cancelled.
 - **Speakers.** Diarization by voice: the app compares timbres rather than
   words, so it works in any language. Speakers can be renamed, the names go
   into the export.
@@ -65,21 +66,6 @@ finds updates itself and offers to install them.
   transcript into a detailed summary by topic and names the recording by its
   content. The model downloads once on your confirmation; on Windows the
   NVIDIA or AMD graphics card does the computing.
-- **Projects.** Recordings go into folders; drag a recording onto
-  "+ Project" and the folder is created.
-- **Sync through your own cloud.** Yandex.Disk or Google Drive, signing in
-  with a short code; the app has no server of its own. Meetings and projects
-  are the same on the phone and the computer: the phone records and
-  transcribes, the computer writes the summary and the title and sends them
-  back. Audio is sent by a separate switch.
-- **Translation.** On Mac and Windows the transcript and summary can be
-  translated into one of twelve languages by the same local model; the
-  translation is shown in place of the original and goes into the export.
-- **Your own recordings.** Import audio and video from disk, transcribe by
-  link (on the computer also YouTube and VK through a separate downloader).
-- **Export.** txt, markdown, pdf and docx; several meetings as separate
-  files or one; the summary and the wav audio separately. The phone has the
-  system Share sheet.
 - **Ask the recording.** On Mac and Windows there is a field under the
   summary: "what was decided about the budget", "which deadlines did Sergey
   name". The same local model answers, and the times in the answer lead to
@@ -90,6 +76,23 @@ finds updates itself and offers to install them.
   follow-up letter, an outline with timecodes, key points, advice, cases and
   numbers, questions and answers, quotes, about the guest, a glossary, a
   recap for a post.
+- **Translation.** On Mac and Windows the transcript and summary can be
+  translated into one of twelve languages by the same local model; the
+  translation is shown in place of the original and goes into the export.
+- **Projects.** Recordings go into folders; drag a recording onto
+  "+ Project" and the folder is created.
+- **Sync through your own cloud.** Yandex.Disk or Google Drive, signing in
+  with a short code; the app has no server of its own. Meetings and projects
+  are the same on the phone and the computer: the phone records and
+  transcribes, the computer writes the summary and the title and sends them
+  back. Audio is sent by a separate switch.
+- **Your own recordings.** Import audio and video from disk, transcribe by
+  link (on the computer also YouTube and VK through a separate downloader).
+- **Export.** txt, markdown, pdf and docx; several meetings as separate
+  files or one; the summary and the wav audio separately. The export folder
+  can be chosen on every platform. The phone has the system Share sheet.
+- **Recording audio.** Keep it or delete it right after transcription; a
+  "Delete audio of finished recordings" button frees space at once.
 - **Model catalogue.** Fifty models covering a hundred and three languages,
   with search and a language filter; downloads run in the background,
   several at once, with cancel.
@@ -108,15 +111,23 @@ Android from the notification shade. After you stop, transcription starts
 by itself; inside an open meeting — speakers, summary, search in the text,
 export.
 
-**Models.** Several models can sit side by side, switching takes seconds.
-On phones with Qualcomm and Samsung processors take the F16 variant: it is
-faster than the compressed Q4, because the processor computes fp16
-directly.
+**The on-board model.** On Mac and Windows the first summary, question or
+breakdown offers to download a language model, about 2.5 GB, once. From
+then on everything is computed on the computer: the recording type is
+detected after transcription, the "Break down" and "Translate" menus live in
+the open meeting, the question field sits under the summary. A long
+recording takes minutes, with a progress bar and cancel.
 
-**Sync.** Settings → Connect Yandex.Disk: the login code is copied to the
-clipboard at once, three steps in one window. The data lives in the app's
-folder on your Disk; the exchange goes directly between your devices and
-the Disk.
+**Recognition models.** Several models can sit side by side, switching takes
+seconds. On phones with Qualcomm and Samsung processors take the F16
+variant: it is faster than the compressed Q4, because the processor computes
+fp16 directly.
+
+**Sync.** Settings → Cloud → Yandex.Disk or Google Drive: the login code is
+copied to the clipboard at once, three steps in one window. The data lives
+in the app's folder in your cloud; the exchange goes directly between your
+devices and the cloud. One cloud at a time; to switch, disconnect and
+connect the other.
 
 ## About the models
 
@@ -176,9 +187,9 @@ the apps update themselves from.
 
 ## Deliberate platform differences
 
-- Summaries and automatic titles are computed only on the desktop: the
-  language model is too heavy for a phone. The phone receives them through
-  sync.
+- Summaries, automatic titles, asking the recording, breakdowns and
+  translation are computed only on the desktop: the language model is too
+  heavy for a phone. The phone receives summaries and titles through sync.
 - The Share sheet exists only on Android; on the computer — export to a
   file.
 - Transcribing YouTube and VK — only on the computer (needs yt-dlp).
