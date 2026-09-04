@@ -26,7 +26,7 @@ mod paste;
 mod pdf;
 mod report;
 mod segmenter;
-mod sync;
+pub mod sync;
 #[cfg(has_summary)]
 pub mod summary;
 /// Без libsolflow_llama (llama-shim/build-macos.sh не гоняли) саммери
