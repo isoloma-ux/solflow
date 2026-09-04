@@ -2,9 +2,6 @@ package com.handy.voice
 
 import java.io.File
 import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
 import java.time.OffsetDateTime
 import org.json.JSONObject
 
@@ -19,7 +16,7 @@ import org.json.JSONObject
  * Диск — только папка приложения (`app:/`, на Диске «Приложения/Sol Flow»):
  * остальные файлы человека приложению недоступны.
  */
-object Yandex {
+object Yandex : Cloud.Provider {
 
     private const val OAUTH = "https://oauth.yandex.ru"
     private const val DISK = "https://cloud-api.yandex.net/v1/disk"
@@ -27,39 +24,12 @@ object Yandex {
     // Список разрешений в запросе не передаётся: Яндекс берёт те, что заданы
     // при регистрации приложения (папка приложения).
 
+    override val id = "yandex"
+    override val title = "Яндекс.Диск"
+
     /** Ключи заданы в сборке — без них вход невозможен, и об этом говорится словами. */
-    val configured: Boolean
+    override val configured: Boolean
         get() = BuildConfig.YANDEX_CLIENT_ID.isNotEmpty() && BuildConfig.YANDEX_CLIENT_SECRET.isNotEmpty()
-
-    /** Токен не подошёл — нужно войти заново, а не пробовать ещё раз. */
-    class Unauthorized(message: String) : Exception(message)
-
-    data class DeviceCode(
-        val deviceCode: String,
-        val userCode: String,
-        val verificationUrl: String,
-        /** Не чаще, чем раз в столько секунд, спрашивать про токен. */
-        val interval: Long,
-        /** Момент (millis), после которого код протухает. */
-        val expiresAt: Long,
-    )
-
-    data class Tokens(val access: String, val refresh: String, val expiresAt: Long)
-
-    data class RemoteFile(val name: String, val md5: String, val modified: Long, val size: Long)
-
-    sealed class Poll {
-        object Pending : Poll()
-        class Done(val tokens: Tokens) : Poll()
-    }
-
-    // --- HTTP ---------------------------------------------------------------
-
-    private class Reply(val status: Int, val body: ByteArray) {
-        val ok get() = status in 200..299
-        fun json() = JSONObject(String(body))
-        fun text() = String(body)
-    }
 
     private fun request(
         method: String,
@@ -70,71 +40,20 @@ object Yandex {
         stream: InputStream? = null,
         streamLength: Long = -1,
         target: File? = null,
-    ): Reply {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            instanceFollowRedirects = true
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            setRequestProperty("User-Agent", "SolFlow")
-            if (token != null) setRequestProperty("Authorization", "OAuth $token")
-            if (contentType != null) setRequestProperty("Content-Type", contentType)
-        }
-        try {
-            if (body != null) {
-                conn.doOutput = true
-                conn.setFixedLengthStreamingMode(body.size)
-                conn.outputStream.use { it.write(body) }
-            } else if (stream != null) {
-                conn.doOutput = true
-                if (streamLength >= 0) conn.setFixedLengthStreamingMode(streamLength)
-                else conn.setChunkedStreamingMode(1 shl 16)
-                conn.outputStream.use { out -> stream.use { it.copyTo(out, 1 shl 16) } }
-            }
-            val status = conn.responseCode
-            val input = if (status in 200..299) conn.inputStream else conn.errorStream
-            if (target != null && status in 200..299) {
-                // Пишем рядом и переименовываем по завершении: оборванная
-                // загрузка не должна выглядеть готовым файлом.
-                val part = File(target.path + ".part")
-                try {
-                    input.use { i -> part.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
-                    if (!part.renameTo(target)) error("не удалось сохранить ${target.name}")
-                } catch (e: Exception) {
-                    part.delete()
-                    throw e
-                }
-                return Reply(status, ByteArray(0))
-            }
-            val bytes = input?.use { it.readBytes() } ?: ByteArray(0)
-            return Reply(status, bytes)
-        } finally {
-            conn.disconnect()
-        }
-    }
+    ): Cloud.Reply = Cloud.http(
+        method, url, token?.let { "OAuth $it" }, contentType, body, stream, streamLength, target,
+    )
 
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-
-    private fun form(vararg fields: Pair<String, String>) =
-        fields.joinToString("&") { (k, v) -> "${enc(k)}=${enc(v)}" }.toByteArray()
+    private fun enc(s: String) = Cloud.enc(s)
 
     private fun postForm(url: String, vararg fields: Pair<String, String>) =
-        request("POST", url, contentType = "application/x-www-form-urlencoded", body = form(*fields))
+        request("POST", url, contentType = "application/x-www-form-urlencoded", body = Cloud.form(*fields))
 
-    /** Ошибка Яндекса человеческим текстом: в теле обычно есть message. */
-    private fun describe(reply: Reply, what: String): Exception {
-        val detail = runCatching {
-            val j = reply.json()
-            listOf("message", "error_description", "description", "error")
-                .firstNotNullOfOrNull { k -> j.optString(k).takeIf { it.isNotBlank() } }
-        }.getOrNull() ?: reply.text().take(120)
-        val text = "$what: ${detail.trim()} (${reply.status})"
-        return if (reply.status == 401) Unauthorized(text) else Exception(text)
-    }
+    private fun describe(reply: Cloud.Reply, what: String) = Cloud.describe(reply, what)
 
     // --- OAuth --------------------------------------------------------------
 
-    fun deviceCode(deviceName: String, deviceId: String): DeviceCode {
+    override fun deviceCode(deviceName: String, deviceId: String): Cloud.DeviceCode {
         if (!configured) error("ключи Яндекс OAuth не заданы в этой сборке")
         val reply = postForm(
             "$OAUTH/device/code",
@@ -144,7 +63,7 @@ object Yandex {
         )
         if (!reply.ok) throw describe(reply, "Яндекс не дал код")
         val j = reply.json()
-        return DeviceCode(
+        return Cloud.DeviceCode(
             deviceCode = j.getString("device_code"),
             userCode = j.getString("user_code"),
             verificationUrl = j.optString("verification_url").ifBlank { "https://oauth.yandex.ru/device" },
@@ -153,7 +72,7 @@ object Yandex {
         )
     }
 
-    fun pollToken(code: DeviceCode): Poll {
+    override fun pollToken(code: Cloud.DeviceCode): Cloud.Poll {
         val reply = postForm(
             "$OAUTH/token",
             "grant_type" to "device_code",
@@ -164,16 +83,16 @@ object Yandex {
         val j = runCatching { reply.json() }.getOrNull() ?: JSONObject()
         if (!reply.ok) {
             return when (j.optString("error")) {
-                "authorization_pending", "slow_down" -> Poll.Pending
+                "authorization_pending", "slow_down" -> Cloud.Poll.Pending
                 "expired_token" -> error("код устарел — запросите новый")
                 "access_denied" -> error("вы отказали приложению в доступе")
                 else -> throw describe(reply, "вход не удался")
             }
         }
-        return Poll.Done(parseTokens(j, null))
+        return Cloud.Poll.Done(parseTokens(j, null))
     }
 
-    fun refresh(refreshToken: String): Tokens {
+    override fun refresh(refreshToken: String): Cloud.Tokens {
         val reply = postForm(
             "$OAUTH/token",
             "grant_type" to "refresh_token",
@@ -185,14 +104,14 @@ object Yandex {
         return parseTokens(reply.json(), refreshToken)
     }
 
-    private fun parseTokens(j: JSONObject, oldRefresh: String?): Tokens = Tokens(
+    private fun parseTokens(j: JSONObject, oldRefresh: String?): Cloud.Tokens = Cloud.Tokens(
         access = j.optString("access_token").ifBlank { error("в ответе нет токена") },
         refresh = j.optString("refresh_token").ifBlank { oldRefresh.orEmpty() },
         expiresAt = System.currentTimeMillis() + j.optLong("expires_in", 365L * 86_400) * 1000,
     )
 
     /** Отзыв токена при выходе; ошибка не страшна — локально он всё равно стирается. */
-    fun revoke(token: String) {
+    override fun revoke(token: String) {
         runCatching {
             postForm(
                 "$OAUTH/revoke_token",
@@ -220,9 +139,9 @@ object Yandex {
     }
 
     /** Все файлы папки, постранично. Нет папки — пустой список. */
-    fun list(token: String, path: String): List<RemoteFile> {
+    fun list(token: String, path: String): List<Cloud.RemoteFile> {
         val page = 500
-        val out = mutableListOf<RemoteFile>()
+        val out = mutableListOf<Cloud.RemoteFile>()
         var offset = 0
         while (true) {
             val url = "$DISK/resources?path=${enc(path)}&limit=$page&offset=$offset" +
@@ -237,7 +156,7 @@ object Yandex {
             for (i in 0 until items.length()) {
                 val item = items.getJSONObject(i)
                 if (item.optString("type") != "file") continue
-                out += RemoteFile(
+                out += Cloud.RemoteFile(
                     name = item.optString("name"),
                     md5 = item.optString("md5"),
                     modified = parseIso8601(item.optString("modified")),
@@ -299,4 +218,40 @@ object Yandex {
     /** «2024-05-01T12:34:56+00:00» → millis; мусор — ноль. */
     fun parseIso8601(s: String): Long =
         runCatching { OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrDefault(0L)
+
+    // --- провайдер ------------------------------------------------------------
+
+    private const val REMOTE_MEETINGS = "app:/meetings"
+    private const val REMOTE_AUDIO = "app:/audio"
+
+    private fun path(folder: Cloud.Folder, name: String) = when (folder) {
+        Cloud.Folder.MEETINGS -> "$REMOTE_MEETINGS/$name"
+        Cloud.Folder.AUDIO -> "$REMOTE_AUDIO/$name"
+    }
+
+    override fun account(token: String): String = diskLogin(token)
+
+    override fun prepare(token: String) {
+        mkdir(token, "app:/")
+        mkdir(token, REMOTE_MEETINGS)
+        mkdir(token, REMOTE_AUDIO)
+    }
+
+    override fun list(token: String, folder: Cloud.Folder): List<Cloud.RemoteFile> =
+        list(token, if (folder == Cloud.Folder.MEETINGS) REMOTE_MEETINGS else REMOTE_AUDIO)
+
+    override fun upload(token: String, folder: Cloud.Folder, name: String, bytes: ByteArray) =
+        upload(token, path(folder, name), bytes)
+
+    override fun uploadFile(token: String, folder: Cloud.Folder, name: String, file: File) =
+        uploadFile(token, path(folder, name), file)
+
+    override fun download(token: String, folder: Cloud.Folder, name: String): ByteArray =
+        download(token, path(folder, name))
+
+    override fun downloadFile(token: String, folder: Cloud.Folder, name: String, target: File) =
+        downloadFile(token, path(folder, name), target)
+
+    override fun delete(token: String, folder: Cloud.Folder, name: String) =
+        delete(token, path(folder, name))
 }

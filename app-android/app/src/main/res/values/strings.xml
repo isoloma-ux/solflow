@@ -306,25 +306,26 @@
     <!-- ===== Синхронизация через Яндекс.Диск ============================= -->
 
     <string name="group_sync">Синхронизация</string>
-    <string name="set_sync_account">Яндекс.Диск</string>
-    <string name="sync_hint_off">Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске. Нажмите, чтобы подключить</string>
-    <string name="sync_hint_unconfigured">В этой сборке нет ключей Яндекс OAuth — синхронизация недоступна</string>
-    <string name="sync_hint_waiting">Введите код %1$s на странице Яндекса и разрешите доступ. Жду подтверждения</string>
+    <string name="set_sync_account">Облако</string>
+    <string name="sync_pick_cloud">Куда подключиться</string>
+    <string name="sync_hint_off">Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Яндекс.Диске или Google Drive. Нажмите, чтобы подключить</string>
+    <string name="sync_hint_unconfigured">В этой сборке нет ключей облаков — синхронизация недоступна</string>
+    <string name="sync_hint_waiting">Введите код %1$s на странице входа и разрешите доступ. Жду подтверждения</string>
     <string name="sync_hint_connected">Аккаунт %1$s. Синхронизировано: %2$s</string>
     <string name="sync_hint_connected_never">Аккаунт %1$s. Еще не синхронизировалось</string>
     <string name="sync_hint_running">Аккаунт %1$s. Синхронизирую…</string>
     <string name="sync_hint_error">Аккаунт %1$s. Не вышло: %2$s</string>
     <string name="sync_hint_error_short">Не вышло: %1$s</string>
     <string name="sync_account_unknown">подключен</string>
-    <string name="sync_code_title">Код для страницы Яндекса</string>
-    <string name="sync_code_message">Код: %1$s\n\n1. Код уже скопирован в буфер обмена\n2. Откройте страницу Яндекса — кнопка ниже\n3. Вставьте код и нажмите «Разрешить»\n\nЭто окно можно закрыть: приложение ждет подтверждения в фоне, строка в настройках сама сменится на «подключено»</string>
+    <string name="sync_code_title">Код для страницы входа</string>
+    <string name="sync_code_message">Код: %1$s\n\n1. Код уже скопирован в буфер обмена\n2. Откройте страницу входа — кнопка ниже\n3. Вставьте код и нажмите «Разрешить»\n\nЭто окно можно закрыть: приложение ждет подтверждения в фоне, строка в настройках сама сменится на «подключено»</string>
     <string name="sync_open_page">Открыть страницу</string>
     <string name="sync_copy_code">Скопировать код</string>
     <string name="sync_copied">Код скопирован</string>
     <string name="sync_cancel">Отмена</string>
     <string name="sync_action_now">Синхронизировать сейчас</string>
     <string name="sync_action_disconnect">Отключить</string>
-    <string name="sync_disconnect_confirm">Встречи останутся и на телефоне, и на Диске — просто перестанут обновляться. Подключить можно снова в любой момент</string>
+    <string name="sync_disconnect_confirm">Встречи останутся и на телефоне, и в облаке — просто перестанут обновляться. Подключить можно снова в любой момент</string>
     <string name="set_sync_audio">Передавать звук записей</string>
     <string name="set_sync_audio_hint">Нужно, чтобы расшифровывать на другом устройстве. Час записи — больше ста мегабайт на Диске</string>
     <string name="sync_progress_upload_audio">Отправляю звук: %1$s</string>
@@ -341,7 +342,7 @@
     <string name="sync_done">Синхронизировано</string>
     <string name="drawer_sync_last">Синхронизировать · %1$s</string>
     <string name="drawer_sync_running">Синхронизирую…</string>
-    <string name="drawer_sync_connect">Подключить Яндекс.Диск</string>
+    <string name="drawer_sync_connect">Подключить облако</string>
     <string name="sync_not_connected">Яндекс.Диск не подключен — это делается в настройках</string>
     <string name="meeting_no_audio">Звук этой записи остался на другом устройстве — расшифровать здесь нельзя</string>
 

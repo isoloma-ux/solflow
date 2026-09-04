@@ -80,12 +80,20 @@ Sol Flow живет на трех платформах: Android (`app-android/`)
   2026-09-02): на телефоне системный лист «Поделиться текстом» уместен,
   на Mac и Windows это редко нужно — там экспорт в файл.
 
-## Синхронизация (0.6.0)
+## Синхронизация (0.6.0, два облака с 0.9.0)
 
-- Протокол и раскладка на Диске описаны в `desktop/src-tauri/src/sync/mod.rs`
+- Протокол и раскладка описаны в `desktop/src-tauri/src/sync/mod.rs`
   и повторены в `app-android/.../SyncEngine.kt` — **менять только парой**.
+- Облако — за интерфейсом провайдера: `sync/provider.rs` ↔ `Cloud.kt`;
+  Яндекс.Диск — `sync/yandex.rs` ↔ `Yandex.kt`, Google Drive —
+  `sync/google.rs` ↔ `GoogleDrive.kt`. Новый провайдер — тоже парой. Одно
+  облако за раз; Google хранит файлы в обычной папке «Sol Flow» в корне
+  Диска (meetings/, audio/), разрешение drive.file.
 - Ключи Яндекс OAuth — один файл `yandex-oauth.json` в корне: Rust читает
-  его `include_str!`, gradle кладет в `BuildConfig`.
+  его `include_str!`, gradle кладет в `BuildConfig`. Ключи Google — файл
+  `google-oauth.json` там же, но **в git не попадает** (защита GitHub от
+  утечек): CI пишет его из секрета `GOOGLE_OAUTH_JSON`, Rust берет через
+  build.rs (нет файла — пустые ключи), gradle — если файл есть.
 - Каждое сохранение `meta.json` ставит `updated` (millis) — на нем держится
   слияние конфликтов. Удаление встречи обязано пройти через
   `meetings::delete` / `MeetingStore.delete`, иначе не будет надгробия.

@@ -165,7 +165,13 @@ object AppPrefs {
 
     fun setKeepAudio(context: Context, on: Boolean) = setFlag(context, "keep_audio", on)
 
-    // --- синхронизация через Яндекс.Диск ----------------------------------
+    // --- синхронизация через облако ----------------------------------------
+    // Ключи в prefs остались яндексовскими с тех времён, когда облако было
+    // одно: переименовывать — терять вход у всех при обновлении.
+
+    /** Какое облако подключено: "yandex" или "google"; пусто при токене — Яндекс. */
+    fun syncProvider(context: Context): String = text(context, "sync_provider", "")!!
+    fun setSyncProvider(context: Context, value: String) = setText(context, "sync_provider", value)
 
     /** OAuth-токен вошедшего человека; null — не подключено. */
     fun yandexToken(context: Context): String? = text(context, "yandex_token", null)

@@ -39,6 +39,13 @@ android {
             .parse(rootProject.file("../yandex-oauth.json")) as Map<*, *>
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"${yandex["client_id"] ?: ""}\"")
         buildConfigField("String", "YANDEX_CLIENT_SECRET", "\"${yandex["client_secret"] ?: ""}\"")
+
+        // Ключи Google — в репозиторий не попадают (защита GitHub), CI пишет
+        // файл из секрета; без файла — пустые ключи и «не настроено».
+        val googleFile = rootProject.file("../google-oauth.json")
+        val google = if (googleFile.exists()) groovy.json.JsonSlurper().parse(googleFile) as Map<*, *> else emptyMap<String, String>()
+        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${google["client_id"] ?: ""}\"")
+        buildConfigField("String", "GOOGLE_CLIENT_SECRET", "\"${google["client_secret"] ?: ""}\"")
     }
 
     externalNativeBuild {

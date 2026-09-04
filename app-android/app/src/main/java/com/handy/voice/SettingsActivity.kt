@@ -245,7 +245,12 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         group(R.string.group_sync)
-        linkText(R.string.set_sync_account, syncHint()) { onSyncTap() }
+        val cloudTitle = when {
+            SyncManager.connected(this) -> Cloud.current(this).title
+            SyncManager.connecting != null -> SyncManager.connecting!!.title
+            else -> getString(R.string.set_sync_account)
+        }
+        linkTitled(cloudTitle, syncHint()) { onSyncTap() }
         if (SyncManager.connected(this)) {
             choice(
                 R.string.set_sync_interval, R.string.set_sync_interval_hint,
@@ -270,12 +275,12 @@ class SettingsActivity : AppCompatActivity() {
 
     // --- синхронизация ----------------------------------------------------
 
-    /** Строка состояния под «Яндекс.Диск» — по тому, что сейчас происходит. */
+    /** Строка состояния под облаком — по тому, что сейчас происходит. */
     private fun syncHint(): String {
         val code = SyncManager.code
         val message = SyncManager.message
         return when {
-            !Yandex.configured -> getString(R.string.sync_hint_unconfigured)
+            Cloud.all.none { it.configured } -> getString(R.string.sync_hint_unconfigured)
             code != null -> getString(R.string.sync_hint_waiting, code.userCode)
             SyncManager.connected(this) -> {
                 val who = AppPrefs.yandexLogin(this).ifBlank { getString(R.string.sync_account_unknown) }
@@ -296,7 +301,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun onSyncTap() {
-        if (!Yandex.configured) return
+        val available = Cloud.all.filter { it.configured }
+        if (available.isEmpty()) return
         SyncManager.code?.let { showCode(it); return }
         if (SyncManager.connected(this)) {
             optionSheet(
@@ -322,9 +328,21 @@ class SettingsActivity : AppCompatActivity() {
             }
             return
         }
-        SyncManager.startConnect(this) { code ->
-            runOnUiThread { if (!isFinishing) showCode(code) }
+        // Одно облако — сразу вход; два — сначала выбор.
+        val connect = { cloud: Cloud.Provider ->
+            SyncManager.startConnect(this, cloud) { code ->
+                runOnUiThread { if (!isFinishing) showCode(code) }
+            }
         }
+        if (available.size == 1) {
+            connect(available[0])
+            return
+        }
+        optionSheet(
+            getString(R.string.sync_pick_cloud),
+            available.map { it.id to it.title },
+            null,
+        ) { value -> connect(Cloud.byId(value)) }
     }
 
     /**
@@ -332,7 +350,7 @@ class SettingsActivity : AppCompatActivity() {
      * это нормально: ожидание идёт в фоне, а строка настроек показывает код и
      * сама сменится на «подключено».
      */
-    private fun showCode(code: Yandex.DeviceCode) {
+    private fun showCode(code: Cloud.DeviceCode) {
         // Код сразу в буфере: на странице Яндекса остаётся только вставить.
         copyCode(code)
         MaterialAlertDialogBuilder(this)
@@ -351,7 +369,7 @@ class SettingsActivity : AppCompatActivity() {
         refresh()
     }
 
-    private fun copyCode(code: Yandex.DeviceCode) {
+    private fun copyCode(code: Cloud.DeviceCode) {
         getSystemService(ClipboardManager::class.java)
             .setPrimaryClip(ClipData.newPlainText("Sol Flow", code.userCode))
     }
@@ -401,9 +419,12 @@ class SettingsActivity : AppCompatActivity() {
         linkText(title, getString(hint), onTap)
 
     /** Строка-ссылка с подсказкой, собранной на ходу. */
-    private fun linkText(title: Int, hint: String, onTap: () -> Unit) {
+    private fun linkText(title: Int, hint: String, onTap: () -> Unit) =
+        linkTitled(getString(title), hint, onTap)
+
+    private fun linkTitled(title: String, hint: String, onTap: () -> Unit) {
         val view = layoutInflater.inflate(R.layout.item_setting_choice, ui.settingsList, false)
-        view.findViewById<TextView>(R.id.title).setText(title)
+        view.findViewById<TextView>(R.id.title).text = title
         view.findViewById<TextView>(R.id.hint).text = hint
         view.findViewById<TextView>(R.id.value).visibility = View.GONE
         view.setOnClickListener { onTap() }

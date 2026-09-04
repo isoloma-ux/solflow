@@ -56,7 +56,11 @@ object SyncManager {
         private set
 
     /** Вход идёт: код, который человек вводит на странице Яндекса. */
-    @Volatile var code: Yandex.DeviceCode? = null
+    @Volatile var code: Cloud.DeviceCode? = null
+        private set
+
+    /** В какое облако сейчас входят — пока код не подтверждён. */
+    @Volatile var connecting: Cloud.Provider? = null
         private set
 
     @Volatile private var cancelConnect = false
@@ -120,14 +124,15 @@ object SyncManager {
      * Начало входа: получить код и в фоне ждать, пока человек его введёт.
      * [onCode] зовётся с кодом (в фоновом потоке), ошибки уходят в [message].
      */
-    fun startConnect(context: Context, onCode: (Yandex.DeviceCode) -> Unit) {
+    fun startConnect(context: Context, cloud: Cloud.Provider, onCode: (Cloud.DeviceCode) -> Unit) {
         val app = context.applicationContext
-        code?.let { if (it.expiresAt > System.currentTimeMillis()) { onCode(it); return } }
+        code?.let { if (connecting?.id == cloud.id && it.expiresAt > System.currentTimeMillis()) { onCode(it); return } }
         cancelConnect = false
         message = null
-        thread(name = "yandex-connect") {
+        connecting = cloud
+        thread(name = "cloud-connect") {
             val flow = try {
-                Yandex.deviceCode(deviceName(), deviceId(app))
+                cloud.deviceCode(deviceName(), deviceId(app))
             } catch (e: Exception) {
                 message = e.message ?: e.toString()
                 notifyStatus()
@@ -137,23 +142,25 @@ object SyncManager {
             notifyStatus()
             onCode(flow)
 
-            var tokens: Yandex.Tokens? = null
+            var tokens: Cloud.Tokens? = null
             try {
                 while (true) {
                     Thread.sleep(flow.interval * 1000)
                     if (cancelConnect) break
                     if (System.currentTimeMillis() > flow.expiresAt) error("код устарел — запросите новый")
-                    when (val poll = Yandex.pollToken(flow)) {
-                        is Yandex.Poll.Pending -> continue
-                        is Yandex.Poll.Done -> { tokens = poll.tokens; break }
+                    when (val poll = cloud.pollToken(flow)) {
+                        is Cloud.Poll.Pending -> continue
+                        is Cloud.Poll.Done -> { tokens = poll.tokens; break }
                     }
                 }
             } catch (e: Exception) {
                 message = e.message ?: e.toString()
             }
             code = null
+            connecting = null
             if (tokens != null) {
-                val login = runCatching { Yandex.diskLogin(tokens.access) }.getOrDefault("")
+                val login = runCatching { cloud.account(tokens.access) }.getOrDefault("")
+                AppPrefs.setSyncProvider(app, cloud.id)
                 AppPrefs.setYandexTokens(app, tokens.access, tokens.refresh, tokens.expiresAt)
                 AppPrefs.setYandexLogin(app, login)
                 // Новый аккаунт — старые отметки о файлах ни о чём.
@@ -171,12 +178,14 @@ object SyncManager {
     fun cancelConnect() {
         cancelConnect = true
         code = null
+        connecting = null
         notifyStatus()
     }
 
     /** Выход: токен отзывается и стирается. Встречи остаются и здесь, и на Диске. */
     fun disconnect(context: Context) {
         val app = context.applicationContext
+        val cloud = Cloud.current(app)
         val token = AppPrefs.yandexToken(app)
         AppPrefs.setYandexTokens(app, null, null, 0)
         AppPrefs.setYandexLogin(app, "")
@@ -184,7 +193,7 @@ object SyncManager {
         message = null
         WorkManager.getInstance(app).cancelUniqueWork(WORK_PERIODIC)
         WorkManager.getInstance(app).cancelUniqueWork(WORK_SOON)
-        if (token != null) thread { Yandex.revoke(token) }
+        if (token != null) thread { cloud.revoke(token) }
         notifyStatus()
     }
 
@@ -263,7 +272,7 @@ object SyncManager {
     /** Синхронизация сейчас, в фоновом потоке. */
     fun runNow(context: Context) {
         val app = context.applicationContext
-        thread(name = "yandex-sync") { runBlockingSync(app) }
+        thread(name = "cloud-sync") { runBlockingSync(app) }
     }
 
     /**
@@ -280,7 +289,7 @@ object SyncManager {
                 var token = freshToken(app)
                 try {
                     pass(app, token)
-                } catch (e: Yandex.Unauthorized) {
+                } catch (e: Cloud.Unauthorized) {
                     token = refreshTokens(app) ?: throw Exception("нужно войти заново: ${e.message}")
                     pass(app, token)
                 }
@@ -300,7 +309,7 @@ object SyncManager {
     private fun pass(app: Context, token: String): String? {
         val busy = MeetingService.phase.keys.toMutableSet()
         MeetingService.recordingId?.let { busy += it }
-        val outcome = SyncEngine.run(app, token, AppPrefs.syncAudio(app), busy) { text ->
+        val outcome = SyncEngine.run(app, Cloud.current(app), token, AppPrefs.syncAudio(app), busy) { text ->
             progress = text
             notifyStatus()
         }
@@ -311,7 +320,7 @@ object SyncManager {
     // --- токены -----------------------------------------------------------------
 
     private fun freshToken(app: Context): String {
-        val token = AppPrefs.yandexToken(app) ?: error("Яндекс.Диск не подключен")
+        val token = AppPrefs.yandexToken(app) ?: error("облако не подключено")
         val expiresAt = AppPrefs.yandexExpiresAt(app)
         if (AppPrefs.yandexRefresh(app) != null && expiresAt > 0 &&
             expiresAt - System.currentTimeMillis() < REFRESH_AHEAD_MS
@@ -324,7 +333,7 @@ object SyncManager {
     private fun refreshTokens(app: Context): String? {
         val refresh = AppPrefs.yandexRefresh(app) ?: return null
         return runCatching {
-            val t = Yandex.refresh(refresh)
+            val t = Cloud.current(app).refresh(refresh)
             AppPrefs.setYandexTokens(app, t.access, t.refresh.ifBlank { refresh }, t.expiresAt)
             t.access
         }.onFailure { Log.w(TAG, "продление токена", it) }.getOrNull()

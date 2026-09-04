@@ -207,12 +207,13 @@ object SyncEngine {
     class Outcome(val changedLocal: Boolean, val error: String?)
 
     /**
-     * Один проход. Бросает [Yandex.Unauthorized], если токен не подошёл;
+     * Один проход. Бросает [Cloud.Unauthorized], если токен не подошёл;
      * остальные ошибки собираются и возвращаются текстом, чтобы одна
      * неудачная встреча не останавливала остальные.
      */
     fun run(
         context: Context,
+        cloud: Cloud.Provider,
         token: String,
         syncAudio: Boolean,
         busy: Set<Long>,
@@ -220,14 +221,12 @@ object SyncEngine {
     ): Outcome {
         val state = State.load(context)
         if (!state.foldersReady) {
-            Yandex.mkdir(token, "app:/")
-            Yandex.mkdir(token, REMOTE_MEETINGS)
-            Yandex.mkdir(token, REMOTE_AUDIO)
+            cloud.prepare(token)
             state.foldersReady = true
             state.save(context)
         }
 
-        val remote = Yandex.list(token, REMOTE_MEETINGS).associateBy { it.name }
+        val remote = cloud.list(token, Cloud.Folder.MEETINGS).associateBy { it.name }
         val ids = sortedSetOf<Long>()
         ids += MeetingStore.ids(context)
         ids += remote.keys.mapNotNull(::idOf)
@@ -237,12 +236,12 @@ object SyncEngine {
         var firstError: String? = null
 
         fun upload(name: String, bytes: ByteArray) {
-            Yandex.upload(token, "$REMOTE_MEETINGS/$name", bytes)
+            cloud.upload(token, Cloud.Folder.MEETINGS, name, bytes)
             val h = md5(bytes)
             state.files[name] = FileState(h, h)
         }
 
-        fun download(name: String): ByteArray = Yandex.download(token, "$REMOTE_MEETINGS/$name")
+        fun download(name: String): ByteArray = cloud.download(token, Cloud.Folder.MEETINGS, name)
 
         fun markDownloaded(name: String, bytes: ByteArray) {
             state.files[name] = FileState(remote[name]?.md5 ?: md5(bytes), md5(bytes))
@@ -323,11 +322,11 @@ object SyncEngine {
             upload("$id.deleted", "{}".toByteArray())
             for (name in listOf("$id.meta.json", "$id.transcript.json")) {
                 if (remote.containsKey(name)) {
-                    Yandex.delete(token, "$REMOTE_MEETINGS/$name")
+                    cloud.delete(token, Cloud.Folder.MEETINGS, name)
                     state.files.remove(name)
                 }
             }
-            runCatching { Yandex.delete(token, "$REMOTE_AUDIO/$id.wav") }
+            runCatching { cloud.delete(token, Cloud.Folder.AUDIO, "$id.wav") }
             state.pendingDeletes.remove(id)
         }
 
@@ -353,7 +352,7 @@ object SyncEngine {
                         syncTranscript(id)
                     }
                 }
-            } catch (e: Yandex.Unauthorized) {
+            } catch (e: Cloud.Unauthorized) {
                 state.save(context)
                 throw e
             } catch (e: Exception) {
@@ -392,7 +391,7 @@ object SyncEngine {
                 }
                 state.projectsSnapshot = merged
             }
-        } catch (e: Yandex.Unauthorized) {
+        } catch (e: Cloud.Unauthorized) {
             state.save(context)
             throw e
         } catch (e: Exception) {
@@ -403,7 +402,7 @@ object SyncEngine {
         // --- звук ---
         if (syncAudio) {
             try {
-                val remoteAudio = Yandex.list(token, REMOTE_AUDIO).map { it.name }.toSet()
+                val remoteAudio = cloud.list(token, Cloud.Folder.AUDIO).map { it.name }.toSet()
                 for (id in ids) {
                     if (id in busy || id in state.pendingDeletes) continue
                     val name = "$id.wav"
@@ -413,15 +412,15 @@ object SyncEngine {
                         ?.let { MeetingStore.displayTitle(context, it) } ?: id.toString()
                     if (local.exists() && name !in remoteAudio && remote.containsKey("$id.meta.json")) {
                         onProgress(context.getString(R.string.sync_progress_upload_audio, title))
-                        Yandex.uploadFile(token, "$REMOTE_AUDIO/$name", local)
+                        cloud.uploadFile(token, Cloud.Folder.AUDIO, name, local)
                     } else if (!local.exists() && name in remoteAudio && hasMeta) {
                         onProgress(context.getString(R.string.sync_progress_download_audio, title))
-                        Yandex.downloadFile(token, "$REMOTE_AUDIO/$name", local)
+                        cloud.downloadFile(token, Cloud.Folder.AUDIO, name, local)
                         changed = true
                     }
                 }
                 onProgress(null)
-            } catch (e: Yandex.Unauthorized) {
+            } catch (e: Cloud.Unauthorized) {
                 state.save(context)
                 throw e
             } catch (e: Exception) {
