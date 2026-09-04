@@ -55,7 +55,7 @@ pub fn configured() -> bool {
 /// Свой агент, а не общий из net.rs: тому нужны ошибки на 4xx, чтобы не
 /// записать страницу «404» в файл модели, а здесь коды ответов — часть
 /// протокола (409 «папка уже есть», 404 «файла нет»).
-fn agent() -> &'static Agent {
+pub(super) fn agent() -> &'static Agent {
     static AGENT: OnceLock<Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
         let config = Agent::config_builder()
@@ -79,26 +79,26 @@ fn agent() -> &'static Agent {
 /// Ответ как есть: код и тело. Тело читается вручную — у встроенного
 /// read_to_vec потолок в 10 МБ, а расшифровка двухчасовой встречи бывает
 /// больше.
-struct Reply {
-    status: u16,
-    body: Vec<u8>,
+pub(super) struct Reply {
+    pub(super) status: u16,
+    pub(super) body: Vec<u8>,
 }
 
 impl Reply {
-    fn ok(&self) -> bool {
+    pub(super) fn ok(&self) -> bool {
         (200..300).contains(&self.status)
     }
 
-    fn json(&self) -> Result<serde_json::Value> {
+    pub(super) fn json(&self) -> Result<serde_json::Value> {
         Ok(serde_json::from_slice(&self.body)?)
     }
 
-    fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         String::from_utf8_lossy(&self.body).to_string()
     }
 }
 
-fn read_all(response: &mut ureq::http::Response<ureq::Body>) -> Result<Vec<u8>> {
+pub(super) fn read_all(response: &mut ureq::http::Response<ureq::Body>) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     response
         .body_mut()
@@ -108,14 +108,14 @@ fn read_all(response: &mut ureq::http::Response<ureq::Body>) -> Result<Vec<u8>> 
     Ok(out)
 }
 
-fn finish(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Reply> {
+pub(super) fn finish(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Reply> {
     let mut response = result.map_err(|e| anyhow!("{e}"))?;
     let status = response.status().as_u16();
     let body = read_all(&mut response)?;
     Ok(Reply { status, body })
 }
 
-fn urlencode(s: &str) -> String {
+pub(super) fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
@@ -126,7 +126,7 @@ fn urlencode(s: &str) -> String {
         .collect()
 }
 
-fn form(fields: &[(&str, &str)]) -> String {
+pub(super) fn form(fields: &[(&str, &str)]) -> String {
     fields
         .iter()
         .map(|(k, v)| format!("{}={}", urlencode(k), urlencode(v)))
@@ -136,7 +136,7 @@ fn form(fields: &[(&str, &str)]) -> String {
 
 /// Ошибка Яндекса человеческим текстом: в теле обычно есть `message` или
 /// `error_description`, и они внятнее кода.
-fn describe(reply: &Reply, what: &str) -> anyhow::Error {
+pub(super) fn describe(reply: &Reply, what: &str) -> anyhow::Error {
     let detail = reply
         .json()
         .ok()
@@ -151,34 +151,7 @@ fn describe(reply: &Reply, what: &str) -> anyhow::Error {
 
 // --- OAuth --------------------------------------------------------------------
 
-/// Код, который человек вводит на странице Яндекса.
-#[derive(Clone, serde::Serialize)]
-pub struct DeviceCode {
-    #[serde(skip)]
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_url: String,
-    /// Не чаще, чем раз в столько секунд, можно спрашивать про токен.
-    pub interval: u64,
-    /// Момент (millis), после которого код протухает.
-    pub expires_at: i64,
-}
-
-/// Токены после успешного входа.
-#[derive(Clone)]
-pub struct Tokens {
-    pub access_token: String,
-    pub refresh_token: String,
-    /// Момент (millis), когда access_token перестанет работать.
-    pub expires_at: i64,
-}
-
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+pub use super::provider::{now_ms, DeviceCode, Poll, RemoteFile, Tokens};
 
 /// Шаг 1: попросить у Яндекса код для этого устройства.
 pub fn device_code(device_name: &str) -> Result<DeviceCode> {
@@ -211,13 +184,6 @@ pub fn device_code(device_name: &str) -> Result<DeviceCode> {
         interval: v.get("interval").and_then(|x| x.as_u64()).unwrap_or(5).max(2),
         expires_at: now_ms() + expires_in * 1000,
     })
-}
-
-/// Что ответил Яндекс на очередной опрос.
-pub enum Poll {
-    /// Человек ещё не ввёл код — спросить позже.
-    Pending,
-    Done(Tokens),
 }
 
 /// Шаг 2: спросить, ввёл ли человек код. `authorization_pending` — норма,
@@ -332,22 +298,6 @@ fn device_id() -> String {
 
 // --- Диск -----------------------------------------------------------------------
 
-/// Файл на Диске, как его видит листинг. Размер пока никому не нужен, но
-/// в отчёте о состоянии Диска пригодится.
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub struct RemoteFile {
-    pub name: String,
-    pub md5: String,
-    /// Момент загрузки на Диск (millis).
-    pub modified: i64,
-    pub size: u64,
-}
-
-/// Так синхронизация отличает «нужно войти заново» от сбоя сети.
-pub fn is_unauthorized(e: &anyhow::Error) -> bool {
-    e.to_string().contains("(401)")
-}
 
 fn auth(token: &str) -> String {
     format!("OAuth {token}")
@@ -640,5 +590,77 @@ mod tests {
         assert_eq!(parse_iso8601("2024-05-01T15:34:56+03:00"), Some(1_714_566_896_000));
         assert_eq!(parse_iso8601("2024-05-01T12:34:56.123Z"), Some(1_714_566_896_000));
         assert_eq!(parse_iso8601("мусор"), None);
+    }
+}
+
+// --- провайдер ------------------------------------------------------------------
+
+use super::provider::{Folder, Provider};
+
+const REMOTE_MEETINGS: &str = "app:/meetings";
+const REMOTE_AUDIO: &str = "app:/audio";
+
+fn path_of(folder: Folder, name: &str) -> String {
+    match folder {
+        Folder::Meetings => format!("{REMOTE_MEETINGS}/{name}"),
+        Folder::Audio => format!("{REMOTE_AUDIO}/{name}"),
+    }
+}
+
+pub struct Yandex;
+
+impl Provider for Yandex {
+    fn id(&self) -> &'static str {
+        "yandex"
+    }
+    fn title(&self) -> &'static str {
+        "Яндекс.Диск"
+    }
+    fn configured(&self) -> bool {
+        configured()
+    }
+    fn device_code(&self, device_name: &str) -> Result<DeviceCode> {
+        device_code(device_name)
+    }
+    fn poll_token(&self, code: &DeviceCode) -> Result<Poll> {
+        poll_token(code)
+    }
+    fn refresh(&self, refresh_token: &str) -> Result<Tokens> {
+        refresh(refresh_token)
+    }
+    fn revoke(&self, access_token: &str) {
+        revoke(access_token)
+    }
+    fn account(&self, token: &str) -> Result<String> {
+        disk_info(token).map(|i| i.login)
+    }
+    fn prepare(&self, token: &str) -> Result<()> {
+        mkdir(token, "app:/")?;
+        mkdir(token, REMOTE_MEETINGS)?;
+        mkdir(token, REMOTE_AUDIO)
+    }
+    fn list(&self, token: &str, folder: Folder) -> Result<Vec<RemoteFile>> {
+        list(
+            token,
+            match folder {
+                Folder::Meetings => REMOTE_MEETINGS,
+                Folder::Audio => REMOTE_AUDIO,
+            },
+        )
+    }
+    fn upload(&self, token: &str, folder: Folder, name: &str, data: &[u8]) -> Result<()> {
+        upload(token, &path_of(folder, name), data)
+    }
+    fn upload_file(&self, token: &str, folder: Folder, name: &str, file: &std::path::Path) -> Result<()> {
+        upload_file(token, &path_of(folder, name), file)
+    }
+    fn download(&self, token: &str, folder: Folder, name: &str) -> Result<Vec<u8>> {
+        download(token, &path_of(folder, name))
+    }
+    fn download_file(&self, token: &str, folder: Folder, name: &str, target: &std::path::Path) -> Result<()> {
+        download_file(token, &path_of(folder, name), target)
+    }
+    fn delete(&self, token: &str, folder: Folder, name: &str) -> Result<()> {
+        delete(token, &path_of(folder, name))
     }
 }

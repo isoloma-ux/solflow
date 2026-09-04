@@ -1,7 +1,22 @@
 fn main() {
+    google_credentials();
     link_sherpa();
     link_llama();
     tauri_build::build()
+}
+
+/// Ключи Google OAuth: файл лежит в корне репозитория, но в git не
+/// попадает (защита GitHub от утечек), поэтому include_str! идёт через
+/// OUT_DIR: есть файл — копия, нет — пустые ключи, и вход в Google Drive
+/// в окне объяснит, что не настроен.
+fn google_credentials() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = root.join("../../google-oauth.json");
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("google-oauth.json");
+    let text = std::fs::read_to_string(&source)
+        .unwrap_or_else(|_| "{\"client_id\":\"\",\"client_secret\":\"\"}".to_string());
+    std::fs::write(&out, text).unwrap();
+    println!("cargo:rerun-if-changed={}", source.display());
 }
 
 /// Линковка libsolflow_llama — llama.cpp со своим ggml одной динамической

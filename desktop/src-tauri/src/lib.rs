@@ -1650,8 +1650,8 @@ fn sync_status(app: AppHandle) -> sync::Status {
 
 /// Начать вход: вернуть код, который человек введёт на странице Яндекса.
 #[tauri::command]
-fn sync_connect(app: AppHandle) -> Result<sync::yandex::DeviceCode, String> {
-    sync::connect_start(&app).map_err(|e| e.to_string())
+fn sync_connect(app: AppHandle, provider: Option<String>) -> Result<sync::provider::DeviceCode, String> {
+    sync::connect_start(&app, provider.as_deref().unwrap_or("yandex")).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

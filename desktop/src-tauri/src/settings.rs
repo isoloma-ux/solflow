@@ -107,18 +107,23 @@ pub struct Settings {
     #[serde(default = "default_meeting_audio")]
     pub meeting_audio: String,
 
-    // --- синхронизация через Яндекс.Диск ---
-    /// OAuth-токен вошедшего человека; None — не подключено.
+    // --- синхронизация через облако ---
+    /// Какое облако подключено: "yandex" или "google". Пусто при токене —
+    /// настройки от версий до Google Drive, значит Яндекс.
     #[serde(default)]
-    pub yandex_token: Option<String>,
-    #[serde(default)]
-    pub yandex_refresh: Option<String>,
+    pub sync_provider: String,
+    /// OAuth-токен вошедшего человека; None — не подключено. Имена полей в
+    /// файле остались яндексовскими через alias — старые настройки читаются.
+    #[serde(default, alias = "yandex_token")]
+    pub sync_token: Option<String>,
+    #[serde(default, alias = "yandex_refresh")]
+    pub sync_refresh: Option<String>,
     /// Когда токен перестанет работать (millis); продлевается заранее.
-    #[serde(default)]
-    pub yandex_expires_at: i64,
+    #[serde(default, alias = "yandex_expires_at")]
+    pub sync_expires_at: i64,
     /// Кто вошёл — показывается в настройках.
-    #[serde(default)]
-    pub yandex_login: String,
+    #[serde(default, alias = "yandex_login")]
+    pub sync_login: String,
     /// Передавать ли звук записей. По умолчанию нет: часовая встреча —
     /// больше ста мегабайт, а расшифровке и саммери звук не нужен.
     #[serde(default)]
@@ -264,10 +269,11 @@ impl Default for Settings {
             history_retention: default_retention(),
             keep_audio: true,
             meeting_audio: default_meeting_audio(),
-            yandex_token: None,
-            yandex_refresh: None,
-            yandex_expires_at: 0,
-            yandex_login: String::new(),
+            sync_provider: String::new(),
+            sync_token: None,
+            sync_refresh: None,
+            sync_expires_at: 0,
+            sync_login: String::new(),
             sync_audio: false,
             sync_auto_summary: true,
             sync_interval: default_sync_interval(),

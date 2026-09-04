@@ -3233,20 +3233,25 @@ function renderSync(s) {
   syncWasRunning = s.running;
   const flashing = !s.running && Date.now() < syncFlashUntil;
 
-  el("syncConnect").hidden = s.connected || !!s.code || !s.configured;
+  const idle = !s.connected && !s.code;
+  el("syncConnect").hidden = !idle || !s.configured_yandex;
+  el("syncConnectGoogle").hidden = !idle || !s.configured_google;
   // Код принят или протух — окно входа больше не нужно.
   if (s.connected || !s.code) el("syncDialog").hidden = true;
   el("syncDisconnect").hidden = !s.connected;
   el("syncNow").hidden = !s.connected;
   el("syncCodeRow").hidden = !s.code;
   el("syncOptions").hidden = !s.connected;
+  // Строка называется по подключённому облаку; пока ничего нет — «Облако».
+  el("syncTitle").textContent = idle ? t("Облако") : s.provider_title;
+  el("syncDialogTitle").textContent = t("Вход в {0}", s.provider_title);
 
-  if (!s.configured) {
-    hint.textContent = t("В этой сборке нет ключей Яндекс OAuth — синхронизация недоступна");
+  if (!s.configured_yandex && !s.configured_google) {
+    hint.textContent = t("В этой сборке нет ключей облаков — синхронизация недоступна");
   } else if (s.code) {
     el("syncCode").textContent = s.code.user_code;
     syncVerificationUrl = s.code.verification_url;
-    hint.textContent = t("Откройте страницу Яндекса, введите код и разрешите доступ к папке приложения. Жду подтверждения");
+    hint.textContent = t("Откройте страницу входа, введите код и разрешите доступ к папке приложения. Жду подтверждения");
   } else if (s.connected) {
     const who = s.login ? t("Аккаунт {0}. ", s.login) : "";
     if (s.progress) {
@@ -3266,7 +3271,7 @@ function renderSync(s) {
     hint.classList.add("sync-error");
   } else {
     hint.textContent = t(
-      "Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске"
+      "Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Яндекс.Диске или Google Drive"
     );
   }
 
@@ -3304,10 +3309,12 @@ function copySyncCode() {
   if (code) navigator.clipboard.writeText(code);
 }
 
-el("syncConnect").addEventListener("click", async () => {
+/** Вход в облако по коду: Яндекс.Диск или Google Drive — одна дорога. */
+async function connectCloud(provider) {
   el("syncConnect").disabled = true;
+  el("syncConnectGoogle").disabled = true;
   try {
-    const code = await invoke("sync_connect");
+    const code = await invoke("sync_connect", { provider });
     syncVerificationUrl = code.verification_url;
     // Код сразу в буфере, а страница не открывается сама: сначала окно с
     // тремя шагами, чтобы было ясно, что делать дальше.
@@ -3320,8 +3327,11 @@ el("syncConnect").addEventListener("click", async () => {
     el("syncHint").classList.add("sync-error");
   } finally {
     el("syncConnect").disabled = false;
+    el("syncConnectGoogle").disabled = false;
   }
-});
+}
+el("syncConnect").addEventListener("click", () => connectCloud("yandex"));
+el("syncConnectGoogle").addEventListener("click", () => connectCloud("google"));
 
 el("syncOpenPage").addEventListener("click", () =>
   invoke("open_link", { url: syncVerificationUrl })
@@ -3751,7 +3761,7 @@ const INTRO = [
   {
     title: t("Встречи на всех устройствах"),
     text:
-      t("Подключите Яндекс.Диск в настройках — вход по короткому коду. ") +
+      t("Подключите Яндекс.Диск или Google Drive в настройках — вход по короткому коду. ") +
       t("Записи, проекты и саммери станут одинаковыми на телефоне и ") +
       t("компьютере; данные лежат в папке приложения на вашем Диске."),
     shot: `<div class="shot">

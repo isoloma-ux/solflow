@@ -824,9 +824,9 @@
           </div>
         </section>
 
-        <!-- Синхронизация: встречи и проекты через папку приложения на
-             Яндекс.Диске того, кто вошёл. Вход — по коду, как на телевизоре:
-             код вводится на странице Яндекса в любом браузере. -->
+        <!-- Синхронизация: встречи и проекты через папку приложения в облаке
+             того, кто вошёл — Яндекс.Диск или Google Drive. Вход — по коду,
+             как на телевизоре: код вводится на странице облака в браузере. -->
         <section class="panel">
           <p class="kicker group-head">Синхронизация</p>
           <div class="perm">
@@ -836,19 +836,20 @@
               <path d="M7 18.5h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 6.8 9.6 4.5 4.5 0 0 0 7 18.5z"/>
             </svg>
             <div class="perm-text">
-              <p class="perm-title">Яндекс.Диск</p>
+              <p class="perm-title" id="syncTitle">Облако</p>
               <p class="muted small" id="syncHint">
-                Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Диске
+                Встречи и проекты синхронизируются между устройствами через папку приложения на вашем Яндекс.Диске или Google Drive
               </p>
             </div>
             <button class="model-remove" id="syncDisconnect" hidden>Отключить</button>
             <button class="pill-inset compact" id="syncNow" hidden>Синхронизировать</button>
-            <button class="pill-inset compact" id="syncConnect">Подключить</button>
+            <button class="pill-inset compact" id="syncConnect">Яндекс.Диск</button>
+            <button class="pill-inset compact" id="syncConnectGoogle">Google Drive</button>
           </div>
           <div class="perm" id="syncCodeRow" hidden>
             <span class="row-icon"></span>
             <div class="perm-text">
-              <p class="perm-title">Код для страницы Яндекса</p>
+              <p class="perm-title">Код для страницы входа</p>
               <p class="sync-code" id="syncCode"></p>
             </div>
             <button class="model-remove" id="syncCancelCode">Отмена</button>
@@ -989,7 +990,7 @@
             Sol Flow есть для Mac, Windows и Android — и везде распознавание
             идет офлайн, на самом устройстве.
           </p>
-          <p class="muted small">Встречи и проекты можно держать одинаковыми на всех устройствах: в настройках подключите Яндекс.Диск, вход по короткому коду. Данные лежат в папке приложения на вашем Диске, чужих серверов нет.</p>
+          <p class="muted small">Встречи и проекты можно держать одинаковыми на всех устройствах: в настройках подключите Яндекс.Диск или Google Drive, вход по короткому коду. Данные лежат в папке приложения в вашем облаке, чужих серверов нет.</p>
 
           <div class="links">
             <button class="pill-inset compact link" data-url="https://ivansolomin.ru">
@@ -1169,11 +1170,11 @@
     <div class="intro" id="syncDialog" hidden>
       <div class="intro-card">
         <div class="intro-body">
-          <p class="intro-title">Вход в Яндекс.Диск</p>
+          <p class="intro-title" id="syncDialogTitle">Вход в облако</p>
           <p class="sync-code sync-code-big" id="syncDialogCode"></p>
           <ol class="sync-steps">
             <li>Код уже скопирован в буфер обмена</li>
-            <li>Откройте страницу Яндекса — кнопка ниже</li>
+            <li>Откройте страницу входа — кнопка ниже</li>
             <li>Вставьте код и нажмите «Разрешить»</li>
           </ol>
           <p class="muted small">Окно можно закрыть: приложение ждет подтверждения в фоне, строка в настройках сама сменится на «подключено»</p>
@@ -1182,7 +1183,7 @@
           <button class="model-remove" id="syncDialogCancel">Отмена</button>
           <span class="spacer"></span>
           <button class="pill-inset compact" id="syncDialogCopy">Скопировать код</button>
-          <button class="pill-inset compact support" id="syncDialogOpen">Открыть страницу Яндекса</button>
+          <button class="pill-inset compact support" id="syncDialogOpen">Открыть страницу входа</button>
         </div>
       </div>
     </div>
