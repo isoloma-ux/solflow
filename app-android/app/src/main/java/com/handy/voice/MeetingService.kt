@@ -388,6 +388,11 @@ class MeetingService : Service() {
             }
 
             MeetingStore.save(this, meeting.copy(state = Meeting.STATE_DONE))
+            // Настройка «удалять звук после расшифровки»: текст готов, файл
+            // в сотни мегабайт больше не нужен.
+            if (AppPrefs.meetingAudio(this) == "delete_done") {
+                MeetingStore.audioFile(this, meeting.id).delete()
+            }
             // Модель отработала пачку — дальше её судьбу решает настройка
             // «держать модель в памяти».
             Engine.scheduleUnload(this)

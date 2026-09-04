@@ -101,6 +101,11 @@ pub struct Settings {
     /// Хранить ли звук диктовок — чтобы можно было переслушать.
     #[serde(default = "yes")]
     pub keep_audio: bool,
+    /// Звук записей встреч: "keep" — хранить, "delete_done" — удалять
+    /// сразу после расшифровки. Без звука не переразобрать и не выгрузить
+    /// .wav, зато часовая запись не лежит гигабайтом.
+    #[serde(default = "default_meeting_audio")]
+    pub meeting_audio: String,
 
     // --- синхронизация через Яндекс.Диск ---
     /// OAuth-токен вошедшего человека; None — не подключено.
@@ -223,6 +228,10 @@ fn default_history_limit() -> usize {
     50
 }
 
+fn default_meeting_audio() -> String {
+    "keep".to_string()
+}
+
 fn default_retention() -> String {
     "keep_limit".to_string()
 }
@@ -254,6 +263,7 @@ impl Default for Settings {
             history_limit: default_history_limit(),
             history_retention: default_retention(),
             keep_audio: true,
+            meeting_audio: default_meeting_audio(),
             yandex_token: None,
             yandex_refresh: None,
             yandex_expires_at: 0,

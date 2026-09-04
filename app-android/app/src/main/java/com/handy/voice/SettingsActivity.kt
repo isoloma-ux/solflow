@@ -31,6 +31,20 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var ui: ActivitySettingsBinding
 
+    /** Системный выбор папки экспорта: доступ запоминается насовсем. */
+    private val pickExportDir = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            AppPrefs.setExportDir(this, uri.toString())
+        }
+        refresh()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = ActivitySettingsBinding.inflate(layoutInflater)
@@ -182,6 +196,52 @@ class SettingsActivity : AppCompatActivity() {
             // Выключили — звук прошлых диктовок должен уйти с диска сразу,
             // иначе настройка не освобождает ничего.
             TranscriptStore.applyLimits(this)
+        }
+
+        group(R.string.group_meetings)
+        choice(
+            R.string.set_meeting_audio, R.string.set_meeting_audio_hint,
+            listOf(
+                "keep" to getString(R.string.meeting_audio_keep),
+                "delete_done" to getString(R.string.meeting_audio_delete),
+            ),
+            AppPrefs.meetingAudio(this),
+        ) { value ->
+            AppPrefs.setMeetingAudio(this, value)
+            refresh()
+        }
+        val usage = MeetingStore.audioUsage(this)
+        linkText(
+            R.string.set_purge_audio,
+            if (usage > 0) getString(R.string.set_purge_audio_hint, formatSize(usage))
+            else getString(R.string.set_purge_audio_empty),
+        ) {
+            if (usage <= 0) return@linkText
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.set_purge_audio)
+                .setMessage(getString(R.string.purge_audio_confirm, formatSize(usage)))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.purge_audio_do) { _, _ ->
+                    MeetingStore.purgeAudio(this)
+                    refresh()
+                }
+                .show()
+        }
+        choice(
+            R.string.set_export_dir, R.string.set_export_dir_hint,
+            listOf(
+                "downloads" to getString(R.string.export_dir_downloads),
+                "pick" to getString(R.string.export_dir_pick),
+            ),
+            if (AppPrefs.exportDir(this) == null) "downloads" else "pick",
+            valueText = MeetingExport.exportDirName(this) ?: getString(R.string.export_dir_downloads),
+        ) { value ->
+            if (value == "pick") {
+                pickExportDir.launch(null)
+            } else {
+                AppPrefs.setExportDir(this, null)
+                refresh()
+            }
         }
 
         group(R.string.group_sync)

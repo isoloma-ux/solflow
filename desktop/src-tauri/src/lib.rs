@@ -929,6 +929,7 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
             }
             "history_retention" => s.history_retention = text(),
             "keep_audio" => s.keep_audio = value.as_bool().unwrap_or(true),
+            "meeting_audio" => s.meeting_audio = text(),
             "sync_audio" => s.sync_audio = value.as_bool().unwrap_or(false),
             "sync_auto_summary" => s.sync_auto_summary = value.as_bool().unwrap_or(true),
             "sync_interval" => s.sync_interval = text(),
@@ -1264,6 +1265,18 @@ fn translate_languages() -> Vec<(String, String)> {
         .iter()
         .map(|(code, name, _)| (code.to_string(), name.to_string()))
         .collect()
+}
+
+/// Сколько места занимает звук готовых записей встреч.
+#[tauri::command]
+fn meetings_audio_usage(app: AppHandle) -> u64 {
+    meetings::audio_usage(&app)
+}
+
+/// Удалить звук готовых записей — вернуть место. Освобождено байт.
+#[tauri::command]
+fn meetings_audio_purge(app: AppHandle) -> u64 {
+    meetings::purge_audio(&app)
 }
 
 /// Тип записи руками: "meeting", "talk", "interview", "other".
@@ -1751,6 +1764,8 @@ pub fn run() {
             meeting_extras_clear,
             meeting_set_kind,
             meeting_kind_detect,
+            meetings_audio_usage,
+            meetings_audio_purge,
             meeting_translate,
             meeting_translations,
             meeting_translation,

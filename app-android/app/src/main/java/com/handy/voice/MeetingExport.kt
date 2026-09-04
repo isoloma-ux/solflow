@@ -140,6 +140,12 @@ object MeetingExport {
         val source = MeetingStore.audioFile(context, meeting.id)
         require(source.exists()) { "звука нет" }
         val name = "${safeName(MeetingStore.displayTitle(context, meeting))}.wav"
+        createInExportDir(context, name, "audio/wav")?.let { uri ->
+            context.contentResolver.openOutputStream(uri)!!.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            }
+            return ExportResult(name, uri)
+        }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)
@@ -161,12 +167,40 @@ object MeetingExport {
         }
     }
 
+    /**
+     * Своя папка экспорта из настроек: файл создаётся через системный
+     * доступ к дереву документов. Если папка пропала или доступ отозван —
+     * null, и файл уходит в Загрузки, как раньше.
+     */
+    private fun createInExportDir(context: Context, name: String, mime: String): android.net.Uri? {
+        val tree = AppPrefs.exportDir(context)?.let(android.net.Uri::parse) ?: return null
+        return runCatching {
+            val dirUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                tree, android.provider.DocumentsContract.getTreeDocumentId(tree),
+            )
+            android.provider.DocumentsContract.createDocument(context.contentResolver, dirUri, mime, name)
+        }.getOrNull()
+    }
+
+    /** Название выбранной папки экспорта для настроек; null — Загрузки. */
+    fun exportDirName(context: Context): String? {
+        val tree = AppPrefs.exportDir(context)?.let(android.net.Uri::parse) ?: return null
+        val id = runCatching { android.provider.DocumentsContract.getTreeDocumentId(tree) }.getOrNull()
+            ?: return null
+        // Идентификатор вида «primary:Documents/Sol Flow» — берём хвост.
+        return id.substringAfter(':').ifEmpty { id }
+    }
+
     private fun write(
         context: Context,
         name: String,
         mime: String,
         bytes: ByteArray,
     ): android.net.Uri? {
+        createInExportDir(context, name, mime)?.let { uri ->
+            context.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+            return uri
+        }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)

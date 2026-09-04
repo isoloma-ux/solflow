@@ -276,6 +276,20 @@
     <string name="unload_min2">2 минуты</string>
     <string name="unload_now">Выгружать сразу</string>
 
+    <string name="group_meetings">Записи встреч</string>
+    <string name="set_meeting_audio">Звук записей</string>
+    <string name="set_meeting_audio_hint">Без звука не переразобрать говорящих и не выгрузить .wav, зато часовая запись не занимает сотни мегабайт</string>
+    <string name="meeting_audio_keep">Хранить</string>
+    <string name="meeting_audio_delete">Удалять после расшифровки</string>
+    <string name="set_purge_audio">Удалить звук готовых записей</string>
+    <string name="set_purge_audio_hint">Занято %1$s</string>
+    <string name="set_purge_audio_empty">Звука готовых записей нет</string>
+    <string name="purge_audio_confirm">Освободится %1$s. Расшифровки и саммери останутся, а переразобрать говорящих или выгрузить .wav у этих записей будет нельзя.</string>
+    <string name="purge_audio_do">Удалить</string>
+    <string name="set_export_dir">Папка экспорта</string>
+    <string name="set_export_dir_hint">Куда класть txt, md, pdf, docx и wav</string>
+    <string name="export_dir_downloads">Загрузки</string>
+    <string name="export_dir_pick">Выбрать папку…</string>
     <string name="group_history">История диктовок</string>
     <string name="set_history_limit">Сколько диктовок хранить</string>
     <string name="set_history_limit_hint">Старые уходят по мере появления новых</string>

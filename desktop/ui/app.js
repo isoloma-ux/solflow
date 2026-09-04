@@ -3134,6 +3134,8 @@ async function refreshSettings(reloadDevices = false) {
   el("modelUnload").value = settings.model_unload;
   el("historyLimit").value = String(settings.history_limit);
   el("historyRetention").value = settings.history_retention;
+  el("meetingAudio").value = settings.meeting_audio || "keep";
+  refreshAudioUsage();
 
   const autostart = await invoke("autostart_enabled");
   el("autostart").classList.toggle("on", autostart);
@@ -3466,6 +3468,37 @@ el("historyLimit").addEventListener("change", async () => {
 el("historyRetention").addEventListener("change", async () => {
   await option("history_retention", el("historyRetention").value);
   refreshHistory();
+});
+
+el("meetingAudio").addEventListener("change", () =>
+  option("meeting_audio", el("meetingAudio").value)
+);
+
+async function refreshAudioUsage() {
+  const bytes = await invoke("meetings_audio_usage");
+  el("purgeAudioHint").textContent = bytes
+    ? t("Занято {0}", sizeLabel(bytes))
+    : t("Звука готовых записей на диске нет");
+  el("purgeAudio").disabled = !bytes;
+}
+
+// Удаление в два нажатия: гигабайты не возвращаются.
+let purgeArmed = null;
+el("purgeAudio").addEventListener("click", async () => {
+  if (!purgeArmed) {
+    el("purgeAudio").textContent = t("Точно удалить?");
+    purgeArmed = setTimeout(() => {
+      purgeArmed = null;
+      el("purgeAudio").textContent = t("Удалить");
+    }, 4000);
+    return;
+  }
+  clearTimeout(purgeArmed);
+  purgeArmed = null;
+  el("purgeAudio").textContent = t("Удалить");
+  const freed = await invoke("meetings_audio_purge");
+  el("purgeAudioHint").textContent = t("Освобождено {0}", sizeLabel(freed));
+  el("purgeAudio").disabled = true;
 });
 
 /** Тема применяется сразу и запоминается в настройках. */

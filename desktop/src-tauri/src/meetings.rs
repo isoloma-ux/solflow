@@ -203,6 +203,38 @@ pub fn audio_file(app: &AppHandle, id: i64) -> PathBuf {
     dir(app, id).join("audio.wav")
 }
 
+/// Сколько байт занимает звук готовых записей — для настройки.
+pub fn audio_usage(app: &AppHandle) -> u64 {
+    rows(app)
+        .into_iter()
+        .filter(|m| m.state == "done")
+        .filter_map(|m| std::fs::metadata(audio_file(app, m.id)).ok())
+        .map(|md| md.len())
+        .sum()
+}
+
+/// Удалить звук у всех готовых записей, кроме тех, над которыми сейчас
+/// идёт работа. Возвращает, сколько байт освободилось.
+pub fn purge_audio(app: &AppHandle) -> u64 {
+    let state = app.state::<MeetingState>();
+    let busy: std::collections::HashSet<i64> =
+        state.phase.lock().unwrap().keys().copied().collect();
+    let mut freed = 0;
+    for m in rows(app) {
+        if m.state != "done" || busy.contains(&m.id) {
+            continue;
+        }
+        let path = audio_file(app, m.id);
+        if let Ok(md) = std::fs::metadata(&path) {
+            if std::fs::remove_file(&path).is_ok() {
+                freed += md.len();
+            }
+        }
+    }
+    notify(app);
+    freed
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1376,6 +1408,19 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
 
     meta.state = STATE_DONE.to_string();
     meta.error = None;
+
+    // Настройка «удалять звук после расшифровки»: текст готов, файл в
+    // сотни мегабайт больше не нужен.
+    let drop_audio = app
+        .state::<crate::AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .meeting_audio
+        == "delete_done";
+    if drop_audio {
+        let _ = std::fs::remove_file(audio_file(app, id));
+    }
 
     // Автоназвание: безымянной встрече — короткое имя от модели саммери,
     // если та уже скачана (качать гигабайты ради названия не станем).

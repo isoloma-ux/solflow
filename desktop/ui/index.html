@@ -756,6 +756,32 @@
         </section>
 
         <section class="panel">
+          <p class="kicker group-head">Записи встреч</p>
+          <div class="perm">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h16v12H4zM8 6v12M16 6v12"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Звук записей</p>
+              <p class="muted small">Без звука не переразобрать говорящих и не выгрузить .wav, зато часовая запись не лежит гигабайтом</p>
+            </div>
+            <select id="meetingAudio" class="meet-select wide">
+              <option value="keep">Хранить</option>
+              <option value="delete_done">Удалять после расшифровки</option>
+            </select>
+          </div>
+          <div class="perm">
+            <span class="row-icon"></span>
+            <div class="perm-text">
+              <p class="perm-title">Удалить звук готовых записей</p>
+              <p class="muted small" id="purgeAudioHint">Считаю, сколько занято</p>
+            </div>
+            <button class="pill-inset compact" id="purgeAudio">Удалить</button>
+          </div>
+        </section>
+
+        <section class="panel">
           <p class="kicker group-head">История диктовок</p>
           <div class="perm">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"

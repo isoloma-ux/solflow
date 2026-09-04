@@ -71,6 +71,22 @@ object MeetingStore {
 
     fun audioFile(context: Context, id: Long) = File(dir(context, id), "audio.wav")
 
+    /** Сколько байт занимает звук готовых записей — для настройки. */
+    fun audioUsage(context: Context): Long =
+        all(context).filter { it.isDone }.sumOf { audioFile(context, it.id).length() }
+
+    /** Удалить звук у готовых записей, кроме той, что пишется. Освобождено байт. */
+    fun purgeAudio(context: Context): Long {
+        var freed = 0L
+        for (m in all(context)) {
+            if (!m.isDone || m.id == MeetingService.recordingId) continue
+            val f = audioFile(context, m.id)
+            val size = f.length()
+            if (size > 0 && f.delete()) freed += size
+        }
+        return freed
+    }
+
     private fun metaFile(context: Context, id: Long) = File(dir(context, id), "meta.json")
 
     private fun transcriptFile(context: Context, id: Long) =

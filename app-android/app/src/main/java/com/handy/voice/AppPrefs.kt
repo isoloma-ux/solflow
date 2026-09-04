@@ -153,6 +153,14 @@ object AppPrefs {
     }
 
     /** Хранить ли звук диктовок — чтобы можно было переслушать. */
+    /** Звук записей встреч: "keep" или "delete_done" (удалять после расшифровки). */
+    fun meetingAudio(context: Context): String = text(context, "meeting_audio", "keep")!!
+    fun setMeetingAudio(context: Context, value: String) = setText(context, "meeting_audio", value)
+
+    /** Папка экспорта — URI дерева из системного выбора; null — Загрузки. */
+    fun exportDir(context: Context): String? = text(context, "export_dir", null)
+    fun setExportDir(context: Context, value: String?) = setText(context, "export_dir", value)
+
     fun keepAudio(context: Context): Boolean = flag(context, "keep_audio", true)
 
     fun setKeepAudio(context: Context, on: Boolean) = setFlag(context, "keep_audio", on)
