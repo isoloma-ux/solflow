@@ -79,6 +79,22 @@ mod summary {
     pub fn breakdown(_id: &str) -> Option<&'static Breakdown> {
         None
     }
+    pub const LANGUAGES: &[(&str, &str, &str)] = &[];
+    pub fn language_name(_code: &str) -> Option<&'static str> {
+        None
+    }
+    pub fn translate_lines(
+        _app: &AppHandle,
+        _lang: &str,
+        _lines: &[String],
+        _progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+        _cancelled: Arc<AtomicBool>,
+    ) -> Result<Vec<String>> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
+    pub fn translate_text(_app: &AppHandle, _lang: &str, _text: &str) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
+    }
     pub fn ask(
         _app: &AppHandle,
         _timed: &str,
@@ -1220,6 +1236,36 @@ fn meeting_extras_clear(app: AppHandle, id: i64, kind: String) {
     meetings::clear_extra(&app, id, &kind);
 }
 
+/// Перевод записи на язык из summary::LANGUAGES — той же моделью.
+#[tauri::command]
+fn meeting_translate(app: AppHandle, id: i64, lang: String) {
+    meetings::translate(&app, id, lang);
+}
+
+#[tauri::command]
+fn meeting_translations(app: AppHandle, id: i64) -> Vec<String> {
+    meetings::translations(&app, id)
+}
+
+#[tauri::command]
+fn meeting_translation(app: AppHandle, id: i64, lang: String) -> Option<meetings::Translation> {
+    meetings::load_translation(&app, id, &lang)
+}
+
+#[tauri::command]
+fn meeting_translation_delete(app: AppHandle, id: i64, lang: String) {
+    meetings::delete_translation(&app, id, &lang);
+}
+
+/// Языки перевода для меню: код и название на самом языке.
+#[tauri::command]
+fn translate_languages() -> Vec<(String, String)> {
+    summary::LANGUAGES
+        .iter()
+        .map(|(code, name, _)| (code.to_string(), name.to_string()))
+        .collect()
+}
+
 /// Тип записи руками: "meeting", "talk", "interview", "other".
 #[tauri::command]
 fn meeting_set_kind(app: AppHandle, id: i64, kind: String) {
@@ -1401,6 +1447,7 @@ async fn meeting_export(
     id: i64,
     format: String,
     title: String,
+    lang: Option<String>,
 ) -> Result<String, String> {
     // «Спрашивать каждый раз» — это диалог сохранения: человек сам выбирает
     // и папку, и имя. Команда синхронная, то есть идёт не с главного потока,
@@ -1423,7 +1470,8 @@ async fn meeting_export(
     } else {
         meetings::Target::AsSettings
     };
-    meetings::export(&app, id, &format, &title, true, target).map_err(|e| e.to_string())
+    meetings::export(&app, id, &format, &title, true, target, lang.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 /// Групповые действия из списка. Заголовки приходят из окна — там же, где
@@ -1463,7 +1511,7 @@ async fn meetings_export(
             Some(dir) => meetings::Target::Dir(dir.clone()),
             None => meetings::Target::AsSettings,
         };
-        match meetings::export(&app, *id, &format, &title, false, target) {
+        match meetings::export(&app, *id, &format, &title, false, target, None) {
             Ok(path) => {
                 done += 1;
                 last_path = Some(path);
@@ -1703,6 +1751,11 @@ pub fn run() {
             meeting_extras_clear,
             meeting_set_kind,
             meeting_kind_detect,
+            meeting_translate,
+            meeting_translations,
+            meeting_translation,
+            meeting_translation_delete,
+            translate_languages,
             meeting_autotitle,
             meeting_import,
             meeting_import_paths,

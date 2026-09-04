@@ -792,6 +792,7 @@ function stateLabel(m) {
   if (m.phase === "summarizing") return t("Делаю саммери{0}", pct);
   if (m.phase === "asking") return t("Отвечаю на вопрос{0}", pct);
   if (m.phase === "classifying") return t("Определяю тип записи{0}", pct);
+  if (m.phase === "translating") return t("Перевожу{0}", pct);
   if (m.phase && DERIVE_PHASES[m.phase]) return t(DERIVE_PHASES[m.phase], pct);
   if (m.phase === "titling") return t("Придумываю название");
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
@@ -1944,6 +1945,8 @@ listen("tauri://drag-drop", (e) => {
 
 function openMeeting(id) {
   detailId = id;
+  detailLang = null;
+  detailTranslation = null;
   el("meetFind").value = "";
   el("meetFindClear").hidden = true;
   el("meetFindCount").hidden = true;
@@ -1979,7 +1982,8 @@ function renderSummary(m) {
   if (!m.summary) return;
   const target = el("meetSummaryText");
   target.textContent = "";
-  for (const raw of m.summary.split("\n")) {
+  const summaryText = detailTranslation?.summary || m.summary;
+  for (const raw of summaryText.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
     const p = document.createElement("p");
@@ -2023,6 +2027,95 @@ async function exportFromList(meeting, format) {
     el("meetStatus").textContent = String(err);
   }
 }
+
+// --- перевод ---------------------------------------------------------------
+
+let detailLang = null;
+let detailTranslation = null;
+let translateLanguages = null;
+
+/** Меню «Перевести»: оригинал, готовые переводы с галочкой, остальные языки. */
+async function renderTranslateMenu(m) {
+  const done = m.state === "done";
+  el("meetTranslate").hidden = !done;
+  el("meetTranslate").disabled = !!m.phase;
+  if (!done) return;
+  if (!translateLanguages) translateLanguages = await invoke("translate_languages");
+  const ready = await invoke("meeting_translations", { id: m.id });
+  const items = el("translateItems");
+  items.textContent = "";
+  const row = (code, label, mark) => {
+    const button = document.createElement("button");
+    button.className = "lang-row";
+    button.dataset.lang = code;
+    const name = document.createElement("span");
+    name.className = "lang-name";
+    name.textContent = label;
+    button.appendChild(name);
+    if (mark) {
+      const count = document.createElement("span");
+      count.className = "lang-count";
+      count.textContent = mark;
+      button.appendChild(count);
+    }
+    items.appendChild(button);
+  };
+  if (ready.length) row("", t("Оригинал"), detailLang ? "" : "✓");
+  for (const [code, label] of translateLanguages) {
+    const has = ready.includes(code);
+    row(code, label, has ? (detailLang === code ? "✓" : t("готов")) : "");
+  }
+  el("meetTranslateLabel").textContent = detailLang
+    ? t("Перевод: {0}", translateLanguages.find(([c]) => c === detailLang)?.[1] || detailLang)
+    : t("Перевести ▾");
+}
+
+el("meetTranslate").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const menu = el("translateMenu");
+  menu.hidden = !menu.hidden;
+  if (menu.hidden) return;
+  const [ready, mb] = await invoke("summary_state");
+  el("translateHint").textContent = ready
+    ? t("Переводит локальная модель; долгая запись — минуты. Перевод идет в экспорт")
+    : t("Первый раз скачает модель ~{0} ГБ", (mb / 1024).toFixed(1));
+});
+el("translateMenu").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const button = e.target.closest("[data-lang]");
+  if (!button || detailId === null) return;
+  el("translateMenu").hidden = true;
+  const code = button.dataset.lang;
+  if (!code) {
+    detailLang = null;
+    renderDetail();
+    return;
+  }
+  const ready = await invoke("meeting_translations", { id: detailId });
+  if (ready.includes(code)) {
+    detailLang = code;
+    renderDetail();
+    return;
+  }
+  detailLang = code;
+  invoke("meeting_translate", { id: detailId, lang: code });
+});
+document.addEventListener("click", () => {
+  el("translateMenu").hidden = true;
+});
+
+listen("solflow-translation", (e) => {
+  if (e.payload !== detailId) return;
+  // Готовый перевод показывается сразу тем языком, который просили.
+  detailStructure = "";
+  renderDetail();
+});
+
+listen("solflow-translation-error", (e) => {
+  detailLang = null;
+  el("meetDetailStatus").textContent = t("Перевод: {0}", e.payload);
+  el("meetDetailStatus").hidden = false;
+});
 
 // --- разборы записи: решения и задачи, письмо, оглавление -------------------
 
@@ -2402,9 +2495,11 @@ function renderDetailWork(m) {
   }
 }
 
-/** Реплики в таймлайн — при полной отрисовке и по мере расшифровки. */
-function appendSegmentRows(m, box, segs) {
-  for (const s of segs) {
+/** Реплики в таймлайн — при полной отрисовке и по мере расшифровки.
+ * `offset` — номер первой из них в расшифровке: по нему берётся перевод. */
+function appendSegmentRows(m, box, segs, offset = 0) {
+  for (const [k, s] of segs.entries()) {
+    const shown = detailTranslation?.segments?.[offset + k] ?? s.text;
     // Подпись говорящего — на смене голоса, как в пьесе. Клик по ней даёт
     // человеку имя; имя уходит и в экспорт.
     if (s.spk !== null && s.spk !== undefined && s.spk !== detailLastSpeaker) {
@@ -2426,11 +2521,11 @@ function appendSegmentRows(m, box, segs) {
     const body = document.createElement("p");
     body.className = "segment-text";
     const needle = el("meetFind").value.trim();
-    if (needle && s.text.toLowerCase().includes(needle.toLowerCase())) {
-      body.appendChild(highlighted(s.text, needle));
+    if (needle && shown.toLowerCase().includes(needle.toLowerCase())) {
+      body.appendChild(highlighted(shown, needle));
       row.classList.add("found");
     } else {
-      body.textContent = s.text;
+      body.textContent = shown;
     }
     row.append(clock, body);
     box.appendChild(row);
@@ -2459,6 +2554,7 @@ async function renderDetail() {
     m.speakers, m.audio, m.seconds, m.imported,
     meetProjects.map((p) => [p.id, p.name]),
     el("meetFind").value,
+    detailLang,
   ]);
   if (structure === detailStructure) {
     renderDetailWork(m);
@@ -2467,7 +2563,7 @@ async function renderDetail() {
       if (segs.length > detailSegments.length) {
         const box = el("meetSegments");
         el("segHint")?.remove();
-        appendSegmentRows(m, box, segs.slice(detailSegments.length));
+        appendSegmentRows(m, box, segs.slice(detailSegments.length), detailSegments.length);
         detailSegments = segs;
       }
     }
@@ -2498,11 +2594,20 @@ async function renderDetail() {
   // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
   renderDetailWork(m);
 
+  // Перевод нужен до саммери и реплик: обе карточки берут из него текст.
+  detailTranslation = detailLang
+    ? await invoke("meeting_translation", { id: detailId, lang: detailLang })
+    : null;
+  // Перевода ещё нет и он не считается — язык сбрасываем; пока идёт
+  // перевод, выбранный язык ждёт результата.
+  if (detailLang && !detailTranslation && m.phase !== "translating") detailLang = null;
+
   renderSummary(m);
   renderExtras(m);
   renderQa(m);
 
   detailSegments = await invoke("meeting_segments", { id: detailId });
+  renderTranslateMenu(m);
   renderSpeakersPanel(m, detailSegments);
 
   const box = el("meetSegments");
@@ -2653,7 +2758,9 @@ el("meetProjectSelect").addEventListener("change", () => {
 });
 
 el("meetCopy").addEventListener("click", () => {
-  const text = detailSegments.map((s) => s.text).join("\n");
+  const text = detailSegments
+    .map((s, i) => detailTranslation?.segments?.[i] ?? s.text)
+    .join("\n");
   navigator.clipboard.writeText(text);
   showDetailStatus(t("Скопировано"));
 });
@@ -2672,6 +2779,7 @@ async function exportMeeting(format) {
       id: detailId,
       format,
       title: meetingTitle(m),
+      lang: detailTranslation ? detailLang : null,
     });
     showDetailStatus(t("Файл .{0} сохранен в Загрузки", format));
   } catch (err) {

@@ -962,6 +962,193 @@ pub fn classify_with(model: &std::path::Path, transcript_head: &str) -> Result<S
     Ok(kind.to_string())
 }
 
+/// Языки перевода: код → как назвать модели по-русски.
+pub const LANGUAGES: &[(&str, &str, &str)] = &[
+    ("en", "English", "английский"),
+    ("ru", "Русский", "русский"),
+    ("de", "Deutsch", "немецкий"),
+    ("es", "Español", "испанский"),
+    ("fr", "Français", "французский"),
+    ("it", "Italiano", "итальянский"),
+    ("pt", "Português", "португальский"),
+    ("tr", "Türkçe", "турецкий"),
+    ("uk", "Українська", "украинский"),
+    ("kk", "Қазақша", "казахский"),
+    ("zh", "中文", "китайский"),
+    ("ja", "日本語", "японский"),
+];
+
+pub fn language_name(code: &str) -> Option<&'static str> {
+    LANGUAGES.iter().find(|(c, _, _)| *c == code).map(|(_, _, ru)| *ru)
+}
+
+/// Сколько строк в одном заходе перевода: больше — модель начинает
+/// пропускать и склеивать строки, меньше — дольше из-за накладных.
+const TRANSLATE_BATCH: usize = 20;
+const TRANSLATE_TOKENS: c_int = 1800;
+
+/// Перевод строк расшифровки по номерам: модель отвечает столько же
+/// пронумерованных строк, код раскладывает их обратно. Пропущенную строку
+/// оставляем как есть — лучше кусок оригинала, чем дыра.
+pub fn translate_lines(
+    app: &AppHandle,
+    lang: &str,
+    lines: &[String],
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<Vec<String>> {
+    translate_lines_with(&model_path(app), lang, lines, progress, cancelled)
+}
+
+pub fn translate_lines_with(
+    model: &std::path::Path,
+    lang: &str,
+    lines: &[String],
+    progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>,
+) -> Result<Vec<String>> {
+    let name = language_name(lang).ok_or_else(|| anyhow!("неизвестный язык «{lang}»"))?;
+    let llm = load_path(model, 8192)?;
+    let system = format!(
+        "Ты переводчик. Тебе дают пронумерованные строки автоматической расшифровки речи \
+         (в них бывают ошибки распознавания и разговорные обороты). Переведи каждую строку \
+         на {name} язык, естественно и по смыслу. Ответь только переведёнными строками: \
+         столько же строк, в том же порядке, каждая начинается с того же номера и точки. \
+         Ничего не добавляй, не объединяй, не разбивай и не пропускай строки: если в строке \
+         несколько предложений, в ответе они остаются одной строкой под тем же номером. /no_think"
+    );
+    let batches = lines.chunks(TRANSLATE_BATCH).count().max(1);
+    let mut out = Vec::with_capacity(lines.len());
+    for (b, chunk) in lines.chunks(TRANSLATE_BATCH).enumerate() {
+        let from = (b * 100 / batches) as u8;
+        let to = ((b + 1) * 100 / batches) as u8;
+        let slice = (from, to.max(from + 1).min(100));
+        out.extend(translate_chunk(&llm, &system, chunk, slice, &progress, &cancelled)?);
+    }
+    Ok(out)
+}
+
+/// Пачка строк одним заходом. Если модель ответила не тем числом строк —
+/// разбила длинную реплику надвое, и всё после неё съехало бы на одну, —
+/// пачка делится пополам и переводится заново, вплоть до одной строки.
+fn translate_chunk(
+    llm: &Llm,
+    system: &str,
+    chunk: &[String],
+    slice: (u8, u8),
+    progress: &(impl Fn(u8) + Send + Sync + Clone + 'static),
+    cancelled: &Arc<AtomicBool>,
+) -> Result<Vec<String>> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(anyhow!("отменено"));
+    }
+    let numbered = chunk
+        .iter()
+        .enumerate()
+        .map(|(i, l)| format!("{}. {}", i + 1, l.trim()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let raw = generate(
+        llm,
+        &numbered,
+        system,
+        TRANSLATE_TOKENS,
+        slice,
+        progress.clone(),
+        cancelled.clone(),
+    )?;
+    let (parsed, seen) = parse_numbered(&raw, chunk.len());
+    let complete = seen == chunk.len() && parsed.iter().all(|p| p.is_some());
+    log::debug!(
+        "перевод: {} строк, ответ на {seen}, целых {}",
+        chunk.len(),
+        parsed.iter().filter(|p| p.is_some()).count()
+    );
+    if complete {
+        return Ok(parsed.into_iter().map(|p| p.unwrap()).collect());
+    }
+    if chunk.len() == 1 {
+        // Одну строку модель могла разбить на несколько — склеиваем всё,
+        // что пронумеровала; если не ответила вовсе — оставляем оригинал.
+        let joined = parse_all_numbered(&raw).join(" ");
+        return Ok(vec![if joined.is_empty() { chunk[0].clone() } else { joined }]);
+    }
+    let (left, right) = chunk.split_at(chunk.len() / 2);
+    let mid = slice.0 + (slice.1 - slice.0) / 2;
+    let mut out = translate_chunk(llm, system, left, (slice.0, mid), progress, cancelled)?;
+    out.extend(translate_chunk(llm, system, right, (mid, slice.1), progress, cancelled)?);
+    Ok(out)
+}
+
+/// Строки «N. текст» → по номерам; чего нет — None. Второе число —
+/// сколько пронумерованных строк было в ответе вообще, включая лишние.
+pub fn parse_numbered(raw: &str, n: usize) -> (Vec<Option<String>>, usize) {
+    let mut out = vec![None; n];
+    let mut seen = 0;
+    let mut current: Option<usize> = None;
+    for line in raw.lines() {
+        let line = line.trim().trim_start_matches(['-', '•', '*', ' ']);
+        let digits: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+        let rest = &line[digits.len()..];
+        let numbered = !digits.is_empty()
+            && (rest.starts_with(". ") || rest.starts_with('.') || rest.starts_with(") "));
+        if numbered {
+            seen += 1;
+            let idx: usize = digits.parse().unwrap_or(0);
+            let text = rest.trim_start_matches(['.', ')', ' ']).trim();
+            if idx >= 1 && idx <= n && out[idx - 1].is_none() {
+                out[idx - 1] = Some(text.to_string());
+                current = Some(idx - 1);
+            } else {
+                current = None;
+            }
+            continue;
+        }
+        // Продолжение предыдущей строки без номера — доклеиваем.
+        if let Some(i) = current {
+            if !line.is_empty() {
+                if let Some(t) = out[i].as_mut() {
+                    t.push(' ');
+                    t.push_str(line);
+                }
+            }
+        }
+    }
+    (out, seen)
+}
+
+/// Все пронумерованные строки ответа по порядку, без номеров.
+fn parse_all_numbered(raw: &str) -> Vec<String> {
+    raw.lines()
+        .filter_map(|line| {
+            let line = line.trim().trim_start_matches(['-', '•', '*', ' ']);
+            let digits: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let rest = &line[digits.len()..];
+            if digits.is_empty() || !(rest.starts_with('.') || rest.starts_with(')')) {
+                return None;
+            }
+            let text = rest.trim_start_matches(['.', ')', ' ']).trim();
+            (!text.is_empty()).then(|| text.to_string())
+        })
+        .collect()
+}
+
+/// Перевод связного текста (саммери, разбор) с сохранением разметки.
+pub fn translate_text(app: &AppHandle, lang: &str, text: &str) -> Result<String> {
+    translate_text_with(&model_path(app), lang, text)
+}
+
+pub fn translate_text_with(model: &std::path::Path, lang: &str, text: &str) -> Result<String> {
+    let name = language_name(lang).ok_or_else(|| anyhow!("неизвестный язык «{lang}»"))?;
+    let llm = load_path(model, N_CTX)?;
+    let system = format!(
+        "Ты переводчик. Переведи текст на {name} язык, естественно и точно. Сохрани разметку: \
+         строки, начинающиеся с «##», остаются заголовками, строки с «- » — пунктами, время в \
+         квадратных скобках не меняй. Ответь только переводом, без пояснений. /no_think"
+    );
+    generate(&llm, text, &system, MAX_TOKENS, (0, 100), |_| {}, Arc::new(AtomicBool::new(false)))
+}
+
 /// Короткое название записи по началу расшифровки. Контекст маленький —
 /// ради пары слов не разворачиваем гигабайтный KV-кэш.
 pub fn title(app: &AppHandle, transcript_head: &str) -> Result<String> {
@@ -1065,6 +1252,20 @@ mod tests {
             super::assemble_quotes(&["[30:30] Иван: «Я побил рекорд»\n\"Я не верю\" [40:00]".to_string()]),
             "- Иван: «Я побил рекорд» [30:30]\n- \"Я не верю\" [40:00]"
         );
+    }
+
+    #[test]
+    fn numbered_lines_parse_and_glue() {
+        let raw = "1. Hello there\n2) Second line\ncontinues here\n\n4. Fourth";
+        let (got, seen) = super::parse_numbered(raw, 4);
+        assert_eq!(seen, 3);
+        assert_eq!(got[0].as_deref(), Some("Hello there"));
+        assert_eq!(got[1].as_deref(), Some("Second line continues here"));
+        assert_eq!(got[2], None);
+        assert_eq!(got[3].as_deref(), Some("Fourth"));
+        // Лишняя строка — признак сдвига: видно по счётчику.
+        let (_, seen) = super::parse_numbered("1. a\n2. b\n3. c", 2);
+        assert_eq!(seen, 3);
     }
 
     #[test]

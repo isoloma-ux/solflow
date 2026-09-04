@@ -91,6 +91,20 @@ pub struct QaItem {
     pub at: i64,
 }
 
+/// Перевод расшифровки и саммери на один язык — translation-<код>.json
+/// рядом со встречей. `count` — сколько реплик было в расшифровке: после
+/// повторной расшифровки перевод устаревает и не показывается.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Translation {
+    pub lang: String,
+    #[serde(default)]
+    pub count: usize,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub segments: Vec<String>,
+}
+
 /// Разборы записи моделью и её тип — в extras.json рядом со встречей,
 /// как и вопросы: десктоп считает, десктоп и показывает.
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -270,6 +284,113 @@ fn save_qa(app: &AppHandle, id: i64, items: &[QaItem]) {
 
 pub fn clear_qa(app: &AppHandle, id: i64) {
     let _ = std::fs::remove_file(dir(app, id).join("qa.json"));
+}
+
+fn translation_file(app: &AppHandle, id: i64, lang: &str) -> PathBuf {
+    dir(app, id).join(format!("translation-{lang}.json"))
+}
+
+pub fn load_translation(app: &AppHandle, id: i64, lang: &str) -> Option<Translation> {
+    let raw = std::fs::read_to_string(translation_file(app, id, lang)).ok()?;
+    let t: Translation = serde_json::from_str(&raw).ok()?;
+    // Перевод от прежней расшифровки — не показываем: реплики не совпадут.
+    if t.count != load_transcript(app, id).len() {
+        return None;
+    }
+    Some(t)
+}
+
+/// Коды языков, на которые запись уже переведена (и перевод актуален).
+pub fn translations(app: &AppHandle, id: i64) -> Vec<String> {
+    let count = load_transcript(app, id).len();
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir(app, id)) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let Some(code) = name
+                .strip_prefix("translation-")
+                .and_then(|n| n.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let fresh = std::fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Translation>(&raw).ok())
+                .map(|t| t.count == count)
+                .unwrap_or(false);
+            if fresh {
+                out.push(code.to_string());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+pub fn delete_translation(app: &AppHandle, id: i64, lang: &str) {
+    let _ = std::fs::remove_file(translation_file(app, id, lang));
+}
+
+/// Перевод записи на язык — той же очередью, что саммери.
+pub fn translate(app: &AppHandle, id: i64, lang: String) {
+    if crate::summary::language_name(&lang).is_none() {
+        return;
+    }
+    llm_job(app, id, "solflow-translation-error", "перевод", move |app, id, flag| {
+        translate_job(app, id, &lang, flag)
+    });
+}
+
+fn translate_job(app: &AppHandle, id: i64, lang: &str, flag: Arc<AtomicBool>) -> Result<()> {
+    ensure_llm(app, id, &flag)?;
+    let state = app.state::<MeetingState>();
+    state.phase.lock().unwrap().insert(id, "translating");
+    state.progress.lock().unwrap().insert(id, 0);
+    notify(app);
+
+    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    let segments = load_transcript(app, id);
+    if segments.is_empty() {
+        return Err(anyhow!("расшифровки ещё нет"));
+    }
+    let lines: Vec<String> = segments.iter().map(|s| s.text.clone()).collect();
+
+    // Реплики — почти вся работа; саммери — короткий хвост, поэтому
+    // полоса до 95% идёт по репликам.
+    let progress_app = app.clone();
+    let translated = crate::summary::translate_lines(
+        app,
+        lang,
+        &lines,
+        move |pct| {
+            let state = progress_app.state::<MeetingState>();
+            state.progress.lock().unwrap().insert(id, (pct as u32 * 95 / 100) as u8);
+            notify(&progress_app);
+        },
+        flag.clone(),
+    )?;
+    let summary = if meta.summary.trim().is_empty() {
+        String::new()
+    } else {
+        match crate::summary::translate_text(app, lang, &meta.summary) {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("саммери не перевелось: {e}");
+                String::new()
+            }
+        }
+    };
+
+    let t = Translation {
+        lang: lang.to_string(),
+        count: segments.len(),
+        summary,
+        segments: translated,
+    };
+    std::fs::write(translation_file(app, id, lang), serde_json::to_string(&t)?)?;
+    use tauri::Emitter;
+    let _ = app.emit("solflow-translation", id);
+    Ok(())
 }
 
 pub fn load_extras(app: &AppHandle, id: i64) -> Extras {
@@ -2455,6 +2576,7 @@ pub fn export(
     title: &str,
     reveal: bool,
     target: Target,
+    lang: Option<&str>,
 ) -> Result<String> {
     // Сам звук — отдельная ветка: он есть и у нерасшифрованной встречи,
     // и собирать ему нечего — WAV копируется как лежит.
@@ -2471,7 +2593,15 @@ pub fn export(
         return Ok(path.to_string_lossy().to_string());
     }
 
-    let meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    let mut meta = load_meta(app, id).ok_or_else(|| anyhow!("встреча пропала"))?;
+    // Выгрузка перевода: реплики и саммери подменяются переведёнными,
+    // время и имена говорящих — те же.
+    let translation = lang.and_then(|l| load_translation(app, id, l));
+    if let Some(t) = &translation {
+        if !t.summary.is_empty() {
+            meta.summary = t.summary.clone();
+        }
+    }
 
     // Только саммери — в письмо или заметку, без двух часов расшифровки.
     if let Some(ext) = format.strip_prefix("summary-") {
@@ -2505,9 +2635,14 @@ pub fn export(
         return Ok(path.to_string_lossy().to_string());
     }
 
-    let segments = load_transcript(app, id);
+    let mut segments = load_transcript(app, id);
     if segments.is_empty() {
         return Err(anyhow!("расшифровки ещё нет"));
+    }
+    if let Some(t) = &translation {
+        for (seg, text) in segments.iter_mut().zip(t.segments.iter()) {
+            seg.text = text.clone();
+        }
     }
     let duration = duration_label(meta.seconds);
     let path = export_target_path(app, target, &safe_file_name(title), format)?;
