@@ -97,6 +97,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingFind: String? = null
     private var pendingIndex: Int? = null
     private var player: MediaPlayer? = null
+    private var meetingPlayingId: Long? = null
+    private var meetingPlayerReady = false
+    private var meetingPlaybackJob: kotlinx.coroutines.Job? = null
+    private var meetingSpeed = 1f
+    private var nextReviewIndex = -1
 
     /** Что уже показано в таймлайне — чтобы не перечитывать JSON зря. */
     private var shownTranscript: Pair<Long, String>? = null
@@ -201,7 +206,8 @@ class MainActivity : AppCompatActivity() {
         ui.pages.onSwipe = { forward ->
             if (page == Page.MEETINGS && openMeetingId != null) {
                 if (!forward) {
-                    openMeetingId = null
+                    stopPlayback()
+            openMeetingId = null
                     renderMeetings()
                 }
             } else {
@@ -224,7 +230,8 @@ class MainActivity : AppCompatActivity() {
                     ui.pageMeetings.meetingTranscriptSheet.visibility == View.VISIBLE ->
                     hideTranscriptSheet()
                 page == Page.MEETINGS && openMeetingId != null -> {
-                    openMeetingId = null
+                    stopPlayback()
+            openMeetingId = null
                     renderMeetings()
                 }
                 page != Page.DICTATION -> show(Page.DICTATION)
@@ -261,6 +268,13 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(43, "0.9.7", R.string.whatsnew_body_097),
+            Triple(42, "0.9.6", R.string.whatsnew_body_096),
+            Triple(41, "0.9.5", R.string.whatsnew_body_095),
+            Triple(40, "0.9.4", R.string.whatsnew_body_094),
+            Triple(39, "0.9.3", R.string.whatsnew_body_093),
+            Triple(38, "0.9.2", R.string.whatsnew_body_092),
+            Triple(37, "0.9.1", R.string.whatsnew_body_091),
             Triple(36, "0.9.0", R.string.whatsnew_body_090),
             Triple(35, "0.8.0", R.string.whatsnew_body_080),
             Triple(34, "0.7.1", R.string.whatsnew_body_071),
@@ -521,6 +535,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun show(next: Page) {
         val previous = page
+        if (previous != next) stopPlayback()
         page = next
         // Открыли встречи — заглянем на Диск, если давно не смотрели: свежее
         // саммери с компьютера должно быть перед глазами без ожидания часа.
@@ -1135,7 +1150,11 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.transcribe_cancelled, Toast.LENGTH_SHORT).show()
             },
         )
-        segments = SegmentAdapter { renameSpeaker(it) }
+        segments = SegmentAdapter(
+            onSpeakerTap = { renameSpeaker(it) },
+            onTimeTap = { playMeetingAt(it) },
+            onAssign = { index, expected -> assignSegmentSpeaker(index, expected) },
+        )
         val m = ui.pageMeetings
         m.meetingList.layoutManager = LinearLayoutManager(this)
         m.meetingList.adapter = meetings
@@ -1173,6 +1192,7 @@ class MainActivity : AppCompatActivity() {
         }
         m.meetingLink.setOnClickListener { askLink() }
         m.meetingBack.setOnClickListener {
+            stopPlayback()
             openMeetingId = null
             renderMeetings()
         }
@@ -1187,6 +1207,33 @@ class MainActivity : AppCompatActivity() {
             renderMeetings()
         }
         m.meetingMore.setOnClickListener { meetingActions() }
+        m.meetingListen.setOnClickListener { showTranscriptSheet(); playMeetingAt(null) }
+        m.meetingPlay.setOnClickListener { playMeetingAt(null) }
+        m.meetingRewind.setOnClickListener {
+            if (meetingPlayerReady) player?.let { it.seekTo((it.currentPosition - 10_000).coerceAtLeast(0)) }
+        }
+        m.meetingSpeed.setOnClickListener {
+            val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+            meetingSpeed = speeds[(speeds.indexOf(meetingSpeed) + 1) % speeds.size]
+            m.meetingSpeed.text = "${meetingSpeed}×"
+            if (meetingPlayerReady) player?.let {
+                val playing = it.isPlaying
+                it.playbackParams = it.playbackParams.setSpeed(meetingSpeed)
+                if (!playing) it.pause()
+            }
+        }
+        m.meetingSeek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: android.widget.SeekBar?, value: Int, fromUser: Boolean) {
+                if (fromUser && meetingPlayerReady) player?.let { it.seekTo((it.duration.toLong() * value / 1000).toInt()) }
+            }
+            override fun onStartTrackingTouch(bar: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(bar: android.widget.SeekBar?) = Unit
+        })
+        m.meetingReview.setOnClickListener {
+            val candidates = detailSegments.indices.filter { detailSegments[it].speaker == null }
+            val index = candidates.firstOrNull { it > nextReviewIndex } ?: candidates.firstOrNull()
+            if (index != null) { nextReviewIndex = index; m.meetingTimeline.scrollToPosition(index) }
+        }
         m.meetingSummaryBox.setOnClickListener { showSummarySheet() }
         m.meetingSummaryOpen.setOnClickListener { showSummarySheet() }
         m.meetingSummaryShare.setOnClickListener { shareSummary() }
@@ -1247,6 +1294,8 @@ class MainActivity : AppCompatActivity() {
      * [renderMeetings], до этого прокручивать нечего.
      */
     private fun openMeeting(id: Long, query: String = "", index: Int? = null) {
+        if (openMeetingId != id) stopPlayback()
+        nextReviewIndex = -1
         openMeetingId = id
         pendingFind = query
         pendingIndex = index
@@ -1715,6 +1764,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (open == null) {
+            stopPlayback()
             openMeetingId = null
             // Ушли из встречи — поиск по её тексту больше не нужен, а
             // таймлайн при следующем открытии нужно перечитать заново.
@@ -1775,6 +1825,9 @@ class MainActivity : AppCompatActivity() {
         // Встреча могла приехать по синхронизации без звука: расшифровать её
         // здесь нечем, и кнопку заменяет объяснение.
         val hasAudio = MeetingStore.audioFile(this, open.id).exists()
+        if (meetingPlayingId != null && meetingPlayingId != open.id) stopPlayback()
+        m.meetingPlayerBox.visibility = visibility(hasAudio)
+        m.meetingListen.visibility = visibility(hasAudio)
         m.meetingState.text = when {
             working -> getString(phaseRes!!, percent)
             open.state == Meeting.STATE_FAILED -> getString(R.string.meeting_state_failed)
@@ -1810,7 +1863,7 @@ class MainActivity : AppCompatActivity() {
 
         // Таймлайн перечитывается только когда мог измениться: JSON у
         // двухчасовой встречи немаленький, а перерисовка идёт каждые 600 мс.
-        val key = open.id to open.state + (percent ?: -1) + "s${open.speakers}"
+        val key = open.id to open.state + (percent ?: -1) + "s${open.speakers}u${open.updated}"
         if (shownTranscript != key) {
             // Открыли другую встречу — RecyclerView хранит прокрутку старой.
             val switched = shownTranscript?.first != open.id
@@ -1823,6 +1876,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        m.meetingReview.visibility = visibility(open.speakers > 0 && detailSegments.any { it.speaker == null })
         // Карточка расшифровки: первые реплики, целиком — листом.
         m.meetingTranscriptBox.visibility = visibility(detailSegments.isNotEmpty())
         val preview = detailSegments.take(4).joinToString(" ") { it.text }
@@ -1947,12 +2001,15 @@ class MainActivity : AppCompatActivity() {
         val id = openMeetingId ?: return
         val sheet = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.sheet_speakers, null)
-        view.findViewById<TextView>(R.id.sheetHint).visibility =
-            visibility(!Diarizer.modelsReady(this))
+        view.findViewById<TextView>(R.id.sheetHint).apply {
+            visibility = View.VISIBLE
+            text = (if (Diarizer.modelsReady(this@MainActivity)) "" else text.toString() + "\n\n") + getString(R.string.speaker_rerun_hint)
+        }
 
         val box = view.findViewById<LinearLayout>(R.id.sheetOptions)
         val options = listOf(
             R.string.diarize_auto to 0,
+            R.string.diarize_one to 1,
             R.string.diarize_two to 2,
             R.string.diarize_three to 3,
             R.string.diarize_four to 4,
@@ -1977,6 +2034,81 @@ class MainActivity : AppCompatActivity() {
         sheet.show()
     }
 
+    private fun assignSegmentSpeaker(index: Int, expected: MeetingSegment) {
+        val id = openMeetingId ?: return
+        val meeting = MeetingStore.load(this, id) ?: return
+        if (MeetingService.progress.containsKey(id)) return
+        val options = listOf(getString(R.string.speaker_unknown)) +
+            (0 until meeting.speakers).map { MeetingStore.speakerLabel(this, meeting, it) }
+        MaterialAlertDialogBuilder(this).setTitle(R.string.speaker_assign)
+            .setItems(options.toTypedArray()) { _, chosen ->
+                val saved = runCatching {
+                    check(!MeetingService.progress.containsKey(id))
+                    val current = MeetingStore.loadTranscript(this, id).toMutableList()
+                    check(current.getOrNull(index) == expected)
+                    TranscriptFiles.Draft(MeetingStore.dir(this, id))
+                    current[index] = expected.copy(speaker = (chosen - 1).takeIf { it >= 0 }, voices = emptyList(), speakerReview = chosen == 0)
+                    MeetingStore.saveTranscript(this, id, current)
+                    // Touch metadata so open windows and sync see the correction.
+                    MeetingStore.load(this, id)?.let { MeetingStore.save(this, it) }
+                }
+                shownTranscript = null
+                renderMeetings()
+                Snackbar.make(ui.root, if (saved.isSuccess) R.string.speaker_saved else R.string.speaker_save_failed, Snackbar.LENGTH_LONG).show()
+            }.setNegativeButton(R.string.cancel, null).show()
+    }
+
+    private fun playMeetingAt(seconds: Float?) {
+        val id = openMeetingId ?: return
+        val file = MeetingStore.audioFile(this, id)
+        if (!file.isFile) {
+            Snackbar.make(ui.root, R.string.history_no_audio, Snackbar.LENGTH_SHORT).show()
+            return
+        }
+        if (meetingPlayingId == id) {
+            if (!meetingPlayerReady) return
+            player?.let {
+                if (seconds != null) { it.seekTo((seconds * 1000).toInt()); it.start() }
+                else if (it.isPlaying) it.pause() else it.start()
+            }
+            return
+        }
+        stopPlayback()
+        meetingPlayingId = id
+        try {
+            val next = MediaPlayer()
+            player = next
+            next.setDataSource(file.absolutePath)
+            next.setOnErrorListener { _, _, _ ->
+                stopPlayback()
+                Snackbar.make(ui.root, R.string.meeting_play_failed, Snackbar.LENGTH_LONG).show()
+                true
+            }
+            next.setOnPreparedListener { ready ->
+                if (player !== ready || meetingPlayingId != id) return@setOnPreparedListener
+                meetingPlayerReady = true
+                ready.playbackParams = ready.playbackParams.setSpeed(meetingSpeed)
+                ready.seekTo(((seconds ?: 0f) * 1000).toInt())
+                ready.start()
+                meetingPlaybackJob = lifecycleScope.launch {
+                    while (meetingPlayingId == id && meetingPlayerReady) {
+                        val m = ui.pageMeetings
+                        m.meetingPosition.text = MeetingStore.clockLabel(ready.currentPosition / 1000f)
+                        segments.setPlaybackTime(ready.currentPosition / 1000f)
+                        m.meetingSeek.progress = (ready.currentPosition.toLong() * 1000 / ready.duration.coerceAtLeast(1)).toInt()
+                        m.meetingPlay.setText(if (ready.isPlaying) R.string.meeting_pause_audio else R.string.meeting_play)
+                        delay(250)
+                    }
+                }
+            }
+            next.setOnCompletionListener { stopPlayback() }
+            next.prepareAsync()
+        } catch (_: Exception) {
+            stopPlayback()
+            Snackbar.make(ui.root, R.string.meeting_play_failed, Snackbar.LENGTH_LONG).show()
+        }
+    }
+
     /** Тап по заголовку говорящего в таймлайне — дать человеку имя. */
     private fun renameSpeaker(speaker: Int) {
         val meeting = openMeetingId?.let { MeetingStore.load(this, it) } ?: return
@@ -1990,7 +2122,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.save) { _, _ ->
                 val name = input.text.toString().trim()
                 val names = meeting.speakerNames.toMutableMap()
-                if (name.isEmpty()) names.remove(speaker) else names[speaker] = name
+                names[speaker] = name
                 MeetingStore.save(this, meeting.copy(speakerNames = names))
                 renderMeetings()
             }
@@ -2035,6 +2167,9 @@ class MainActivity : AppCompatActivity() {
                 if (s.speaker != null && s.speaker != previous) {
                     appendLine(MeetingStore.speakerLabel(this@MainActivity, meeting, s.speaker))
                 }
+                if (s.speaker == null && (s.speakerReview || meeting.speakers > 0 || s.voices.isNotEmpty())) {
+                    appendLine(getString(if (s.voices.size > 1) R.string.speaker_mixed else R.string.speaker_unknown))
+                }
                 previous = s.speaker
                 appendLine("${MeetingStore.clockLabel(s.start)}  ${s.text}")
             }
@@ -2063,6 +2198,7 @@ class MainActivity : AppCompatActivity() {
                 add(SheetOption("export", getString(R.string.meeting_export), R.drawable.ic_download))
                 add(SheetOption.DIVIDER)
                 add(SheetOption("transcript", getString(R.string.transcript_title), R.drawable.ic_text_lines))
+                if (meeting.mindmap != null) add(SheetOption("mindmap", getString(R.string.recording_map), R.drawable.ic_mindmap))
                 if (meeting.summary.isNotBlank()) {
                     add(SheetOption("summary", getString(R.string.meeting_summary), R.drawable.ic_text_lines))
                 }
@@ -2086,6 +2222,7 @@ class MainActivity : AppCompatActivity() {
                 "share" -> shareMeetingText()
                 "export" -> exportSheet()
                 "transcript" -> showTranscriptSheet()
+                "mindmap" -> startActivity(Intent(this, RecordingMapActivity::class.java).putExtra("meeting",meeting.id))
                 "summary" -> showSummarySheet()
                 "speakers" -> chooseDiarize()
                 "audio" -> saveMeetingAudio()
@@ -2157,6 +2294,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideTranscriptSheet(animate: Boolean = true) {
+        if (meetingPlayingId != null) stopPlayback()
         val sheet = ui.pageMeetings.meetingTranscriptSheet
         if (sheet.visibility != View.VISIBLE) return
         if (animate && motionOn()) {
@@ -2275,6 +2413,9 @@ class MainActivity : AppCompatActivity() {
                 if (s.speaker != null && s.speaker != previous) {
                     if (isNotEmpty()) appendLine()
                     appendLine(MeetingStore.speakerLabel(this@MainActivity, meeting, s.speaker))
+                }
+                if (s.speaker == null && (s.speakerReview || meeting.speakers > 0 || s.voices.isNotEmpty())) {
+                    appendLine(getString(if (s.voices.size > 1) R.string.speaker_mixed else R.string.speaker_unknown))
                 }
                 previous = s.speaker
                 appendLine("${MeetingStore.clockLabel(s.start)}  ${s.text}")
@@ -2566,6 +2707,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopPlayback() {
+        meetingPlaybackJob?.cancel()
+        meetingPlaybackJob = null
+        meetingPlayingId = null
+        meetingPlayerReady = false
+        if (::segments.isInitialized) segments.setPlaybackTime(null)
+        if (::ui.isInitialized) ui.pageMeetings.meetingPlay.setText(R.string.meeting_play)
         player?.let {
             runCatching { it.stop() }
             it.release()

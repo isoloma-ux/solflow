@@ -133,6 +133,11 @@ impl Engine {
     /// Распознаёт запись целиком: длинная режется по паузам, куски
     /// склеиваются через пробел, чистка — после склейки.
     pub fn transcribe_with(&self, pcm: &[f32], drop_parasites: bool) -> Result<String> {
+        Ok(cleanup::clean_with(&self.transcribe_raw(pcm)?, drop_parasites))
+    }
+
+    /// Joined recognition before any cleanup, retained in dictation history.
+    pub fn transcribe_raw(&self, pcm: &[f32]) -> Result<String> {
         let mut guard = self.session.lock().unwrap();
         let session = guard.as_mut().ok_or_else(|| anyhow!("модель не загружена"))?;
 
@@ -146,6 +151,6 @@ impl Engine {
                 parts.push(text);
             }
         }
-        Ok(cleanup::clean_with(&parts.join(" "), drop_parasites))
+        Ok(parts.join(" "))
     }
 }

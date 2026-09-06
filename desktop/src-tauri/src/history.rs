@@ -9,12 +9,20 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+static WRITE_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Entry {
     /// Момент диктовки в миллисекундах — он же ключ для удаления и имя
     /// файла со звуком.
     pub at: i64,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub punctuation_status: Option<String>,
     /// Есть ли рядом звук, который можно переслушать.
     #[serde(default)]
     pub audio: bool,
@@ -45,27 +53,42 @@ fn path(app: &AppHandle) -> PathBuf {
 }
 
 pub fn all(app: &AppHandle) -> Vec<Entry> {
-    std::fs::read_to_string(path(app))
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+    read_for_update(app).unwrap_or_default()
 }
 
-fn save(app: &AppHandle, entries: &[Entry]) {
+fn read_for_update(app: &AppHandle) -> Result<Vec<Entry>, String> {
+    match std::fs::read(path(app)) {
+        Ok(raw) => serde_json::from_slice(&raw).map_err(|e| e.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e.to_string()),
+    }.map_err(|e| {
+        let message = format!("{}: {e}", crate::lang::t(app, "Не удалось прочитать историю"));
+        let _ = app.emit("solflow-history-failed", &message);
+        message
+    })
+}
+
+fn save(app: &AppHandle, entries: &[Entry]) -> Result<(), String> {
     let file = path(app);
     if let Some(parent) = file.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let _ = std::fs::write(file, serde_json::to_string_pretty(entries).unwrap());
+    let bytes = serde_json::to_vec_pretty(entries).map_err(|e| e.to_string())?;
+    if let Err(e) = crate::transcript_store::atomic_write(&file, &bytes) {
+        let message = format!("{}: {e}", crate::lang::t(app, "Не удалось сохранить историю"));
+        let _ = app.emit("solflow-history-failed", &message);
+        return Err(message);
+    }
     let _ = app.emit("solflow-history", ());
+    Ok(())
 }
 
 /// Новая запись идёт наверх; пустой текст не сохраняем. Звук кладём
 /// рядом отдельным WAV — из него потом играет плеер и идёт повторная
 /// расшифровка.
-pub fn add(app: &AppHandle, text: &str, pcm: Option<&[f32]>) {
+pub fn add(app: &AppHandle, text: &str, original: &str, pcm: Option<&[f32]>) -> Result<Option<i64>, String> {
     if text.trim().is_empty() {
-        return;
+        return Ok(None);
     }
     let settings = app
         .state::<crate::AppState>()
@@ -74,8 +97,9 @@ pub fn add(app: &AppHandle, text: &str, pcm: Option<&[f32]>) {
         .unwrap()
         .clone();
     if settings.history_retention == "never" {
-        return;
+        return Ok(None);
     }
+    let _guard = WRITE_GATE.lock().unwrap();
 
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -91,18 +115,22 @@ pub fn add(app: &AppHandle, text: &str, pcm: Option<&[f32]>) {
         }
     }
 
-    let mut entries = all(app);
+    let mut entries = read_for_update(app)?;
     entries.insert(
         0,
         Entry {
             at,
             text: text.to_string(),
+            original_text: Some(original.to_string()),
+            previous_text: None,
+            punctuation_status: None,
             audio: has_audio,
             seconds,
         },
     );
     prune(app, &mut entries, &settings);
-    save(app, &entries);
+    save(app, &entries)?;
+    Ok(Some(at))
 }
 
 /// Чистка по правилам настроек: сначала по сроку, потом по количеству.
@@ -143,31 +171,43 @@ pub fn apply_limits(app: &AppHandle) {
         clear(app);
         return;
     }
-    let mut entries = all(app);
+    let _guard = WRITE_GATE.lock().unwrap();
+    let Ok(mut entries) = read_for_update(app) else { return; };
     prune(app, &mut entries, &settings);
-    save(app, &entries);
+    let _ = save(app, &entries);
 }
 
 pub fn remove(app: &AppHandle, at: i64) {
-    let entries: Vec<Entry> = all(app).into_iter().filter(|e| e.at != at).collect();
+    let _guard = WRITE_GATE.lock().unwrap();
+    let Ok(entries) = read_for_update(app) else { return; };
+    let entries: Vec<Entry> = entries.into_iter().filter(|e| e.at != at).collect();
     let _ = std::fs::remove_file(audio_path(app, at));
-    save(app, &entries);
+    let _ = save(app, &entries);
 }
 
 pub fn clear(app: &AppHandle) {
-    for entry in all(app) {
+    let _guard = WRITE_GATE.lock().unwrap();
+    let Ok(entries) = read_for_update(app) else { return; };
+    for entry in entries {
         let _ = std::fs::remove_file(audio_path(app, entry.at));
     }
-    save(app, &[]);
+    let _ = save(app, &[]);
 }
 
 /// Заменяет текст записи — после повторной расшифровки другой моделью.
-pub fn update_text(app: &AppHandle, at: i64, text: &str) {
-    let mut entries = all(app);
+pub fn update_text(app: &AppHandle, at: i64, text: &str, original: &str, status: &str, keep_previous: bool) -> Result<(), String> {
+    let _guard = WRITE_GATE.lock().unwrap();
+    let mut entries = read_for_update(app)?;
     if let Some(entry) = entries.iter_mut().find(|e| e.at == at) {
+        if keep_previous && entry.text != text {
+            entry.previous_text = Some(entry.text.clone());
+        }
         entry.text = text.to_string();
+        entry.original_text = Some(original.to_string());
+        entry.punctuation_status = Some(status.to_string());
+        save(app, &entries)?;
     }
-    save(app, &entries);
+    Ok(())
 }
 
 /// Сигнал начала записи — тот же pop, что в десктопном Handy. Играет его

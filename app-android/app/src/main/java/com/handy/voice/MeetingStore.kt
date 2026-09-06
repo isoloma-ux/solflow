@@ -17,6 +17,8 @@ data class MeetingSegment(
     val end: Float,
     val text: String,
     val speaker: Int? = null,
+    val voices: List<Int> = emptyList(),
+    val speakerReview: Boolean = false,
 )
 
 data class Meeting(
@@ -34,6 +36,7 @@ data class Meeting(
     val project: String? = null,
     /** Саммери от локальной языковой модели; пусто — его ещё не делали. */
     val summary: String = "",
+    val mindmap: String? = null,
     /**
      * Момент последнего сохранения (millis) — по нему синхронизация решает,
      * чья правка новее, когда встречу поменяли на двух устройствах.
@@ -114,7 +117,7 @@ object MeetingStore {
      * изменении и уезжает на Диск с задержкой.
      */
     fun save(context: Context, meeting: Meeting) {
-        metaFile(context, meeting.id).writeText(
+        TranscriptFiles.atomicWrite(metaFile(context, meeting.id),
             JSONObject().apply {
                 put("title", meeting.title)
                 put("at", meeting.at)
@@ -127,8 +130,9 @@ object MeetingStore {
                 })
                 meeting.project?.let { put("project", it) }
                 if (meeting.summary.isNotEmpty()) put("summary", meeting.summary)
+                meeting.mindmap?.let { put("mindmap", JSONObject(it)) }
                 put("updated", System.currentTimeMillis())
-            }.toString()
+            }.toString().toByteArray(Charsets.UTF_8)
         )
         SyncManager.touch(context)
     }
@@ -157,6 +161,7 @@ object MeetingStore {
                 project = if (o.isNull("project")) null
                 else o.optString("project").takeIf { it.isNotBlank() },
                 summary = if (o.isNull("summary")) "" else o.optString("summary"),
+                mindmap = o.optJSONObject("mindmap")?.toString(),
                 updated = o.optLong("updated", 0),
             )
         }.getOrNull()
@@ -177,6 +182,11 @@ object MeetingStore {
     }
 
     fun saveTranscript(context: Context, id: Long, segments: List<MeetingSegment>) {
+        TranscriptFiles.atomicWrite(transcriptFile(context, id), encodeTranscript(segments))
+        SyncManager.touch(context)
+    }
+
+    fun encodeTranscript(segments: List<MeetingSegment>): ByteArray {
         val arr = JSONArray()
         for (s in segments) {
             arr.put(JSONObject().apply {
@@ -184,24 +194,25 @@ object MeetingStore {
                 put("e", s.end.toDouble())
                 put("text", s.text)
                 s.speaker?.let { put("spk", it) }
+                if (s.voices.isNotEmpty()) put("voices", JSONArray(s.voices))
+                if (s.speakerReview) put("spk_review", true)
             })
         }
-        transcriptFile(context, id).writeText(arr.toString())
-        SyncManager.touch(context)
+        return arr.toString().toByteArray(Charsets.UTF_8)
     }
 
     fun loadTranscript(context: Context, id: Long): List<MeetingSegment> {
-        val f = transcriptFile(context, id)
-        if (!f.exists()) return emptyList()
         return runCatching {
-            val arr = JSONArray(f.readText())
+            val arr = JSONArray(TranscriptFiles.readVisible(dir(context, id)).toString(Charsets.UTF_8))
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 MeetingSegment(
                     start = o.getDouble("s").toFloat(),
                     end = o.getDouble("e").toFloat(),
                     text = o.getString("text"),
-                    speaker = if (o.has("spk")) o.getInt("spk") else null,
+                    speaker = if (!o.isNull("spk")) o.getInt("spk") else null,
+                    speakerReview = o.optBoolean("spk_review", false),
+                    voices = o.optJSONArray("voices")?.let { a -> (0 until a.length()).map { a.getInt(it) } } ?: emptyList(),
                 )
             }
         }.getOrDefault(emptyList())

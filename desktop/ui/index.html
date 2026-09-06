@@ -288,6 +288,7 @@
                 <button class="lang-row" data-speakers="0">
                   <span class="lang-name">Определить самой</span>
                 </button>
+                <button class="lang-row" data-speakers="1"><span class="lang-name">Один</span></button>
                 <button class="lang-row" data-speakers="2">
                   <span class="lang-name">Двое</span>
                 </button>
@@ -303,6 +304,7 @@
                 <p class="lang-empty" id="speakersHint"></p>
               </div>
             </div>
+            <div class="meeting-ai-tools" role="group" aria-label="Действия с расшифровкой">
             <button class="tool-button icon-button" id="meetSummary" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6.5h14M5 11h9M5 15.5h11M5 20h7"/></svg><span id="meetSummaryLabel">Саммери</span></button>
             <div class="filter-anchor">
               <button class="tool-button icon-button" id="meetDerive" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7M17 15l2 2 4-4"/></svg><span id="meetDeriveLabel">Разобрать ▾</span></button>
@@ -319,6 +321,10 @@
                 <p class="lang-empty" id="translateHint"></p>
               </div>
             </div>
+            <button class="tool-button icon-button" id="meetMap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="9" width="6" height="6" rx="1.5"/><rect x="16" y="3" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/><path d="M8 12h4M12 5.5v13M12 5.5h4M12 18.5h4"/></svg><span id="meetMapLabel">Создать карту</span></button>
+            <div class="filter-anchor">
+              <button id="meetMore" class="tool-button" aria-expanded="false">Запись ▾</button>
+              <div id="meetMoreMenu" class="lang-panel menu meet-secondary" hidden>
             <button class="tool-button icon-button" id="meetAutoTitle" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.6 4.2 4.2 1.6-4.2 1.6L12 15l-1.6-4.1-4.2-1.6 4.2-1.6zM5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9zM19 15l.7 1.6 1.6.7-1.6.7L19 19.5l-.7-1.5-1.6-.7 1.6-.7z"/></svg><span id="meetAutoTitleLabel">Придумать название</span></button>
             <button class="tool-button icon-button" id="meetAgain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg><span id="meetAgainLabel">Расшифровать заново</span></button>
             <button class="danger-text push-right icon-button" id="meetDelete"
@@ -329,6 +335,9 @@
               </svg>
               <span id="meetDeleteLabel">Удалить</span>
             </button>
+              </div>
+            </div>
+          </div>
           </div>
           <p class="muted small" id="meetDetailStatus" hidden></p>
 
@@ -339,7 +348,29 @@
             <button class="danger-pill" id="meetWorkCancel">Отмена</button>
           </div>
 
+          <div id="meetPlayer" class="meeting-player" hidden>
+            <audio id="meetAudio" controls preload="metadata" aria-label="Аудиозапись"></audio>
+            <button id="meetRewind" class="tool-button" title="Назад на 10 секунд">−10 с</button>
+            <select id="meetSpeed" class="meet-select" aria-label="Скорость воспроизведения">
+              <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+              <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+            </select>
+          </div>
+          <div class="workbench-tabs" role="tablist" aria-label="Содержимое записи">
+            <button id="meetTextTab" role="tab" aria-selected="true" aria-controls="meetTranscript" class="tool-button">Текст и говорящие</button>
+            <button id="meetAnalysisTab" role="tab" aria-selected="false" aria-controls="meetAnalysis" class="tool-button">Саммери и разборы</button>
+          </div>
+          <div class="meeting-workbench" id="meetWorkbench" data-pane="text">
+          <aside id="meetAnalysis" aria-label="Саммери и разборы">
+          <p class="kicker">Саммери и разборы</p>
+          <p class="muted small">Создайте саммери или выберите разбор в меню записи. Ответы можно сверить с текстом рядом.</p>
           <!-- Саммери от локальной модели: черновик, а не истина. -->
+          <section class="meet-summary recording-map-result" id="meetMapCard" hidden>
+            <div class="map-result-heading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="9" width="6" height="6" rx="1.5"/><rect x="16" y="3" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/><path d="M8 12h4M12 5.5v13M12 5.5h4M12 18.5h4"/></svg><h3>Карта записи</h3><span id="meetMapBadge"></span></div>
+            <p class="muted small" id="meetMapHint" role="status"></p>
+            <button class="map-result-preview" id="meetMapPreview" aria-label="Открыть карту" hidden></button>
+            <button class="tool-button icon-button" id="meetMapCardAction"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="9" width="6" height="6" rx="1.5"/><rect x="16" y="3" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/><path d="M8 12h4M12 5.5v13M12 5.5h4M12 18.5h4"/></svg><span id="meetMapCardLabel">Создать карту</span></button>
+          </section>
           <section class="meet-summary" id="meetSummaryBox" hidden>
             <div class="summary-head-row">
               <p class="kicker">Саммери</p>
@@ -373,6 +404,13 @@
             <p class="muted small" id="meetAskHint">Отвечает локальная модель по тексту записи; время в ответе ведет к реплике</p>
           </section>
 
+          </aside>
+          <section id="meetTranscript" aria-label="Текст и говорящие">
+          <div class="transcript-tools">
+            <p class="kicker">Текст и говорящие</p>
+            <select id="meetSpeakerFilter" class="meet-select" aria-label="Фильтр говорящих"></select>
+          </div>
+          <p id="meetReviewHint" class="muted small" hidden></p>
           <div class="search-box find-box">
             <input id="meetFind" class="search" type="text"
                    placeholder="Найти в этой расшифровке" />
@@ -387,15 +425,19 @@
           </div>
 
           <!-- Имена говорящих: правятся все разом, подставляются в текст -->
-          <section class="panel speakers-panel" id="speakersPanel" hidden>
+          <details class="panel speakers-panel" id="speakersPanel" hidden>
+            <summary>Имена говорящих</summary>
             <p class="kicker">Кто говорит</p>
             <p class="muted small">
               Дайте людям имена — они подставятся в текст и уйдут в экспорт
             </p>
             <div id="speakersList"></div>
-          </section>
+          </details>
 
           <div id="meetSegments"></div>
+          <p id="meetFilteredEmpty" class="muted small" hidden>Нет фрагментов по этому фильтру</p>
+          </section>
+          </div>
         </div>
       </main>
 
@@ -727,6 +769,21 @@
               <span id="removeFillersLabel">Выключено</span>
             </button>
           </div>
+          <div class="perm" id="coherentSetting">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h10M4 17h13"/>
+            </svg>
+            <div class="perm-text">
+              <p class="perm-title">Проверять пунктуацию перед вставкой</p>
+              <p class="muted small">Выключено — быстрая вставка без ожидания Qwen. Пробелы и склейка исправляются автоматически. Глубокую правку можно запустить отдельно в истории кнопкой «Связная диктовка».</p>
+              <p class="muted small">Включено — Qwen уточняет пунктуацию перед вставкой, это добавляет время. Нужна модель саммери; до 6000 символов. Исходные слова сохраняются.</p>
+            </div>
+            <button class="toggle" id="coherentDictation" aria-label="Проверять пунктуацию перед вставкой">
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+              <span id="coherentDictationLabel">Быстро</span>
+            </button>
+          </div>
         </section>
 
         <section class="panel">
@@ -922,6 +979,7 @@
             </svg>
             <div class="perm-text">
               <p class="perm-title">Куда сохранять экспорт</p>
+              <p class="muted small">Для расшифровок, саммери и карт записи PNG/SVG.</p>
               <p class="muted small" id="exportHint">
                 Сейчас в «Загрузки» — после сохранения папка открывается сама
               </p>
@@ -1086,7 +1144,40 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="0.9.7"><ul class="whatsnew-list"><li>Техническое обновление общей версии приложения.</li></ul></div>
+          <div data-whatsnew-version="0.9.6"><p class="whatsnew-prev-title">Раньше, в 0.9.6</p><ul class="whatsnew-list"><li>Карта записи теперь рядом с саммери и переводом: иконка, предпросмотр, автоматическое открытие и понятные ошибки. Экспорт учитывает общую папку; оформление соответствует светлой теме Sol Flow.</li></ul></div>
+          <div data-whatsnew-version="0.9.5"><p class="whatsnew-prev-title">Раньше, в 0.9.5</p><ul class="whatsnew-list"><li>Быстрая диктовка: проверку Qwen перед вставкой можно выключить. Исправление пробелов остаётся; глубокая правка доступна отдельно в истории.</li><li>Карта записи: локальная генерация, редактируемые карточки, масштабирование и экспорт PNG/SVG с полупрозрачным логотипом Sol Flow.</li></ul></div>
+          <div data-whatsnew-version="0.9.4"><p class="whatsnew-prev-title">Раньше, в 0.9.4</p>
+            <ul class="whatsnew-list">
+              <li>Прослушивание записей: переход по времени, перемотка на 10 секунд и выбор скорости.</li>
+              <li>Смешанные и неопределённые голоса помечены для проверки. Говорящего каждого фрагмента можно исправить вручную; прежняя разметка сохраняется в резерве.</li>
+              <li>Текст и ИИ-разборы доступны в отдельных областях; в широком окне их можно видеть рядом.</li>
+            </ul>
+          </div>
+          <div data-whatsnew-version="0.9.3">
+            <p class="whatsnew-prev-title">Раньше, в 0.9.3</p>
+            <ul class="whatsnew-list">
+              <li>После автовставки диктовки добавляется пробел: несколько записей подряд больше не склеиваются. Существующий пробел или перенос строки не дублируется.</li>
+            </ul>
+          </div>
+          <div data-whatsnew-version="0.9.2">
+            <p class="whatsnew-prev-title">Раньше, в 0.9.2</p>
+            <ul class="whatsnew-list">
+              <li>Связная диктовка: экспериментальная локальная коррекция пунктуации в настройках. Слова сохраняются, результат можно сравнить с исходником в истории.</li>
+              <li>Старую диктовку можно обработать кнопкой «Связная диктовка» без повторного распознавания звука.</li>
+              <li>Исправлены пропущенные пробелы между русскими предложениями. История диктовок сохраняется атомарно, исходный текст — до обработки ИИ.</li>
+            </ul>
+          </div>
+          <div data-whatsnew-version="0.9.1">
+            <p class="whatsnew-prev-title">Раньше, в 0.9.1</p>
+            <ul class="whatsnew-list">
+              <li>Сокращения вроде «ООО» больше не удаляются при очистке речи.</li>
+              <li>Повторная расшифровка сохраняется отдельно до завершения: отмена и ошибки не заменяют прежний полный текст частичным.</li>
+              <li>Сохраняются исходный ответ модели и резерв предыдущей расшифровки. Запись текста и метаданных стала надёжнее.</li>
+            </ul>
+          </div>
           <div data-whatsnew-version="0.9.0">
+            <p class="whatsnew-prev-title">Раньше, в 0.9.0</p>
             <ul class="whatsnew-list">
               <li>Перевод расшифровки и саммери: меню «Перевести» в открытой встрече, двенадцать языков, переводит та же локальная модель. Перевод показывается вместо оригинала, копируется и уходит в экспорт.</li>
               <li>Google Drive как второе облако: в настройках строка «Облако» предлагает Яндекс.Диск или Google Drive, вход по коду тот же. Файлы лежат в папке «Sol Flow» на вашем Диске.</li>
@@ -1211,6 +1302,14 @@
     </div>
   </div>
 
+  <dialog id="mapConfirmDialog" class="map-confirm"><p id="mapConfirmText"></p><div><button id="mapConfirmNo">Отмена</button><button id="mapConfirmYes">Подтвердить</button></div></dialog>
+  <dialog id="recordingMapDialog" aria-labelledby="recordingMapTitle">
+    <div class="map-dialog-head"><h2 id="recordingMapTitle">Карта записи</h2><button id="recordingMapClose">Закрыть</button></div>
+    <div id="recordingMapBody"></div>
+  </dialog>
+  <link rel="stylesheet" href="map/mindmap.css">
+  <script src="map/map-fonts.js"></script>
+  <script src="map/mindmap.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>

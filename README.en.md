@@ -48,6 +48,12 @@ After installing, open Models and download one for your language. For
 Russian — GigaAM v3, about 270 MB; for English — Parakeet TDT 0.6B. The app
 finds updates itself and offers to install them.
 
+## New in 0.9.7
+
+Faster dictation, speaker review and recording maps with PNG/SVG export.
+The desktop creates maps locally; Android displays and edits synced results.
+[Release details](docs/release-0.9.7.md).
+
 ## What it does
 
 - **Dictation into any app.** On the computer — a keyboard shortcut

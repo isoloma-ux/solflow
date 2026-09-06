@@ -126,6 +126,11 @@ object SyncEngine {
         val (newer, older) =
             if (remote.optLong("updated") >= local.optLong("updated")) remote to local else local to remote
         val m = JSONObject(newer.toString())
+        val lm = local.optJSONObject("mindmap")
+        val rm = remote.optJSONObject("mindmap")
+        val map = if (lm == null) rm else if (rm == null) lm
+            else if (rm.optLong("revised") >= lm.optLong("revised")) rm else lm
+        if (map != null) m.put("mindmap", map)
         if (m.optString("title").isBlank() && older.optString("title").isNotBlank()) {
             m.put("title", older.optString("title"))
         }

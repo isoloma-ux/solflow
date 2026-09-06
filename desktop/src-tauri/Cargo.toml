@@ -1,6 +1,6 @@
 [package]
 name = "solflow"
-version = "0.9.0"
+version = "0.9.7"
 description = "Sol Flow — офлайновый голосовой ввод"
 edition = "2021"
 
@@ -22,7 +22,7 @@ gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"

@@ -66,7 +66,31 @@ object TextCleanup {
         result = MULTI_SPACE.replace(result, " ")
         result = SPACE_BEFORE_PUNCTUATION.replace(result, "$1")
         result = DOUBLED_PUNCTUATION.replace(result, "$1")
-        return result.trim()
+        return sentenceSpacing(result.trim())
+    }
+
+    /** Same conservative punctuation spacing as desktop dictation_text.rs. */
+    private fun sentenceSpacing(text: String): String = text.split(Regex("\\s+")).joinToString(" ") { chunk ->
+        val core = chunk.trimEnd('.', '!', '?', ',', ';', ':')
+        val sentenceStarts = setOf(
+            "как", "каким", "какой", "какая", "какие", "что", "это", "он", "она", "они",
+            "оно", "мы", "вы", "я", "именно", "хочу", "теперь", "сейчас", "потом", "дальше",
+            "затем", "почему", "когда", "где", "если", "чтобы", "поэтому", "который", "которая",
+        )
+        val protected = chunk.any { it.isDigit() || it in "@/\\_:" } ||
+            ('.' in core && core.any { it in 'a'..'z' || it in 'A'..'Z' }) ||
+            core.split('.').drop(1).any { it.lowercase() !in sentenceStarts } ||
+            chunk.split('.').drop(1).any {
+                it.trim { c -> !c.isLetter() }.lowercase() in setOf("рф", "рус", "москва", "онлайн", "сайт", "дети", "орг", "ком")
+            } || ('.' in chunk && chunk.split('.').any { it.length == 1 && it.all(Char::isLetter) })
+        if (protected) chunk else buildString {
+            chunk.forEachIndexed { i, c ->
+                append(c)
+                val next = chunk.getOrNull(i + 1)
+                if (c in ".!?" && i > 0 && chunk[i - 1].isLetter() && next != null &&
+                    (next in 'а'..'я' || next in 'А'..'Я' || next == 'ё' || next == 'Ё')) append(' ')
+            }
+        }
     }
 
     /**
@@ -105,8 +129,11 @@ object TextCleanup {
         val out = ArrayList<String>()
         var capitalizeNext = false
         for (word in text.split(" ")) {
-            val bare = word.trim(',', '.', '!', '?', ';', ':').lowercase()
-            val filler = bare.isNotEmpty() && (bare in FILLERS || isHesitation(bare))
+            val original = word.trim(',', '.', '!', '?', ';', ':')
+            // Сохраняем сокращения (ООО, АА, ММ), даже если похожи на мычание.
+            val acronym = original.length >= 2 && original.all { it.isUpperCase() }
+            val bare = original.lowercase()
+            val filler = !acronym && bare.isNotEmpty() && (bare in FILLERS || isHesitation(bare))
             if (filler) {
                 if (word.firstOrNull()?.isUpperCase() == true) capitalizeNext = true
                 continue

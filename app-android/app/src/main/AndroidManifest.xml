@@ -25,6 +25,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HandyVoice">
 
+        <activity android:name=".RecordingMapActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -38,7 +38,10 @@
         <TextView
             android:id="@+id/segmentTime"
             style="@style/Text.Muted"
-            android:layout_width="52dp"
+            android:layout_width="56dp"
+            android:minHeight="48dp"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_height="wrap_content"
             android:textSize="13sp" />
 
@@ -50,6 +53,12 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:textIsSelectable="true" />
+        <TextView android:id="@+id/segmentAssign" style="@style/Text.Body"
+            android:layout_width="48dp" android:layout_height="48dp"
+            android:gravity="center" android:text="⋯" android:textSize="24sp"
+            android:contentDescription="@string/speaker_assign"
+            android:clickable="true" android:focusable="true"
+            android:foreground="?attr/selectableItemBackground" />
     </LinearLayout>
 
 </LinearLayout>

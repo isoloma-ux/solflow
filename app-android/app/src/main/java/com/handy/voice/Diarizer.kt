@@ -187,8 +187,17 @@ object Diarizer {
             }
             if (isCancelled()) error("отменено")
 
-            val labelled = assignSpeakers(segments, turns)
-            val speakerCount = (labelled.mapNotNull { it.speaker }.maxOrNull() ?: -1) + 1
+            val (labels, speakerCount) = SpeakerAttribution.assign(
+                segments.map { it.start to it.end },
+                turns.map { SpeakerAttribution.Turn(it.start, it.end, it.speaker) },
+            )
+            check(speakerCount > 0) { "голоса не найдены; прежняя разметка сохранена" }
+            val labelled = segments.zip(labels).map { (s, label) -> s.copy(speaker = label.speaker, voices = label.voices, speakerReview = label.speaker == null) }
+            val backup = TranscriptFiles.Draft(MeetingStore.dir(context, meetingId))
+            val rawTurns = org.json.JSONArray()
+            for (turn in turns) rawTurns.put(org.json.JSONArray(listOf(turn.start, turn.end, turn.speaker)))
+            TranscriptFiles.atomicWrite(File(backup.version, "diarization-turns.json"), rawTurns.toString().toByteArray(Charsets.UTF_8))
+            if (isCancelled()) error("отменено")
             Log.i(
                 TAG,
                 "диаризация: отрезков ${turns.size} " +
@@ -346,7 +355,7 @@ object Diarizer {
         // речи шумные и сцепляют чужие кластеры друг с другом — на них
         // сшивка уже склеивала двух людей в одного. Осколки прикрепляются
         // к готовым кластерам в конце.
-        val big = points.indices.filter { speechSec[it] >= BIG_SPEAKER_SEC }
+        val big = points.indices.filter { speechSec[it] >= SpeakerAttribution.bigSpeakerThreshold(speechSec.sum()) }
             .ifEmpty { points.indices.toList() }
         val bigPoints = big.map { points[it] }
 
@@ -453,35 +462,4 @@ object Diarizer {
         return if (d > 0) dot / d else 0f
     }
 
-    /**
-     * Каждой реплике таймлайна — говорящий с наибольшим пересечением по
-     * времени. Реплика без пересечений наследует говорящего предыдущей:
-     * это обычно короткий хвост на паузе.
-     *
-     * Номера идут по порядку появления в разговоре: «говорящий 1» — тот,
-     * кто заговорил первым, а не кого кластеризация посчитала первым.
-     */
-    private fun assignSpeakers(
-        segments: List<MeetingSegment>,
-        turns: List<Turn>,
-    ): List<MeetingSegment> {
-        var previous = 0
-        val raw = segments.map { seg ->
-            val speaker = turns
-                .map { it.speaker to (minOf(seg.end, it.end) - maxOf(seg.start, it.start)) }
-                .filter { it.second > 0f }
-                .groupBy({ it.first }, { it.second })
-                .maxByOrNull { (_, spans) -> spans.sum() }
-                ?.key ?: previous
-            previous = speaker
-            seg.copy(speaker = speaker)
-        }
-
-        val order = mutableListOf<Int>()
-        for (s in raw) {
-            val spk = s.speaker ?: continue
-            if (spk !in order) order += spk
-        }
-        return raw.map { it.copy(speaker = order.indexOf(it.speaker)) }
-    }
 }

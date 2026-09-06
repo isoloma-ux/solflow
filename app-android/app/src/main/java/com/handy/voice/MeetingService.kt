@@ -23,6 +23,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -306,7 +308,8 @@ class MeetingService : Service() {
                     if (it.state == Meeting.STATE_TRANSCRIBING) {
                         MeetingStore.save(
                             this@MeetingService,
-                            it.copy(state = Meeting.STATE_RECORDED),
+                            it.copy(state = if (File(MeetingStore.dir(this@MeetingService, id), "transcript.json").exists())
+                                Meeting.STATE_DONE else Meeting.STATE_RECORDED),
                         )
                     }
                 }
@@ -334,6 +337,7 @@ class MeetingService : Service() {
             val total = wav.totalSamples
             if (total < sr / 2) error("запись пустая")
 
+            val draft = TranscriptFiles.Draft(MeetingStore.dir(this, meeting.id))
             MeetingStore.save(this, meeting.copy(state = Meeting.STATE_TRANSCRIBING))
             notifyChange()
 
@@ -345,7 +349,9 @@ class MeetingService : Service() {
             var f = 0
             var offset = 0L
             while (f < frames) {
+                currentCoroutineContext().ensureActive()
                 val pcm = wav.read(offset, block)
+                check(pcm.size >= frame) { "Unexpected end of audio" }
                 var o = 0
                 while (o + frame <= pcm.size && f < frames) {
                     loud[f++] = Segmenter.frameEnergy(pcm, o, frame)
@@ -359,15 +365,18 @@ class MeetingService : Service() {
             val ranges = bounds.zipWithNext().filter { (a, b) -> b - a > frame * 5 }
 
             // Второй проход: куски читаются с диска и распознаются по одному.
-            // Частичный результат сохраняется после каждого куска — обрыв
-            // на середине не выбрасывает уже готовый текст.
+            // Черновик и исходный ответ модели — отдельно от прежнего текста.
             val segments = mutableListOf<MeetingSegment>()
+            val rawSegments = mutableListOf<MeetingSegment>()
             for ((index, range) in ranges.withIndex()) {
                 val (from, to) = range
-                if (jobs[meeting.id]?.isCancelled == true) return
+                currentCoroutineContext().ensureActive()
                 val pcm = wav.read(from, (to - from).toInt())
+                val rawText = Engine.transcribeSegment(pcm)
+                currentCoroutineContext().ensureActive()
+                rawSegments += MeetingSegment(from.toFloat() / sr, to.toFloat() / sr, rawText)
                 val text = TextCleanup.clean(
-                    Engine.transcribeSegment(pcm),
+                    rawText,
                     AppPrefs.removeFillers(this),
                 )
                 if (text.isNotBlank()) {
@@ -376,8 +385,8 @@ class MeetingService : Service() {
                         end = to.toFloat() / sr,
                         text = text,
                     )
-                    MeetingStore.saveTranscript(this, meeting.id, segments)
                 }
+                draft.checkpoint(MeetingStore.encodeTranscript(segments), MeetingStore.encodeTranscript(rawSegments))
 
                 val pct = ((index + 1) * 100 / ranges.size).coerceIn(0, 100)
                 if (progress[meeting.id] != pct) {
@@ -387,6 +396,9 @@ class MeetingService : Service() {
                 }
             }
 
+            currentCoroutineContext().ensureActive()
+            check(segments.isNotEmpty()) { "Speech not recognized; previous transcript and audio preserved" }
+            draft.commit()
             MeetingStore.save(this, meeting.copy(state = Meeting.STATE_DONE))
             // Настройка «удалять звук после расшифровки»: текст готов, файл
             // в сотни мегабайт больше не нужен.
@@ -578,7 +590,7 @@ class MeetingService : Service() {
             result.fold(
                 onSuccess = { speakers ->
                     MeetingStore.load(this@MeetingService, id)?.let {
-                        MeetingStore.save(this@MeetingService, it.copy(speakers = speakers))
+                        MeetingStore.save(this@MeetingService, it.copy(speakers = speakers, speakerNames = (0 until speakers).associateWith { "" }))
                     }
                     notifyDiarized(meeting, speakers)
                 },

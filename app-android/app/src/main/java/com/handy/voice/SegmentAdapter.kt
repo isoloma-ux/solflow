@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.RecyclerView
  */
 class SegmentAdapter(
     private val onSpeakerTap: (Int) -> Unit,
+    private val onTimeTap: (Float) -> Unit,
+    private val onAssign: (Int, MeetingSegment) -> Unit,
 ) : RecyclerView.Adapter<SegmentAdapter.Holder>() {
 
     private var items: List<MeetingSegment> = emptyList()
@@ -25,6 +27,16 @@ class SegmentAdapter(
 
     /** Номер реплики, к которой сейчас перешли по поиску. */
     private var current: Int = -1
+    private var playing: Int = -1
+
+    fun setPlaybackTime(seconds: Float?) {
+        val next = if (seconds == null) -1 else items.indexOfFirst { seconds >= it.start && seconds < it.end }
+        if (next == playing) return
+        val previous = playing
+        playing = next
+        if (previous in items.indices) notifyItemChanged(previous)
+        if (next in items.indices) notifyItemChanged(next)
+    }
 
     /**
      * Поиск по открытой расшифровке: подсвечивает слово во всех репликах,
@@ -66,10 +78,14 @@ class SegmentAdapter(
         val s = items[position]
         val context = holder.itemView.context
         holder.time.text = MeetingStore.clockLabel(s.start)
+        holder.time.contentDescription = context.getString(R.string.meeting_listen_at, holder.time.text)
+        holder.time.setOnClickListener { onTimeTap(s.start) }
+        holder.assign.setOnClickListener { onAssign(position, s) }
+        holder.assign.visibility = if (s.speakerReview || labels.isNotEmpty() || s.voices.isNotEmpty()) View.VISIBLE else View.GONE
         holder.text.text = Highlight.of(context, s.text, query)
         // Текущее совпадение подсвечено плашкой: без неё после перехода
         // непонятно, на какой из подсвеченных реплик ты стоишь.
-        val isCurrent = position == current && query.isNotBlank()
+        val isCurrent = (position == current && query.isNotBlank()) || position == playing
         holder.text.setBackgroundResource(if (isCurrent) R.drawable.bg_card_inner else 0)
         val pad = if (isCurrent) (8 * context.resources.displayMetrics.density).toInt() else 0
         holder.text.setPadding(pad, pad, pad, pad)
@@ -93,10 +109,17 @@ class SegmentAdapter(
             }
         } else {
             holder.stripe.visibility = View.GONE
+            if (s.speakerReview || labels.isNotEmpty() || s.voices.isNotEmpty()) {
+                holder.speaker.visibility = View.VISIBLE
+                holder.speaker.setText(if (s.voices.size > 1) R.string.speaker_mixed else R.string.speaker_unknown)
+                holder.speaker.setTextColor(context.getColor(R.color.fog))
+                holder.speaker.setOnClickListener { onAssign(position, s) }
+            }
         }
     }
 
     class Holder(v: View) : RecyclerView.ViewHolder(v) {
+        val assign: TextView = v.findViewById(R.id.segmentAssign)
         val speaker: TextView = v.findViewById(R.id.segmentSpeaker)
         val stripe: View = v.findViewById(R.id.segmentStripe)
         val time: TextView = v.findViewById(R.id.segmentTime)

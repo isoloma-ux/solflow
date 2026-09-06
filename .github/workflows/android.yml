@@ -91,7 +91,7 @@ jobs:
           apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
           signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
           "$signer" verify --print-certs "$apk"
-          "$signer" verify --print-certs "$apk" | grep -q "O=Sol Flow" \
+          "$signer" verify --print-certs "$apk" | grep -q "certificate SHA-256 digest: 61b0ad7f3a5d852e4ba322829adbc814d417a99354af29b32c0f7909bf8daaea" \
             || { echo "APK подписан не нашим ключом"; exit 1; }
 
       - name: Публикуем
@@ -107,6 +107,6 @@ jobs:
           # Релиз может ещё не существовать: десктопные сборки идут
           # параллельно, и кто успел первым — заранее не известно.
           gh release view "$tag" >/dev/null 2>&1 \
-            || gh release create "$tag" --title "Sol Flow $tag" --generate-notes
+            || gh release create "$tag" --draft --title "Sol Flow $tag" --generate-notes
           gh release upload "$tag" "$out" --clobber
-          gh release edit "$tag" --draft=false --latest
+          # Keep the release a draft until all platforms and updater signatures are verified.

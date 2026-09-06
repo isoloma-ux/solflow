@@ -236,7 +236,7 @@ pub fn run(
     num_speakers: i32,
     on_progress: &dyn Fn(u8),
     cancelled: &dyn Fn() -> bool,
-) -> Result<Vec<usize>> {
+) -> Result<Vec<(f32, f32, usize)>> {
     if segments.is_empty() {
         return Err(anyhow!("расшифровки нет"));
     }
@@ -256,7 +256,7 @@ pub fn run(
     if cancelled() {
         return Err(anyhow!("отменено"));
     }
-    Ok(assign_speakers(segments, &turns))
+    Ok(turns.into_iter().map(|t| (t.start, t.end, t.speaker)).collect())
 }
 
 /// Косинусная близость голосов в двух записях — для проверки, различает ли
@@ -728,41 +728,4 @@ fn cluster(points: &[&[f32]], speech_sec: &[f32], num_speakers: i32) -> Vec<usiz
             .unwrap_or(0);
     }
     labels
-}
-
-/// Каждой реплике таймлайна — говорящий с наибольшим пересечением по
-/// времени. Реплика без пересечений наследует говорящего предыдущей.
-/// Номера идут по порядку появления: «говорящий 1» — тот, кто заговорил
-/// первым, а не кого кластеризация посчитала первым.
-fn assign_speakers(segments: &[(f32, f32)], turns: &[Turn]) -> Vec<usize> {
-    let mut previous = 0usize;
-    let raw: Vec<usize> = segments
-        .iter()
-        .map(|&(start, end)| {
-            let mut overlap: std::collections::HashMap<usize, f32> = Default::default();
-            for t in turns {
-                let span = end.min(t.end) - start.max(t.start);
-                if span > 0.0 {
-                    *overlap.entry(t.speaker).or_insert(0.0) += span;
-                }
-            }
-            let speaker = overlap
-                .into_iter()
-                .max_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(speaker, _)| speaker)
-                .unwrap_or(previous);
-            previous = speaker;
-            speaker
-        })
-        .collect();
-
-    let mut order: Vec<usize> = Vec::new();
-    for &s in &raw {
-        if !order.contains(&s) {
-            order.push(s);
-        }
-    }
-    raw.iter()
-        .map(|s| order.iter().position(|o| o == s).unwrap_or(0))
-        .collect()
 }

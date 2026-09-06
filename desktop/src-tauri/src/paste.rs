@@ -131,6 +131,16 @@ impl SubmitKey {
 }
 
 pub fn paste_text(app: &AppHandle, text: &str, options: &PasteOptions) -> Result<()> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    // Separate consecutive dictations in the destination field. History and
+    // recognition keep their original text; existing whitespace is sufficient.
+    let text = if text.chars().next_back().is_some_and(char::is_whitespace) {
+        text.to_string()
+    } else {
+        format!("{text} ")
+    };
     // Без «Универсального доступа» Cmd+V молча не долетает. Деградируем как
     // на Android: текст остаётся в буфере, пользователь вставит его сам, —
     // и прежний буфер в этом случае НЕ восстанавливаем, иначе результат

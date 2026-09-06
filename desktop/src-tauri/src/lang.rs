@@ -37,6 +37,12 @@ pub fn t(app: &tauri::AppHandle, text: &str) -> String {
 
 /// Строки, которые человек видит из Rust.
 const EN: &[(&str, &str)] = &[
+    ("Расставляю знаки препинания…", "Adjusting punctuation…"),
+    ("Не удалось сохранить историю", "Could not save history"),
+    ("Не удалось прочитать историю", "Could not read history"),
+    ("Запись не найдена", "Recording not found"),
+    ("Дождитесь завершения текущей операции", "Wait for the current operation to finish"),
+    ("Речь не распознана. Прежний текст и звук сохранены.", "Speech was not recognized. The previous transcript and audio have been preserved."),
     // трей
     ("Открыть Sol Flow", "Open Sol Flow"),
     ("Выйти", "Quit"),

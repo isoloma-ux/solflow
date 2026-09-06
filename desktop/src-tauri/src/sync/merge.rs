@@ -19,6 +19,7 @@ pub fn merge_meta(local: &Meta, remote: &Meta) -> Meta {
         (local, remote)
     };
     let mut merged = newer.clone();
+    merged.mindmap = crate::mindmap::merge(&local.mindmap, &remote.mindmap);
     if merged.title.trim().is_empty() {
         merged.title = older.title.clone();
     }
@@ -105,6 +106,7 @@ mod tests {
             speakers: 0,
             names: HashMap::new(),
             summary: String::new(),
+            mindmap: None,
             error: None,
             updated,
         }

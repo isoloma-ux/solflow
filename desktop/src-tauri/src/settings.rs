@@ -89,6 +89,9 @@ pub struct Settings {
     /// Убирать слова-паразиты из распознанного текста.
     #[serde(default)]
     pub remove_fillers: bool,
+    /// Optional local punctuation, source words are always preserved.
+    #[serde(default)]
+    pub coherent_dictation: bool,
 
     // --- история ---
     /// Сколько последних диктовок держать.
@@ -265,6 +268,7 @@ impl Default for Settings {
             auto_submit_key: default_submit_key(),
             mute_while_recording: false,
             remove_fillers: false,
+            coherent_dictation: false,
             history_limit: default_history_limit(),
             history_retention: default_retention(),
             keep_audio: true,

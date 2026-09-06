@@ -199,26 +199,19 @@ extern "C" {
 }
 
 struct GenState {
-    out: Mutex<String>,
+    out: Mutex<Vec<u8>>,
     /// Сырой прогресс шима: 0–100 — чтение текста, 100+N — токены ответа.
     progress: Box<dyn Fn(i32) + Send + Sync>,
     cancelled: Arc<AtomicBool>,
+    deadline: Option<std::time::Instant>,
 }
 
 extern "C" fn on_piece(piece: *const c_char, len: c_int, ud: *mut c_void) {
     let state = unsafe { &*(ud as *const GenState) };
     let bytes = unsafe { std::slice::from_raw_parts(piece as *const u8, len as usize) };
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        state.out.lock().unwrap().push_str(text);
-    } else {
-        // Токен разрезал многобайтовый символ — докидываем как есть,
-        // String соберётся из валидных кусков ниже по потоку.
-        state
-            .out
-            .lock()
-            .unwrap()
-            .push_str(&String::from_utf8_lossy(bytes));
-    }
+    // Token boundaries may bisect a UTF-8 character. Decode only once,
+    // after all bytes arrive, instead of inserting replacement characters.
+    state.out.lock().unwrap().extend_from_slice(bytes);
 }
 
 extern "C" fn on_progress(percent: c_int, ud: *mut c_void) {
@@ -229,6 +222,7 @@ extern "C" fn on_progress(percent: c_int, ud: *mut c_void) {
 extern "C" fn should_stop(ud: *mut c_void) -> bool {
     let state = unsafe { &*(ud as *const GenState) };
     state.cancelled.load(Ordering::Relaxed)
+        || state.deadline.map(|d| std::time::Instant::now() >= d).unwrap_or(false)
 }
 
 pub fn model_path(app: &AppHandle) -> PathBuf {
@@ -298,12 +292,27 @@ fn generate(
     progress: impl Fn(u8) + Send + Sync + 'static,
     cancelled: Arc<AtomicBool>,
 ) -> Result<String> {
+    generate_with(llm, transcript, system, max_tokens, slice, progress, cancelled, 0.4, 1.15, None)
+}
+
+fn generate_with(
+    llm: &Llm,
+    transcript: &str,
+    system: &str,
+    max_tokens: c_int,
+    slice: (u8, u8),
+    progress: impl Fn(u8) + Send + Sync + 'static,
+    cancelled: Arc<AtomicBool>,
+    temperature: f32,
+    repeat_penalty: f32,
+    deadline: Option<std::time::Instant>,
+) -> Result<String> {
     let sys = CString::new(system)?;
     let user = CString::new(format!("Текст:\n\n{transcript}"))?;
     let (from, to) = slice;
     let span = (to - from) as f32;
     let state = GenState {
-        out: Mutex::new(String::new()),
+        out: Mutex::new(Vec::new()),
         progress: Box::new(move |raw: i32| {
             let pct = if raw > 100 {
                 // Генерация: оцениваем по ожидаемой длине ответа.
@@ -315,6 +324,7 @@ fn generate(
             progress(pct.min(99));
         }),
         cancelled,
+        deadline,
     };
 
     let rc = unsafe {
@@ -323,8 +333,8 @@ fn generate(
             sys.as_ptr(),
             user.as_ptr(),
             max_tokens,
-            0.4,
-            1.15,
+            temperature,
+            repeat_penalty,
             on_piece,
             on_progress,
             should_stop,
@@ -333,11 +343,23 @@ fn generate(
     };
 
     match rc {
-        0 => Ok(state.out.into_inner().unwrap().trim().to_string()),
+        0 => Ok(String::from_utf8(state.out.into_inner().unwrap())?.trim().to_string()),
         -4 => Err(anyhow!("расшифровка не влезла в контекст")),
         -5 => Err(anyhow!("отменено")),
         _ => Err(anyhow!("генерация не удалась ({rc})")),
     }
+}
+
+/// Short, bounded dictation pass. Caller owns the shared inference gate.
+/// Public path variant permits an offline check without touching app records.
+pub fn punctuate_path(model: &std::path::Path, transcript: &str) -> Result<String> {
+    if !crate::dictation_text::eligible(transcript) { return Err(anyhow!("too_long")); }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(35);
+    let llm = load_path(model, 8192)?;
+    let input = crate::dictation_text::prepare(transcript);
+    let proposal = generate_with(&llm, &input, crate::dictation_text::PROMPT, 2500,
+        (0, 100), |_| {}, Arc::new(AtomicBool::new(false)), 0.0, 1.0, Some(deadline))?;
+    crate::dictation_text::project(transcript, &proposal).map_err(|e| anyhow!(e))
 }
 
 /// Загрузка модели на один заход.
@@ -515,6 +537,7 @@ pub struct Breakdown {
 
 /// Все разборы; какие показывать — решает окно по типу записи.
 pub const BREAKDOWNS: &[Breakdown] = &[
+    Breakdown { id: "mindmap", part_prompt: crate::mindmap::PROMPT, merge_prompt: None, tokens: 2200, budget: 5000, assemble: assemble_plain, timed: false },
     Breakdown { id: "tasks", part_prompt: TASKS_PART_PROMPT, merge_prompt: None, tokens: TASKS_TOKENS, budget: PART_BUDGET, assemble: assemble_tasks, timed: true },
     Breakdown { id: "letter", part_prompt: LETTER_PART_PROMPT, merge_prompt: Some(LETTER_MERGE_PROMPT), tokens: LETTER_TOKENS, budget: PART_BUDGET, assemble: assemble_plain, timed: false },
     Breakdown { id: "outline", part_prompt: OUTLINE_PROMPT, merge_prompt: None, tokens: OUTLINE_TOKENS, budget: PART_BUDGET / 2, assemble: assemble_outline, timed: true },
@@ -642,6 +665,7 @@ pub fn derive_with(
 ) -> Result<String> {
     let b = breakdown(kind).ok_or_else(|| anyhow!("неизвестный разбор «{kind}»"))?;
     let llm = load_path(model, N_CTX)?;
+    if kind == "mindmap" { return map_with(&llm, text, progress, cancelled); }
     let parts_n = parts_for_budget(&llm, text, b.budget)?;
 
     // Короткая запись, композиция (письмо, пост): один проход по тексту с
@@ -1279,4 +1303,48 @@ mod tests {
             "[0:29] Вступление — начало\n[12:40] Партнёры — о чём\n[1:02:34] Тренды — вторая половина"
         );
     }
+}
+
+/// Tagged lines avoid depending on the small model's JSON syntax accuracy.
+fn map_pass(llm: &Llm, text: &str, slice: (u8,u8), progress: impl Fn(u8)+Send+Sync+Clone+'static,
+    cancelled: Arc<AtomicBool>) -> Result<String> {
+    let out=generate_with(llm,text,crate::mindmap::PROMPT,2600,slice,
+        progress.clone(),cancelled.clone(),0.15,1.0,None)?;
+    let map=match crate::mindmap::parse_generated(&out) {
+        Ok(map)=>map,
+        Err(original)=>{
+            if cancelled.load(std::sync::atomic::Ordering::Relaxed) { return Err(original); }
+            let compact=format!("{}\nПредыдущий ответ не прошел проверку. Сожми: до 6 ветвей, до 3 пунктов в каждой, каждый пункт до 100 символов. Не оставляй пустых ветвей.",crate::mindmap::PROMPT);
+            let retry=generate_with(llm,text,&compact,2600,slice,
+                progress,cancelled,0.0,1.0,None)?;
+            crate::mindmap::parse_generated(&retry)?
+        }
+    };
+    Ok(serde_json::to_string(&map)?)
+}
+/// Hierarchical reduction keeps long meetings within context; validate every pass.
+fn map_with(llm: &Llm, text: &str, progress: impl Fn(u8) + Send + Sync + Clone + 'static,
+    cancelled: Arc<AtomicBool>) -> Result<String> {
+    let n = parts_for_budget(llm, text, 5000)?;
+    if n > 256 { return Err(anyhow!("Запись слишком длинная для карты; разделите её на части")); }
+    let parts = split_into(text, n.max(1));
+    let mut maps = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        maps.push(map_pass(llm,part,((i*70/parts.len()) as u8,((i+1)*70/parts.len()) as u8),
+            progress.clone(),cancelled.clone())?);
+    }
+    let jobs=maps.len().saturating_sub(1).max(1); let mut completed=0;
+    while maps.len() > 1 {
+        let mut next = Vec::new();
+        for pair in maps.chunks(2) {
+            if pair.len() == 1 { next.push(pair[0].clone()); continue; }
+            let input = format!("Объедини карты частей одной записи в общую карту, сохрани главные темы обеих частей.\n{}", pair.join("\n"));
+            next.push(map_pass(llm,&input,((70+completed*25/jobs) as u8,(70+(completed+1)*25/jobs) as u8),
+                progress.clone(),cancelled.clone())?);
+            completed+=1;
+        }
+        maps = next;
+    }
+    progress(100);
+    maps.pop().ok_or_else(|| anyhow!("В записи нет текста"))
 }

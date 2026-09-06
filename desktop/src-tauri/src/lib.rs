@@ -7,6 +7,10 @@
 pub mod audio;
 mod autostart;
 mod cleanup;
+mod speaker_attribution;
+mod dictation_text;
+mod dictation;
+mod transcript_store;
 /// Без фичи `diarize` подставляется заглушка: sherpa-onnx собран не везде.
 #[cfg_attr(not(feature = "diarize"), path = "diarize_off.rs")]
 mod diarize;
@@ -21,6 +25,7 @@ mod lang;
 mod hud;
 pub mod meetings;
 mod models;
+pub mod mindmap;
 mod net;
 mod paste;
 mod pdf;
@@ -49,6 +54,9 @@ mod summary {
     }
     pub fn devices() -> String {
         String::new()
+    }
+    pub fn punctuate_path(_model: &std::path::Path, _transcript: &str) -> Result<String> {
+        Err(anyhow!("сборка без модели саммери"))
     }
     pub fn download(
         _app: &AppHandle,
@@ -517,32 +525,48 @@ fn stop_and_process(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
+        let stop_started = std::time::Instant::now();
         let pcm = state.recorder.stop();
         unmute_system(&app);
 
-        let (drop_parasites, keep_audio) = {
+        let (drop_parasites, keep_audio, coherent) = {
             let settings = state.settings.lock().unwrap();
-            (settings.remove_fillers, settings.keep_audio)
+            (settings.remove_fillers, settings.keep_audio, settings.coherent_dictation)
         };
-        let recorded = pcm.as_ref().ok().cloned();
+        let recorded = if keep_audio { pcm.as_ref().ok().cloned() } else { None };
         let outcome = pcm.and_then(|pcm| {
             let seconds = pcm.len() as f32 / audio::TARGET_RATE as f32;
             if seconds < 0.3 {
                 return Ok(String::new());
             }
-            state.engine.transcribe_with(&pcm, drop_parasites)
+            state.engine.transcribe_raw(&pcm)
         });
 
-        state.phase.store(PHASE_READY, Ordering::SeqCst);
         match &outcome {
             Ok(t) => log::info!("распознано {} символов", t.len()),
             Err(e) => log::error!("распознавание: {e}"),
         }
         match outcome {
-            Ok(text) => {
+            Ok(original) => {
+                let clean = cleanup::clean_with(&original, drop_parasites);
+                // Save recognition BEFORE the slower model pass. A crash or
+                // interrupted generation cannot erase the completed dictation.
+                let saved = history::add(&app, &clean, &original, recorded.filter(|_| keep_audio).as_deref());
+                let mut detail = saved.as_ref().err().cloned();
+                if coherent && !clean.is_empty() {
+                    emit_state(&app, Some(lang::t(&app, "Расставляю знаки препинания…")));
+                }
+                let formatted = dictation::format(&app, &clean, coherent);
+                let text = formatted.text;
+                if let Ok(Some(at)) = saved {
+                    if coherent {
+                    if let Err(e) = history::update_text(&app, at, &text, &original, formatted.status, false) {
+                        detail = Some(e);
+                    }
+                    }
+                }
+                log::info!("dictation stop-to-text: {} ms, coherent={coherent}", stop_started.elapsed().as_millis());
                 let _ = app.emit("solflow-result", text.clone());
-                history::add(&app, &text, recorded.filter(|_| keep_audio).as_deref());
-                let mut detail = None;
                 if paste_result && !text.is_empty() {
                     let options = {
                         let settings = state.settings.lock().unwrap();
@@ -558,9 +582,13 @@ fn stop_and_process(app: &AppHandle) {
                         detail = Some(format!("{e}"));
                     }
                 }
+                state.phase.store(PHASE_READY, Ordering::SeqCst);
                 emit_state(&app, detail);
             }
-            Err(e) => emit_state(&app, Some(format!("{e}"))),
+            Err(e) => {
+                state.phase.store(PHASE_READY, Ordering::SeqCst);
+                emit_state(&app, Some(format!("{e}")));
+            }
         }
         hud::hide(&app);
     });
@@ -924,6 +952,7 @@ fn set_option(app: AppHandle, key: String, value: serde_json::Value) -> Result<(
             "mute_while_recording" => s.mute_while_recording = value.as_bool().unwrap_or(false),
             "keep_audio_awake" => s.keep_audio_awake = value.as_bool().unwrap_or(true),
             "remove_fillers" => s.remove_fillers = value.as_bool().unwrap_or(false),
+            "coherent_dictation" => s.coherent_dictation = value.as_bool().unwrap_or(false),
             "history_limit" => {
                 s.history_limit = value.as_u64().unwrap_or(50).clamp(1, 1000) as usize
             }
@@ -985,14 +1014,42 @@ fn history_retranscribe(app: AppHandle, at: i64) {
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        let drop_parasites = state.settings.lock().unwrap().remove_fillers;
-        match state.engine.transcribe_with(&pcm, drop_parasites) {
-            Ok(text) => history::update_text(&app, at, &text),
+        let settings = state.settings.lock().unwrap().clone();
+        match state.engine.transcribe_raw(&pcm) {
+            Ok(original) => {
+                let clean = cleanup::clean_with(&original, settings.remove_fillers);
+                let formatted = dictation::format(&app, &clean, settings.coherent_dictation);
+                if let Err(e) = history::update_text(&app, at, &formatted.text, &original, formatted.status, true) {
+                    let _ = app.emit("solflow-history-failed", e);
+                }
+            }
             Err(e) => {
                 let _ = app.emit("solflow-history-failed", format!("{e}"));
             }
         }
     });
+}
+
+/// Apply punctuation to an existing dictation without recognizing its audio again.
+#[tauri::command]
+fn history_format(app: AppHandle, at: i64) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let entry = history::all(&app).into_iter().find(|e| e.at == at)
+        .ok_or_else(|| lang::t(&app, "Запись не найдена"))?;
+    state.phase.compare_exchange(PHASE_READY, PHASE_BUSY, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| lang::t(&app, "Дождитесь завершения текущей операции"))?;
+    emit_state(&app, Some(lang::t(&app, "Расставляю знаки препинания…")));
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let original = entry.original_text.as_deref().unwrap_or(&entry.text);
+        let clean = cleanup::clean_with(original, state.settings.lock().unwrap().remove_fillers);
+        let formatted = dictation::format(&app, &clean, true);
+        let text = if matches!(formatted.status, "applied" | "unchanged") { &formatted.text } else { &entry.text };
+        let error = history::update_text(&app, at, text, original, formatted.status, true).err();
+        state.phase.store(PHASE_READY, Ordering::SeqCst);
+        emit_state(&app, error);
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -1228,6 +1285,35 @@ fn meeting_derive(app: AppHandle, id: i64, kind: String) {
 }
 
 #[tauri::command]
+fn meeting_map(app: AppHandle, id: i64) -> Result<meetings::MapView, String> {
+    meetings::map_view(&app, id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn meeting_map_save(app: AppHandle, id: i64, map: mindmap::Map, expected: mindmap::Map) -> Result<(), String> {
+    meetings::map_save(&app, id, map, expected).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn meeting_map_export(app: AppHandle, title: String, format: String, bytes: Vec<u8>) -> Result<Option<String>, String> {
+    if !matches!(format.as_str(), "svg" | "png") || bytes.len() > 20_000_000 {
+        return Err("Недопустимый формат карты".into());
+    }
+    let safe = format!("{} — Sol Flow", meetings::safe_file_name(&title));
+    let (ask, folder) = {
+        let state=app.state::<AppState>();let settings=state.settings.lock().unwrap();
+        (settings.export_ask,settings.export_dir.clone())
+    };
+    let target = if ask {
+        let mut dialog=app.dialog().file().set_file_name(format!("{safe}.{format}")).add_filter("Map", &[&format]);
+        if let Some(folder)=folder.filter(|p|std::path::Path::new(p).is_dir()) { dialog=dialog.set_directory(folder); }
+        let Some(file)=dialog.blocking_save_file() else { return Ok(None); };
+        meetings::Target::File(file.into_path().map_err(|e|e.to_string())?)
+    } else { meetings::Target::AsSettings };
+    let path = meetings::export_target_path(&app,target,&safe,&format).map_err(|e|e.to_string())?;
+    crate::transcript_store::atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
+    sys::reveal_file(&path);
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+#[tauri::command]
 fn meeting_extras(app: AppHandle, id: i64) -> meetings::Extras {
     meetings::load_extras(&app, id)
 }
@@ -1432,6 +1518,19 @@ fn meeting_diarize(app: AppHandle, id: i64, speakers: i32) {
 #[tauri::command]
 fn diarize_status(app: AppHandle) -> (bool, u64) {
     (diarize::models_ready(&app), diarize::DOWNLOAD_MB)
+}
+
+#[tauri::command]
+fn meeting_assign_speaker(app: AppHandle, id: i64, index: usize, expected: meetings::Segment, speaker: Option<u32>) -> Result<(), String> {
+    meetings::assign_speaker(&app, id, index, &expected, speaker).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn meeting_audio_path(app: AppHandle, id: i64) -> Result<String, String> {
+    let path = meetings::audio_file(&app, id);
+    if !path.is_file() { return Err("audio unavailable".into()); }
+    app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -1737,6 +1836,7 @@ pub fn run() {
             history_list,
             history_audio,
             history_retranscribe,
+            history_format,
             set_option,
             history_delete,
             history_clear,
@@ -1760,6 +1860,9 @@ pub fn run() {
             meeting_qa,
             meeting_qa_clear,
             meeting_derive,
+            meeting_map,
+            meeting_map_save,
+            meeting_map_export,
             meeting_extras,
             meeting_extras_clear,
             meeting_set_kind,
@@ -1790,6 +1893,8 @@ pub fn run() {
             meeting_diarize,
             diarize_status,
             meeting_rename_speaker,
+            meeting_assign_speaker,
+            meeting_audio_path,
             meeting_rename,
             meeting_delete,
             meeting_set_project,

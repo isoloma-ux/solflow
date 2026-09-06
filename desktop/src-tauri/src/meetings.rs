@@ -55,6 +55,8 @@ pub struct Meta {
     /// Саммери от локальной языковой модели; пустая строка — не делали.
     #[serde(default)]
     pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mindmap: Option<crate::mindmap::Map>,
     /// Почему не вышло, если не вышло: строку показывает список встреч.
     /// Молчаливая неудача — худшее, что может случиться с импортом.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,13 +68,18 @@ pub struct Meta {
 }
 
 /// Одна реплика таймлайна: границы в секундах от начала записи.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct Segment {
     pub s: f32,
     pub e: f32,
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spk: Option<u32>,
+    /// Acoustic candidates for a mixed fragment; optional for older clients.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub voices: Vec<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub spk_review: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -144,9 +151,14 @@ pub struct MeetingRow {
     /// звука встреча — обычное дело: расшифровать заново или разделить
     /// говорящих у неё нельзя, и кнопок для этого окно не рисует.
     pub audio: bool,
+    pub updated: i64,
 }
 
 // --- состояние -------------------------------------------------------------
+
+pub(crate) fn inference_gate(app: &AppHandle) -> Arc<Mutex<()>> {
+    app.state::<MeetingState>().engine_gate.clone()
+}
 
 pub struct MeetingState {
     progress: Mutex<HashMap<i64, u8>>,
@@ -244,13 +256,20 @@ fn now_ms() -> i64 {
 
 /// Каждое сохранение — правка: штамп `updated` ставится здесь, а не у
 /// вызывающих, чтобы его нельзя было забыть.
+fn try_save_meta(app: &AppHandle, id: i64, meta: &Meta) -> Result<()> {
+    let mut stamped = meta.clone();
+    stamped.updated = now_ms();
+    crate::transcript_store::atomic_write(
+        &dir(app, id).join("meta.json"), &serde_json::to_vec_pretty(&stamped)?,
+    )?;
+    crate::sync::touch(app);
+    Ok(())
+}
+
 fn save_meta(app: &AppHandle, id: i64, meta: &Meta) {
-    let path = dir(app, id).join("meta.json");
-    if path.parent().map(|p| p.exists()).unwrap_or(false) {
-        let mut stamped = meta.clone();
-        stamped.updated = now_ms();
-        let _ = std::fs::write(path, serde_json::to_string_pretty(&stamped).unwrap());
-        crate::sync::touch(app);
+    if let Err(e) = try_save_meta(app, id, meta) {
+        log::error!("не удалось сохранить встречу {id}: {e}");
+        let _ = app.emit("solflow-save-failed", e.to_string());
     }
 }
 
@@ -259,12 +278,12 @@ pub fn load_meta(app: &AppHandle, id: i64) -> Option<Meta> {
     serde_json::from_str(&raw).ok()
 }
 
-fn save_transcript(app: &AppHandle, id: i64, segments: &[Segment]) {
-    let path = dir(app, id).join("transcript.json");
-    if path.parent().map(|p| p.exists()).unwrap_or(false) {
-        let _ = std::fs::write(path, serde_json::to_string(segments).unwrap());
-        crate::sync::touch(app);
-    }
+fn save_transcript(app: &AppHandle, id: i64, segments: &[Segment]) -> Result<()> {
+    crate::transcript_store::atomic_write(
+        &dir(app, id).join("transcript.json"), &serde_json::to_vec(segments)?,
+    )?;
+    crate::sync::touch(app);
+    Ok(())
 }
 
 /// Все встречи на диске — по каталогам с meta.json.
@@ -543,7 +562,8 @@ pub fn timed_text(meta: &Meta, segments: &[Segment]) -> String {
         }
         let new_line = current.is_empty()
             || seg.s - started >= 20.0
-            || (seg.spk.is_some() && seg.spk != speaker);
+            || seg.spk != speaker
+            || (seg.spk.is_none() && meta.speakers > 0);
         if new_line {
             if !current.is_empty() {
                 lines.push(std::mem::take(&mut current));
@@ -552,6 +572,8 @@ pub fn timed_text(meta: &Meta, segments: &[Segment]) -> String {
             speaker = seg.spk;
             current = match seg.spk {
                 Some(spk) => format!("[{}] {}: {}", clock(seg.s), name(spk), text),
+                None if seg.voices.len() > 1 => format!("[{}] [Несколько голосов, требуется проверка]: {}", clock(seg.s), text),
+                None if meta.speakers > 0 || seg.spk_review => format!("[{}] [Голос не определён]: {}", clock(seg.s), text),
                 None => format!("[{}] {}", clock(seg.s), text),
             };
         } else {
@@ -566,9 +588,9 @@ pub fn timed_text(meta: &Meta, segments: &[Segment]) -> String {
 }
 
 pub fn load_transcript(app: &AppHandle, id: i64) -> Vec<Segment> {
-    std::fs::read_to_string(dir(app, id).join("transcript.json"))
+    crate::transcript_store::read_visible(&dir(app, id))
         .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .and_then(|raw| serde_json::from_slice(&raw).ok())
         .unwrap_or_default()
 }
 
@@ -587,6 +609,7 @@ fn create(app: &AppHandle, imported: bool) -> Result<(i64, Meta)> {
         speakers: 0,
         names: HashMap::new(),
         summary: String::new(),
+        mindmap: None,
         error: None,
         updated: now,
     };
@@ -637,6 +660,7 @@ pub fn rows(app: &AppHandle) -> Vec<MeetingRow> {
                 phase: phase.get(&id).map(|p| p.to_string()),
                 summary: m.summary,
                 audio: audio_file(app, id).exists(),
+                updated: m.updated,
             })
         })
         .collect();
@@ -657,13 +681,33 @@ pub fn rename_speaker(app: &AppHandle, id: i64, speaker: u32, name: String) {
     if let Some(mut m) = load_meta(app, id) {
         let name = name.trim().to_string();
         if name.is_empty() {
-            m.names.remove(&speaker.to_string());
+            m.names.insert(speaker.to_string(), String::new());
         } else {
             m.names.insert(speaker.to_string(), name);
         }
         save_meta(app, id, &m);
         notify(app);
     }
+}
+
+/// Optimistic per-fragment correction. A snapshot precedes every write.
+pub fn assign_speaker(app: &AppHandle, id: i64, index: usize, expected: &Segment, speaker: Option<u32>) -> Result<()> {
+    let state = app.state::<MeetingState>();
+    let busy = state.cancel.lock().unwrap();
+    if busy.contains_key(&id) { return Err(anyhow!("запись сейчас обрабатывается")); }
+    let m = load_meta(app, id).ok_or_else(|| anyhow!("запись не найдена"))?;
+    if speaker.is_some_and(|s| s >= m.speakers) { return Err(anyhow!("говорящий не найден")); }
+    let mut segments = load_transcript(app, id);
+    if segments.get(index) != Some(expected) { return Err(anyhow!("расшифровка изменилась; откройте запись заново")); }
+    crate::transcript_store::TranscriptDraft::begin(&dir(app, id))?;
+    segments[index].spk = speaker;
+    segments[index].voices.clear();
+    segments[index].spk_review = speaker.is_none();
+    save_transcript(app, id, &segments)?;
+    try_save_meta(app, id, &m)?;
+    drop(busy);
+    notify(app);
+    Ok(())
 }
 
 pub fn set_project(app: &AppHandle, id: i64, project: Option<String>) {
@@ -1265,6 +1309,18 @@ pub fn transcribe(app: &AppHandle, id: i64) {
         state.progress.lock().unwrap().remove(&id);
         state.phase.lock().unwrap().remove(&id);
 
+        if cancelled {
+            if let Some(mut m) = load_meta(&app, id) {
+                if m.state == STATE_TRANSCRIBING {
+                    m.state = if dir(&app, id).join("transcript.json").exists() {
+                        STATE_DONE
+                    } else {
+                        STATE_RECORDED
+                    }.to_string();
+                    save_meta(&app, id, &m);
+                }
+            }
+        }
         if let Err(e) = result {
             log::error!("расшифровка не удалась: {e}");
             if !cancelled {
@@ -1312,8 +1368,9 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
         return Err(anyhow!("запись пустая"));
     }
 
+    let draft = crate::transcript_store::TranscriptDraft::begin(&dir(app, id))?;
     meta.state = STATE_TRANSCRIBING.to_string();
-    save_meta(app, id, &meta);
+    try_save_meta(app, id, &meta)?;
     notify(app);
 
     let state = app.state::<MeetingState>();
@@ -1365,9 +1422,10 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
         .collect();
 
     // Второй проход: куски читаются с диска и распознаются по одному.
-    // Частичный результат сохраняется после каждого куска — обрыв на
-    // середине не выбрасывает уже готовый текст.
+    // Черновик и исходный ответ модели сохраняются отдельно. Прежняя
+    // полная расшифровка остаётся основной до успешного завершения.
     let mut segments: Vec<Segment> = Vec::new();
+    let mut raw_segments: Vec<Segment> = Vec::new();
     for (index, (from, to)) in ranges.iter().enumerate() {
         if cancelled() {
             engine.clear_cancel();
@@ -1376,8 +1434,8 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
         let pcm = wav.read(*from, (*to - *from) as usize)?;
         // Брошенный по отмене кусок возвращает ошибку — это не поломка, а
         // ровно то, чего просил человек.
-        let text = match engine.transcribe_segment(&pcm) {
-            Ok(text) => cleanup::clean(&text),
+        let raw_text = match engine.transcribe_segment(&pcm) {
+            Ok(text) => text,
             Err(e) => {
                 engine.clear_cancel();
                 if cancelled() {
@@ -1386,15 +1444,30 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
                 return Err(e);
             }
         };
+        if cancelled() {
+            engine.clear_cancel();
+            return Ok(());
+        }
+        let text = cleanup::clean(&raw_text);
+        raw_segments.push(Segment {
+            s: *from as f32 / sr as f32,
+            e: *to as f32 / sr as f32,
+            text: raw_text,
+            spk: None,
+            voices: Vec::new(),
+            spk_review: false,
+        });
         if !text.is_empty() {
             segments.push(Segment {
                 s: *from as f32 / sr as f32,
                 e: *to as f32 / sr as f32,
                 text,
                 spk: None,
+                voices: Vec::new(),
+                spk_review: false,
             });
-            save_transcript(app, id, &segments);
         }
+        draft.checkpoint(&serde_json::to_vec(&segments)?, &serde_json::to_vec(&raw_segments)?)?;
 
         // Модель только что работала — сдвигаем счётчик простоя.
         *app.state::<crate::AppState>().last_used.lock().unwrap() = std::time::Instant::now();
@@ -1406,8 +1479,19 @@ fn transcribe_job(app: &AppHandle, id: i64) -> Result<()> {
         }
     }
 
+    if cancelled() {
+        engine.clear_cancel();
+        return Ok(());
+    }
+    if segments.is_empty() {
+        return Err(anyhow!(crate::lang::t(app, "Речь не распознана. Прежний текст и звук сохранены.")));
+    }
+    draft.commit()?;
+    crate::sync::touch(app);
     meta.state = STATE_DONE.to_string();
     meta.error = None;
+    // Сначала подтверждённое сохранение, только потом удаление звука.
+    try_save_meta(app, id, &meta)?;
 
     // Настройка «удалять звук после расшифровки»: текст готов, файл в
     // сотни мегабайт больше не нужен.
@@ -1465,7 +1549,8 @@ pub fn derive(app: &AppHandle, id: i64, kind: String) {
         return;
     };
     let phase: &'static str = b.id;
-    llm_job(app, id, "solflow-extras-error", "разбор записи", move |app, id, flag| {
+    let event = if kind == "mindmap" { "solflow-map-error" } else { "solflow-extras-error" };
+    llm_job(app, id, event, "разбор записи", move |app, id, flag| {
         derive_job(app, id, phase, flag)
     });
 }
@@ -1505,9 +1590,25 @@ fn derive_job(app: &AppHandle, id: i64, kind: &'static str, flag: Arc<AtomicBool
             state.progress.lock().unwrap().insert(id, pct);
             notify(&progress_app);
         },
-        flag,
+        flag.clone(),
     )?;
+    if flag.load(Ordering::Relaxed) { return Err(anyhow!("Отменено")); }
 
+    if kind == "mindmap" {
+        let mut map = crate::mindmap::parse(&result)?;
+        map.source = crate::mindmap::source(segments.iter().map(|s| s.text.as_str()));
+        if map.source != crate::mindmap::source(load_transcript(app, id).iter().map(|s| s.text.as_str())) {
+            return Err(anyhow!("Расшифровка изменилась; создайте карту заново"));
+        }
+        let mut current = load_meta(app, id).ok_or_else(|| anyhow!("запись не найдена"))?;
+        if current.mindmap != meta.mindmap { return Err(anyhow!("Карта изменилась на другом устройстве; откройте её заново")); }
+        crate::transcript_store::TranscriptDraft::begin(&dir(app, id))?;
+        map.revised = now_ms().max(current.mindmap.as_ref().map_or(0, |m| m.revised + 1));
+        current.mindmap = Some(map);
+        try_save_meta(app, id, &current)?;
+        let _ = app.emit("solflow-extras", id);
+        return Ok(());
+    }
     let mut extras = load_extras(app, id);
     extras.items.insert(kind.to_string(), result);
     save_extras(app, id, &extras);
@@ -1563,9 +1664,22 @@ fn llm_job(
         state.progress.lock().unwrap().remove(&id);
         state.phase.lock().unwrap().remove(&id);
 
+        if error_event == "solflow-map-error" {
+            if cancelled {
+                let _ = app.emit("solflow-map-cancelled", id);
+            } else if let Err(e) = &result {
+                let error = e.to_string();
+                let _ = crate::transcript_store::atomic_write(&dir(&app,id).join("mindmap-error.json"),
+                    &serde_json::to_vec(&error).unwrap_or_default());
+                let _ = app.emit("solflow-map-error", serde_json::json!({"id":id,"error":error}));
+            } else {
+                let _ = std::fs::remove_file(dir(&app,id).join("mindmap-error.json"));
+                let _ = app.emit("solflow-map-ready", id);
+            }
+        }
         if let Err(e) = result {
             log::error!("{what}: не удалось: {e}");
-            if !cancelled {
+            if !cancelled && error_event != "solflow-map-error" {
                 use tauri::Emitter;
                 let _ = app.emit(error_event, format!("{e}"));
             }
@@ -1817,14 +1931,12 @@ pub fn diarize(app: &AppHandle, id: i64, num_speakers: i32) {
     std::thread::spawn(move || {
         let result = diarize_job(&app, id, num_speakers);
         let state = app.state::<MeetingState>();
-        state.cancel.lock().unwrap().remove(&id);
-        state.progress.lock().unwrap().remove(&id);
-        state.phase.lock().unwrap().remove(&id);
 
         match result {
             Ok(speakers) => {
                 if let Some(mut m) = load_meta(&app, id) {
                     m.speakers = speakers as u32;
+                    m.names = (0..speakers).map(|i| (i.to_string(), String::new())).collect(); // Blank names are sync tombstones.
                     save_meta(&app, id, &m);
                 }
             }
@@ -1833,6 +1945,9 @@ pub fn diarize(app: &AppHandle, id: i64, num_speakers: i32) {
                 let _ = app.emit("solflow-diarize-failed", format!("{e}"));
             }
         }
+        state.cancel.lock().unwrap().remove(&id);
+        state.progress.lock().unwrap().remove(&id);
+        state.phase.lock().unwrap().remove(&id);
         notify(&app);
     });
 }
@@ -1868,7 +1983,7 @@ fn diarize_job(app: &AppHandle, id: i64, num_speakers: i32) -> Result<usize> {
     }
     let bounds: Vec<(f32, f32)> = segments.iter().map(|s| (s.s, s.e)).collect();
 
-    let speakers = crate::diarize::run(
+    let turns = crate::diarize::run(
         app,
         &audio_file(app, id),
         &bounds,
@@ -1877,16 +1992,16 @@ fn diarize_job(app: &AppHandle, id: i64, num_speakers: i32) -> Result<usize> {
         &cancelled,
     )?;
 
-    let labelled: Vec<Segment> = segments
-        .into_iter()
-        .zip(speakers.iter())
-        .map(|(s, &spk)| Segment {
-            spk: Some(spk as u32),
-            ..s
-        })
-        .collect();
-    let count = speakers.iter().max().map(|m| m + 1).unwrap_or(0);
-    save_transcript(app, id, &labelled);
+    let (assignments, count) = crate::speaker_attribution::assign(&bounds, &turns);
+    if count == 0 { return Err(anyhow!("голоса не найдены; прежняя разметка сохранена")); }
+    if cancelled() { return Err(anyhow!("отменено")); }
+    let labelled: Vec<Segment> = segments.into_iter().zip(assignments)
+        .map(|(s, label)| Segment { spk: label.speaker, spk_review: label.speaker.is_none(), voices: label.voices, ..s }).collect();
+    // Keep the old labels/names and original acoustic turns locally, without
+    // changing the sync allowlist or splitting words by approximate timing.
+    let backup = crate::transcript_store::TranscriptDraft::begin(&dir(app, id))?;
+    crate::transcript_store::atomic_write(&backup.version.join("diarization-turns.json"), &serde_json::to_vec(&turns)?)?;
+    save_transcript(app, id, &labelled)?;
     Ok(count)
 }
 
@@ -2256,7 +2371,13 @@ fn duration_label(seconds: f32) -> String {
 /// Подпись говорящего на смене голоса, как в пьесе; None — голос тот же.
 /// Если пользователь дал человеку имя, в файл идёт имя.
 fn speaker_at(segments: &[Segment], index: usize, names: &HashMap<String, String>) -> Option<String> {
-    let spk = segments[index].spk?;
+    let seg = &segments[index];
+    if seg.spk.is_none() {
+        return if seg.voices.len() > 1 { Some("Несколько голосов — проверьте".into()) }
+        else if seg.spk_review || segments.iter().any(|s| s.spk.is_some() || !s.voices.is_empty()) { Some("Голос не определён".into()) }
+        else { None };
+    }
+    let spk = seg.spk?;
     if index > 0 && segments[index - 1].spk == Some(spk) {
         return None;
     }
@@ -2458,9 +2579,9 @@ pub enum Target {
 /// склееного: папка из настроек или «Загрузки», «имя 2» при занятом имени.
 /// Пропавшую папку (флешку вынули) молча заменяем «Загрузками», иначе
 /// экспорт упал бы вместо того, чтобы сохраниться.
-fn export_target_path(app: &AppHandle, target: Target, safe: &str, format: &str) -> Result<PathBuf> {
+pub(crate) fn export_target_path(app: &AppHandle, target: Target, safe: &str, format: &str) -> Result<PathBuf> {
     let ext = match format {
-        "md" | "docx" | "pdf" | "wav" => format,
+        "md" | "docx" | "pdf" | "wav" | "png" | "svg" => format,
         _ => "txt",
     };
     let chosen = match &target {
@@ -2717,4 +2838,34 @@ pub fn export(
         crate::sys::reveal_file(&path);
     }
     Ok(path.to_string_lossy().to_string())
+}
+
+#[derive(Serialize)]
+pub struct MapView { pub map: Option<crate::mindmap::Map>, pub stale: bool, pub error: Option<String> }
+pub fn map_view(app: &AppHandle, id: i64) -> Result<MapView> {
+    let m = load_meta(app, id).ok_or_else(|| anyhow!("Запись не найдена"))?;
+    let hash = crate::mindmap::source(load_transcript(app, id).iter().map(|s| s.text.as_str()));
+    let stale = m.mindmap.as_ref().is_some_and(|m| m.source != hash);
+    let error = std::fs::read(dir(app,id).join("mindmap-error.json")).ok()
+        .and_then(|bytes| serde_json::from_slice::<String>(&bytes).ok());
+    Ok(MapView { map: m.mindmap, stale, error })
+}
+pub fn map_save(app: &AppHandle, id: i64, mut map: crate::mindmap::Map, expected: crate::mindmap::Map) -> Result<()> {
+    map.validate()?;
+    let state = app.state::<MeetingState>();
+    let busy = state.cancel.lock().unwrap();
+    if busy.contains_key(&id) { return Err(anyhow!("Запись сейчас обрабатывается")); }
+    let mut meta = load_meta(app, id).ok_or_else(|| anyhow!("Запись не найдена"))?;
+    if meta.mindmap.as_ref() != Some(&expected) { return Err(anyhow!("Карта изменилась; откройте её заново")); }
+    if expected.source != crate::mindmap::source(load_transcript(app, id).iter().map(|s| s.text.as_str())) {
+        return Err(anyhow!("Расшифровка изменилась; создайте карту заново"));
+    }
+    crate::transcript_store::TranscriptDraft::begin(&dir(app, id))?;
+    map.source = expected.source;
+    map.revised = now_ms().max(expected.revised + 1);
+    meta.mindmap = Some(map);
+    try_save_meta(app, id, &meta)?;
+    drop(busy);
+    notify(app);
+    Ok(())
 }

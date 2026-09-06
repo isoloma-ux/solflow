@@ -37,38 +37,37 @@ pub fn clean_with(text: &str, drop_parasites: bool) -> String {
         result
     };
     let result = normalize_spaces_and_punct(&result);
-    result.trim().to_string()
+    crate::dictation_text::spacing(result.trim())
 }
 
 /// Убирает слова-паразиты вместе с прилипшей к ним запятой. Ищем по
 /// словам, а не подстрокой: иначе «типаж» превратится в «ж».
 fn drop_parasite_words(text: &str) -> String {
     let mut result = text.to_string();
-    for phrase in PARASITES {
+    // Длинные обороты первыми, как на Android: иначе «то есть как бы»
+    // успевает превратиться в «то есть». Индексы берём из исходной строки:
+    // Unicode lowercase может менять число байт (например, İ → i + ◌̇).
+    let mut phrases = PARASITES.to_vec();
+    phrases.sort_by_key(|p| std::cmp::Reverse(p.chars().count()));
+    for phrase in phrases {
         let mut out = String::with_capacity(result.len());
-        let lower = result.to_lowercase();
-        let mut from = 0usize;
-        while let Some(found) = lower[from..].find(phrase) {
-            let at = from + found;
-            let end = at + phrase.len();
-            let before_ok = at == 0
-                || !lower[..at]
-                    .chars()
-                    .next_back()
-                    .map(|c| c.is_alphanumeric())
-                    .unwrap_or(false);
-            let after = lower[end..].chars().next();
-            let after_ok = after
-                .map(|c| !c.is_alphanumeric())
-                .unwrap_or(true);
-            if before_ok && after_ok {
+        let mut from = 0;
+        let mut chars = result.char_indices().peekable();
+        while let Some((at, _)) = chars.next() {
+            let end = result[at..].char_indices()
+                .nth(phrase.chars().count()).map(|(i, _)| at + i)
+                .unwrap_or(result.len());
+            let before_ok = result[..at].chars().next_back()
+                .map(|c| !c.is_alphanumeric()).unwrap_or(true);
+            let after_ok = result[end..].chars().next()
+                .map(|c| !c.is_alphanumeric()).unwrap_or(true);
+            if before_ok && after_ok && result[at..end].to_lowercase() == phrase {
                 out.push_str(&result[from..at]);
-                // Съедаем запятую и пробел, оставшиеся от вырезанного слова.
-                let tail: String = result[end..].chars().take_while(|c| *c == ',').collect();
-                from = end + tail.len();
-            } else {
-                out.push_str(&result[from..end]);
-                from = end;
+                out.push(' ');
+                from = end + usize::from(result[end..].starts_with(','));
+                while chars.peek().map(|(i, _)| *i < from).unwrap_or(false) {
+                    chars.next();
+                }
             }
         }
         out.push_str(&result[from..]);
@@ -112,8 +111,14 @@ fn drop_fillers(text: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     let mut capitalize_next = false;
     for word in text.split(' ') {
-        let bare = word.trim_matches(PUNCT).to_lowercase();
-        let filler = !bare.is_empty() && (FILLERS.contains(&bare.as_str()) || is_hesitation(&bare));
+        let original = word.trim_matches(PUNCT);
+        // ООО, АА, ММ и другие сокращения нельзя принимать за мычание.
+        // Лучше оставить неоднозначное «ЭЭ», чем молча удалить факт.
+        let acronym = original.chars().count() >= 2
+            && original.chars().all(|c| c.is_uppercase());
+        let bare = original.to_lowercase();
+        let filler = !acronym && !bare.is_empty()
+            && (FILLERS.contains(&bare.as_str()) || is_hesitation(&bare));
         if filler {
             if word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                 capitalize_next = true;

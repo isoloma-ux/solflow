@@ -111,6 +111,7 @@ listen("solflow-result", (e) => {
 });
 listen("solflow-history", () => {
   if (page === "history") refreshHistory();
+  el("historyHint").textContent = HISTORY_HINT;
 });
 listen("solflow-history-failed", (e) => {
   el("historyHint").textContent = t("Не вышло: {0}", e.payload);
@@ -617,6 +618,7 @@ function showPage(name, fromHistory = false) {
   if (!PAGES.includes(name)) return;
   if (!fromHistory && name !== page) backStack.push({ page, meeting: detailId });
 
+  if (name !== "meetings") el("meetAudio").pause();
   page = name;
   for (const p of PAGES) {
     const box = el("page" + p.charAt(0).toUpperCase() + p.slice(1));
@@ -1815,6 +1817,9 @@ let deleteProjectArmed = null;
 
 clearableSearch("meetSearch", "meetSearchClear", refreshMeetings);
 listen("solflow-meetings", refreshMeetings);
+listen("solflow-save-failed", (e) => {
+  el("meetStatus").textContent = t("Не удалось сохранить запись: {0}", e.payload);
+});
 listen("solflow-import-failed", (e) => {
   el("meetStatus").textContent = t("Импорт не удался: {0}", e.payload);
 });
@@ -1943,7 +1948,96 @@ listen("tauri://drag-drop", (e) => {
 
 // --- встречи: деталь -------------------------------------------------------
 
+let meetingAudioId = null;
+let meetingAudioRequest = 0;
+function resetMeetingAudio() {
+  meetingAudioRequest++;
+  meetingAudioId = null;
+  const audio = el("meetAudio");
+  audio.pause(); audio.removeAttribute("src"); audio.load();
+}
+async function setupMeetingAudio(m) {
+  el("meetPlayer").hidden = !m.audio;
+  if (!m.audio) { if (meetingAudioId !== null) resetMeetingAudio(); return; }
+  if (meetingAudioId === m.id) return;
+  resetMeetingAudio();
+  meetingAudioId = m.id;
+  const request = meetingAudioRequest;
+  try {
+    const path = await invoke("meeting_audio_path", { id: m.id });
+    if (detailId !== m.id || request !== meetingAudioRequest) return;
+    el("meetAudio").src = window.__TAURI__.core.convertFileSrc(path);
+    el("meetAudio").playbackRate = Number(el("meetSpeed").value);
+  } catch (error) {
+    if (detailId === m.id && request === meetingAudioRequest) showDetailStatus(t("Не удалось открыть звук: {0}", error));
+  }
+}
+function playMeetingAt(seconds) {
+  const audio = el("meetAudio");
+  if (!audio.getAttribute("src")) return;
+  audio.currentTime = Math.max(0, seconds);
+  const request = meetingAudioRequest;
+  audio.play().catch(error => {
+    if (error.name !== "AbortError" && request === meetingAudioRequest)
+      showDetailStatus(t("Не удалось открыть звук: {0}", error));
+  });
+}
+el("meetRewind").onclick = () => { el("meetAudio").currentTime = Math.max(0, el("meetAudio").currentTime - 10); };
+el("meetSpeed").onchange = () => { el("meetAudio").playbackRate = Number(el("meetSpeed").value); };
+el("meetAudio").addEventListener("timeupdate", () => {
+  const time = el("meetAudio").currentTime;
+  el("meetSegments").querySelectorAll(".segment").forEach(row => {
+    row.classList.toggle("playing", time >= Number(row.dataset.s) && time < Number(row.dataset.e));
+  });
+});
+el("meetAudio").addEventListener("error", () => {
+  if (el("meetAudio").getAttribute("src")) showDetailStatus(t("Не удалось открыть звук: {0}", t("Аудиофайл недоступен")));
+});
+function setWorkbenchPane(pane) {
+  el("meetWorkbench").dataset.pane = pane;
+  el("meetTextTab").setAttribute("aria-selected", String(pane === "text"));
+  el("meetAnalysisTab").setAttribute("aria-selected", String(pane === "analysis"));
+}
+el("meetMore").onclick = event => {
+  event.stopPropagation();
+  el("meetMoreMenu").hidden = !el("meetMoreMenu").hidden;
+  el("meetMore").setAttribute("aria-expanded", String(!el("meetMoreMenu").hidden));
+};
+document.addEventListener("click", () => { el("meetMoreMenu").hidden = true; el("meetMore").setAttribute("aria-expanded", "false"); });
+el("meetTextTab").onclick = () => setWorkbenchPane("text");
+el("meetAnalysisTab").onclick = () => setWorkbenchPane("analysis");
+document.querySelector(".workbench-tabs").addEventListener("keydown", event => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const text = event.key === "Home" || (event.key !== "End" && el("meetWorkbench").dataset.pane !== "text");
+  setWorkbenchPane(text ? "text" : "analysis");
+  el(text ? "meetTextTab" : "meetAnalysisTab").focus();
+});
+function renderSpeakerFilter(m) {
+  const select = el("meetSpeakerFilter"), value = select.value;
+  select.replaceChildren(new Option(t("Все фрагменты"), ""), new Option(t("Требуют проверки"), "review"));
+  for (let i = 0; i < m.speakers; i++) select.add(new Option(speakerName(m, i), String(i)));
+  select.value = [...select.options].some(o => o.value === value) ? value : "";
+  select.hidden = !m.speakers;
+  const count = detailSegments.filter(s => s.spk == null && (s.spk_review || m.speakers > 0 || s.voices?.length > 1)).length;
+  el("meetReviewHint").hidden = !count;
+  el("meetReviewHint").textContent = t("Фрагментов для проверки: {0}. Нажмите время, прослушайте и уточните говорящего.", count);
+}
+function drawTranscript() {
+  const m = meetRows.find(r => r.id === detailId);
+  if (!m) return;
+  const box = el("meetSegments"); box.replaceChildren(); detailLastSpeaker = null;
+  appendSegmentRows(m, box, detailSegments);
+  el("meetFilteredEmpty").hidden = !detailSegments.length || !!box.querySelector(".segment");
+}
+el("meetSpeakerFilter").onchange = () => { detailStructure = ""; renderDetail(); };
+
+
 function openMeeting(id) {
+  if (detailId !== id) resetMeetingAudio();
+  el("meetSpeakerFilter").value = "";
+  setWorkbenchPane("text");
+  detailStructure = "";
   detailId = id;
   detailLang = null;
   detailTranslation = null;
@@ -1955,6 +2049,7 @@ function openMeeting(id) {
 }
 
 function closeMeeting() {
+  resetMeetingAudio();
   detailId = null;
   el("meetDetail").hidden = true;
   el("meetHome").hidden = false;
@@ -2134,6 +2229,7 @@ const EXTRA_TITLES = {
   post: "Пересказ для поста",
 };
 const DERIVE_PHASES = {
+  mindmap: "Создаю карту записи{0}",
   tasks: "Ищу решения и задачи{0}",
   letter: "Пишу письмо по итогам{0}",
   outline: "Составляю оглавление{0}",
@@ -2215,6 +2311,7 @@ const kindAsked = new Set();
 
 async function renderExtras(m) {
   const done = m.state === "done";
+  renderRecordingMap(m);
   el("meetDerive").hidden = !done;
   el("meetDerive").disabled = !!m.phase;
   el("meetKindSelect").hidden = !done;
@@ -2301,6 +2398,9 @@ function clockToSeconds(text) {
 
 /** Прокрутить к реплике, в которую попадает момент записи. */
 function jumpToClock(seconds) {
+  setWorkbenchPane("text");
+  el("meetSpeakerFilter").value = "";
+  drawTranscript();
   const rows = [...document.querySelectorAll("#meetSegments .segment")];
   let target = null;
   for (const row of rows) {
@@ -2499,25 +2599,22 @@ function renderDetailWork(m) {
  * `offset` — номер первой из них в расшифровке: по нему берётся перевод. */
 function appendSegmentRows(m, box, segs, offset = 0) {
   for (const [k, s] of segs.entries()) {
+    const filter = el("meetSpeakerFilter").value;
+    const unknown = s.spk == null && (s.spk_review || m.speakers > 0 || s.voices?.length > 1);
+    if (filter === "review" && !unknown) continue;
+    if (filter && filter !== "review" && s.spk !== Number(filter)) continue;
     const shown = detailTranslation?.segments?.[offset + k] ?? s.text;
-    // Подпись говорящего — на смене голоса, как в пьесе. Клик по ней даёт
-    // человеку имя; имя уходит и в экспорт.
-    if (s.spk !== null && s.spk !== undefined && s.spk !== detailLastSpeaker) {
-      detailLastSpeaker = s.spk;
-      const head = document.createElement("button");
-      head.className = `speaker speaker-${s.spk % 6}`;
-      head.textContent = speakerName(m, s.spk);
-      head.title = t("Нажмите, чтобы дать имя");
-      head.onclick = () => focusSpeakerField(s.spk);
-      box.appendChild(head);
-    }
-
     const row = document.createElement("div");
     row.className = "segment";
     row.dataset.s = String(s.s);
-    const clock = document.createElement("span");
+    row.dataset.e = String(s.e);
+    row.dataset.index = String(offset + k);
+    const clock = document.createElement("button");
     clock.className = "segment-clock";
     clock.textContent = fmtClock(s.s);
+    clock.title = t("Прослушать с этого места");
+    clock.disabled = !m.audio;
+    clock.onclick = () => playMeetingAt(s.s);
     const body = document.createElement("p");
     body.className = "segment-text";
     const needle = el("meetFind").value.trim();
@@ -2527,7 +2624,37 @@ function appendSegmentRows(m, box, segs, offset = 0) {
     } else {
       body.textContent = shown;
     }
-    row.append(clock, body);
+    const content = document.createElement("div");
+    content.className = "segment-content" + (s.spk != null ? ` speaker-${s.spk % 6}` : "");
+    if (m.speakers > 0 || s.spk_review || s.voices?.length) {
+      const select = document.createElement("select");
+      select.className = "segment-voice";
+      select.setAttribute("aria-label", t("Говорящий фрагмента {0}", fmtClock(s.s)));
+      if (s.voices?.length > 1 && s.spk == null) {
+        select.add(new Option(t("Несколько голосов — проверьте"), "mixed"));
+        select.options[0].disabled = true;
+        row.classList.add("needs-review");
+      }
+      select.add(new Option(t("Голос не определён"), "unknown"));
+      for (let i = 0; i < m.speakers; i++) select.add(new Option(speakerName(m, i), String(i)));
+      select.value = s.spk != null ? String(s.spk) : s.voices?.length > 1 ? "mixed" : "unknown";
+      select.disabled = !!m.phase;
+      select.title = t("Изменить говорящего для этого фрагмента");
+      const meetingId = m.id;
+      select.onchange = async () => {
+        select.disabled = true;
+        try {
+          await invoke("meeting_assign_speaker", { id: meetingId, index: offset + k, expected: s,
+            speaker: select.value === "unknown" ? null : Number(select.value) });
+          if (detailId === meetingId) { detailStructure = ""; await refreshMeetings(); showDetailStatus(t("Говорящий изменён. При необходимости обновите саммери и разборы.")); }
+        } catch (error) {
+          if (detailId === meetingId) { showDetailStatus(t("Не удалось сохранить: {0}", error)); detailStructure = ""; await renderDetail(); }
+        }
+      };
+      content.append(select);
+    }
+    content.append(body);
+    row.append(clock, content);
     box.appendChild(row);
   }
 }
@@ -2545,13 +2672,14 @@ async function renderDetail() {
     el("meetTitle").textContent = meetingTitle(m);
   }
   el("meetInfo").textContent = detailInfo(m);
+  setupMeetingAudio(m);
 
   // Та же встреча, поменялись только проценты: не пересобираем страницу,
   // иначе она мерцала на каждом тике и не давала ничего нажать. Пока идёт
   // расшифровка, новые реплики просто дописываются в конец.
   const structure = JSON.stringify([
-    m.id, m.title, m.project, m.state, m.error, !!m.phase, m.summary, m.names,
-    m.speakers, m.audio, m.seconds, m.imported,
+    m.id, m.title, m.project, m.state, m.error, m.phase, m.summary, m.names,
+    m.speakers, m.audio, m.seconds, m.imported, m.updated,
     meetProjects.map((p) => [p.id, p.name]),
     el("meetFind").value,
     detailLang,
@@ -2589,6 +2717,7 @@ async function renderDetail() {
   // разделить голоса и выгрузить .wav нечем — кнопок не показываем.
   el("meetAgain").hidden = !m.audio;
   el("meetSpeakers").hidden = !m.audio;
+  el("meetSpeakers").disabled = !!m.phase;
   el("exportMenu").querySelector('[data-format="wav"]').hidden = !m.audio;
 
   // Идущая работа: полоса с процентами и отменой, не только текст в шапке.
@@ -2609,11 +2738,13 @@ async function renderDetail() {
   detailSegments = await invoke("meeting_segments", { id: detailId });
   renderTranslateMenu(m);
   renderSpeakersPanel(m, detailSegments);
+  renderSpeakerFilter(m);
 
   const box = el("meetSegments");
   box.textContent = "";
   detailLastSpeaker = null;
   appendSegmentRows(m, box, detailSegments);
+  el("meetFilteredEmpty").hidden = !detailSegments.length || !!box.querySelector(".segment");
   const needle = el("meetFind").value.trim();
   const found = box.querySelectorAll(".segment.found").length;
   el("meetFindCount").hidden = !needle;
@@ -2656,7 +2787,7 @@ function renderSpeakersPanel(meeting, segments) {
     if (s.spk === null || s.spk === undefined) continue;
     seconds.set(s.spk, (seconds.get(s.spk) || 0) + (s.e - s.s));
   }
-  const found = [...seconds.keys()].sort((a, b) => a - b);
+  const found = Array.from({ length: meeting.speakers }, (_, i) => i);
   panel.hidden = found.length === 0;
   if (!found.length) return;
 
@@ -2671,6 +2802,7 @@ function renderSpeakersPanel(meeting, segments) {
     input.className = "search";
     input.id = `speakerName${index}`;
     input.type = "text";
+    input.disabled = !!meeting.phase;
     input.placeholder = t("Говорящий {0}", index + 1);
     input.value = meeting.names?.[String(index)] || "";
     const commit = () => {
@@ -2687,7 +2819,7 @@ function renderSpeakersPanel(meeting, segments) {
 
     const share = document.createElement("span");
     share.className = "speaker-share";
-    share.textContent = fmtDur(seconds.get(index));
+    share.textContent = fmtDur(seconds.get(index) || 0);
 
     row.append(dot, input, share);
     box.appendChild(row);
@@ -2698,6 +2830,7 @@ function renderSpeakersPanel(meeting, segments) {
 function focusSpeakerField(index) {
   const input = el(`speakerName${index}`);
   if (!input) return;
+  el("speakersPanel").open = true;
   input.focus();
   input.select();
   input.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -2713,6 +2846,7 @@ el("meetSpeakers").addEventListener("click", async (e) => {
   el("speakersHint").textContent = ready
     ? t("Разбор идет на этом компьютере")
     : t("Первый раз докачает модель голосов, {0} МБ", mb);
+  el("speakersHint").textContent += " " + t("Повторный разбор создаёт новую нумерацию голосов. Прежние имена и разметка сохранятся в резерве.");
 });
 
 el("speakersMenu").addEventListener("click", (e) => {
@@ -2758,8 +2892,14 @@ el("meetProjectSelect").addEventListener("change", () => {
 });
 
 el("meetCopy").addEventListener("click", () => {
+  const m = meetRows.find(r => r.id === detailId);
   const text = detailSegments
-    .map((s, i) => detailTranslation?.segments?.[i] ?? s.text)
+    .map((s, i) => {
+      const text = detailTranslation?.segments?.[i] ?? s.text;
+      if (!m || (!m.speakers && !s.spk_review && !s.voices?.length)) return text;
+      const label = s.spk != null ? speakerName(m, s.spk) : t(s.voices?.length > 1 ? "Несколько голосов — проверьте" : "Голос не определён");
+      return `${fmtClock(s.s)}  ${label}: ${text}`;
+    })
     .join("\n");
   navigator.clipboard.writeText(text);
   showDetailStatus(t("Скопировано"));
@@ -2897,6 +3037,54 @@ function renderHistory() {
     text.className = "history-text";
     text.textContent = entry.text;
     body.appendChild(text);
+
+    const statuses = {
+      applied: "Пунктуация обработана локально. Проверьте результат.",
+      unchanged: "Обработка завершена без изменений.",
+      no_model: "Пунктуация пропущена: скачайте модель саммери в настройках.",
+      busy: "Пунктуация пропущена: модель занята другой записью.",
+      too_long: "Пунктуация пропущена: лимит — 6000 символов и 800 слов.",
+      failed: "Пунктуация не применена: модель не завершила обработку или результат не прошёл проверку.",
+    };
+    if (statuses[entry.punctuation_status]) {
+      const status = document.createElement("p");
+      status.className = "muted small";
+      status.textContent = t(statuses[entry.punctuation_status]);
+      body.appendChild(status);
+    }
+    const addSource = (label, value) => {
+      if (value == null) return;
+      const details = document.createElement("details");
+      details.className = "history-source";
+      const summary = document.createElement("summary");
+      summary.textContent = t(label);
+      const original = document.createElement("p");
+      original.className = "history-text";
+      original.textContent = value;
+      const copy = document.createElement("button");
+      copy.className = "text-button";
+      copy.textContent = t("Скопировать этот вариант");
+      copy.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          el("historyHint").textContent = t("Скопировано");
+        } catch (e) { el("historyHint").textContent = String(e); }
+      };
+      details.append(summary, original, copy);
+      body.appendChild(details);
+    };
+    addSource("Исходная расшифровка", entry.original_text);
+    addSource("Предыдущий вариант", entry.previous_text);
+    const format = document.createElement("button");
+    format.className = "text-button history-format";
+    format.textContent = t("Связная диктовка");
+    format.onclick = async () => {
+      format.disabled = true;
+      el("historyHint").textContent = t("Расставляю знаки препинания…");
+      try { await invoke("history_format", { at: entry.at }); }
+      catch (e) { el("historyHint").textContent = String(e); format.disabled = false; }
+    };
+    body.appendChild(format);
 
     // Плеер появляется только у записей со звуком: он и так лежит рядом,
     // а переслушать проще, чем гадать, что там было сказано.
@@ -3130,6 +3318,7 @@ async function refreshSettings(reloadDevices = false) {
     [t("Включено"), t("Выключено")],
     settings.remove_fillers
   );
+  markToggle("coherentDictation", "coherentDictationLabel", [t("С проверкой"), t("Быстро")], settings.coherent_dictation);
   markToggle("keepAudio", "keepAudioLabel", [t("Включено"), t("Выключено")], settings.keep_audio);
   el("modelUnload").value = settings.model_unload;
   el("historyLimit").value = String(settings.history_limit);
@@ -3463,6 +3652,9 @@ bindToggle("keepAwake", "keepAwakeLabel", [t("Включено"), t("Выклю�
 );
 bindToggle("removeFillers", "removeFillersLabel", [t("Включено"), t("Выключено")], (on) =>
   option("remove_fillers", on)
+);
+bindToggle("coherentDictation", "coherentDictationLabel", [t("С проверкой"), t("Быстро")], (on) =>
+  option("coherent_dictation", on)
 );
 bindToggle("keepAudio", "keepAudioLabel", [t("Включено"), t("Выключено")], (on) =>
   option("keep_audio", on)
@@ -4085,3 +4277,119 @@ if (!IS_MAC) {
     if (node && node.textContent.includes("⌥")) node.textContent = t("Ctrl + Пробел");
   }
 }
+
+// Map generation, stored result and file export are separate, visible states.
+let mapEditor = null;
+const mapRequests = new Set(), mapViews = new Map(), mapFailures = new Map();
+let mapRenderVersion = 0;
+function mapConfirm(message) {
+  return new Promise(resolve => {
+    const dialog=el("mapConfirmDialog");el("mapConfirmText").textContent=message;
+    const finish=value=>{dialog.close();resolve(value);};
+    el("mapConfirmYes").onclick=()=>finish(true);el("mapConfirmNo").onclick=()=>finish(false);
+    dialog.oncancel=e=>{e.preventDefault();finish(false);};dialog.showModal();
+  });
+}
+async function closeRecordingMap(event) {
+  event?.preventDefault();
+  if (mapEditor?.dirty() && !await mapConfirm(t("Закрыть карту без сохранения правок?"))) return;
+  el("recordingMapDialog").close();
+}
+el("recordingMapClose").onclick = closeRecordingMap;
+el("recordingMapDialog").addEventListener("cancel", closeRecordingMap);
+async function renderRecordingMap(m) {
+  const version=++mapRenderVersion;
+  el("meetMap").hidden=m.state!=="done";
+  el("meetMapCard").hidden=m.state!=="done";
+  if(m.state!=="done") return;
+  try {
+    const view=await invoke("meeting_map",{id:m.id});
+    if(detailId!==m.id || version!==mapRenderVersion) return;
+    m=meetRows.find(row=>row.id===m.id)||m;
+    if(mapFailures.has(m.id))view.error=mapFailures.get(m.id);
+    mapViews.set(m.id,view);
+    const pending=mapRequests.has(m.id)||m.phase==="mindmap";
+    const exists=!!view.map;
+    const label=pending?t("Карта создается…"):exists?t("Открыть карту"):view.error?t("Повторить создание карты"):t("Создать карту");
+    el("meetMapLabel").textContent=label;
+    el("meetMapCardLabel").textContent=exists?t("Открыть карту"):label;
+    el("meetMap").disabled=exists?false:(pending||!!m.phase);
+    el("meetMapCardAction").disabled=exists?false:(pending||!!m.phase);
+    el("meetMapBadge").textContent=pending?t("Обработка"):view.error?t("Ошибка"):exists?t("Сохранена в записи"):t("Не создана");
+    el("meetMapCard").dataset.state=pending?'working':view.error?'error':exists?'ready':'empty';
+    el("meetMapHint").textContent=pending?t("Создаем карту. После завершения откроем ее здесь."):
+      view.error?t("Карта не создана: {0}",t(view.error))+(exists?' '+t("Предыдущая карта сохранена."):''):
+      exists?t("Карта сохранена в этой записи. Откройте ее для просмотра или экспорта PNG/SVG."):
+      t("Главная тема и ключевые мысли в виде схемы. Результат появится здесь; отдельный файл создается при экспорте.");
+    const preview=el("meetMapPreview");preview.hidden=!exists;
+    preview.innerHTML=exists?SolFlowMap.svg(view.map).text.replace('id="solflow-watermark"','id="solflow-watermark-preview"'):'';
+  } catch(e) {
+    if(detailId!==m.id||version!==mapRenderVersion)return;
+    el("meetMapHint").textContent=t("Не удалось открыть карту: {0}",String(e));
+    el("meetMapBadge").textContent=t("Ошибка");
+  }
+}
+async function startRecordingMap(id) {
+  const [ready,mb]=await invoke("summary_state");
+  if(!ready&&!await mapConfirm(t("Первый раз скачает модель ~{0} ГБ",(mb/1024).toFixed(1))))return;
+  mapFailures.delete(id);
+  mapRequests.add(id);
+  const m=meetRows.find(r=>r.id===id);if(m)renderRecordingMap(m);
+  try { await invoke("meeting_derive",{id,kind:"mindmap"}); }
+  catch(e) {mapRequests.delete(id);throw e;}
+}
+function openRecordingMap(id,view) {
+  if(!el("recordingMapDialog").open)el("recordingMapDialog").showModal();
+  mapEditor=SolFlowMap.mount(el("recordingMapBody"),view.map,{lang:UI_LANG,stale:view.stale,
+    save:async(map,expected)=>{
+      await invoke("meeting_map_save",{id,map,expected});
+      const current=await invoke("meeting_map",{id});mapViews.set(id,current);
+      const m=meetRows.find(r=>r.id===id);if(m)renderRecordingMap(m);
+      return current.map;
+    },
+    export:async(bytes,format,title)=>{
+      const path=await invoke("meeting_map_export",{bytes:Array.from(bytes),format,title});
+      return path?t("Файл сохранен: {0}",path):t("Экспорт отменен. Карта остается в записи.");
+    }
+  });
+  const regenerate=document.createElement("button");regenerate.textContent=t("Создать заново");
+  regenerate.disabled=mapRequests.has(id)||!!meetRows.find(r=>r.id===id)?.phase;
+  regenerate.onclick=async()=>{
+    if(mapEditor.dirty())return;
+    if(!await mapConfirm(t("Создать карту заново? Прежний вариант сохранится в локальном резерве.")))return;
+    try{await startRecordingMap(id);el("recordingMapDialog").close();}
+    catch(e){el("recordingMapBody").querySelector(".sf-map-note").textContent=String(e);}
+  };
+  el("recordingMapBody").querySelector(".sf-map-toolbar").append(regenerate);
+}
+async function activateRecordingMap() {
+  const id=detailId;if(id===null)return;
+  setWorkbenchPane("analysis");
+  try {
+    const view=await invoke("meeting_map",{id});
+    if(detailId!==id)return;
+    if(view.map)openRecordingMap(id,view);else await startRecordingMap(id);
+  }catch(e){el("meetMapHint").textContent=t("Карта не создана: {0}",String(e));}
+}
+el("meetMap").onclick=activateRecordingMap;
+el("meetMapCardAction").onclick=activateRecordingMap;
+el("meetMapPreview").onclick=activateRecordingMap;
+listen("solflow-map-ready",async e=>{
+  const id=e.payload,requested=mapRequests.delete(id);
+  mapFailures.delete(id);
+  if(detailId!==id)return;
+  const m=meetRows.find(r=>r.id===id);if(m)await renderRecordingMap(m);
+  if(detailId!==id)return;
+  const view=mapViews.get(id);
+  if(requested&&view?.map&&!document.hidden&&!document.querySelector('dialog[open]'))openRecordingMap(id,view);
+});
+listen("solflow-map-error",e=>{
+  const {id,error}=e.payload;mapRequests.delete(id);mapFailures.set(id,error);
+  if(detailId!==id)return;
+  const m=meetRows.find(r=>r.id===id);if(m)renderRecordingMap(m);
+});
+listen("solflow-map-cancelled",e=>{
+  mapRequests.delete(e.payload);
+  if(detailId!==e.payload)return;
+  const m=meetRows.find(r=>r.id===e.payload);if(m)renderRecordingMap(m);
+});

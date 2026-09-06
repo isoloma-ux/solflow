@@ -28,8 +28,8 @@ jobs:
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
         run: |
-          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > google-oauth.json; \
-          else echo '{"client_id":"","client_secret":""}' > google-oauth.json; fi
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > "$GITHUB_WORKSPACE/google-oauth.json"; \
+          else echo '{"client_id":"","client_secret":""}' > "$GITHUB_WORKSPACE/google-oauth.json"; fi
 
       - name: Версии инструментов
         run: |
@@ -67,8 +67,8 @@ jobs:
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
         run: |
-          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > google-oauth.json; \
-          else echo '{"client_id":"","client_secret":""}' > google-oauth.json; fi
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > "$GITHUB_WORKSPACE/google-oauth.json"; \
+          else echo '{"client_id":"","client_secret":""}' > "$GITHUB_WORKSPACE/google-oauth.json"; fi
 
       - uses: actions/cache@v4
         with:
@@ -104,8 +104,8 @@ jobs:
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
         run: |
-          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > google-oauth.json; \
-          else echo '{"client_id":"","client_secret":""}' > google-oauth.json; fi
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > "$GITHUB_WORKSPACE/google-oauth.json"; \
+          else echo '{"client_id":"","client_secret":""}' > "$GITHUB_WORKSPACE/google-oauth.json"; fi
 
       - uses: actions/cache@v4
         with:

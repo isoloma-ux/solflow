@@ -29,7 +29,7 @@ pub fn run(
     _num_speakers: i32,
     _on_progress: &dyn Fn(u8),
     _cancelled: &dyn Fn() -> bool,
-) -> Result<Vec<usize>> {
+) -> Result<Vec<(f32, f32, usize)>> {
     Err(unsupported())
 }
 

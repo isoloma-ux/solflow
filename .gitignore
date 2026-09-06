@@ -51,3 +51,18 @@ tcpp/
 
 # Ключи Google OAuth: GitHub не пускает их в публичный репозиторий, CI берёт из секрета GOOGLE_OAUTH_JSON
 google-oauth.json
+
+# iPhone: проект генерируется XcodeGen-ом, движок собирается скриптом,
+# модель для стенда подкладывается руками, команда подписи — личная
+app-ios/*.xcodeproj/
+app-ios/Local.xcconfig
+app-ios/Engine/
+app-ios/SolFlow/Models/
+app-ios/DerivedData/
+!app-ios/SolFlow/Resources/*.wav
+app-ios/SolFlow.xcodeproj/
+
+# Isolated local verification (no release artifacts)
+.local-tools/
+desktop/src-tauri/target-local-check/
+/target-local-check/

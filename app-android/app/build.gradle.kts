@@ -4,6 +4,7 @@ plugins {
 
 android {
     namespace = "com.handy.voice"
+    sourceSets.getByName("main").assets.srcDir("../../desktop/ui/map")
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -14,8 +15,8 @@ android {
         // Версия общая для всех систем: релиз один на троих, и проверка
         // обновлений сравнивает номер с тегом. Раньше телефон жил своей
         // нумерацией (2.2) и потому считал 0.2.x старее себя.
-        versionCode = 36
-        versionName = "0.9.0"
+        versionCode = 43
+        versionName = "0.9.7"
 
         ndk {
             // Только arm64: 32-битных телефонов, которым нужна была бы armeabi-v7a,

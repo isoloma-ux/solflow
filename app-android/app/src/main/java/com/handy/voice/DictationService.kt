@@ -364,11 +364,14 @@ class DictationService : Service() {
 
     /** Пишем прямо в поле ввода, а если его нет — кладём в буфер обмена. */
     private fun deliver(text: String) {
+        if (text.isBlank()) return
+        // Only the insertion payload gets a separator; history is saved above.
+        val insertion = if (text.last().isWhitespace()) text else "$text "
         val service = HandyAccessibilityService.instance
-        if (service != null && service.insert(text)) return
+        if (service != null && service.insert(insertion)) return
 
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("transcript", text))
+        cm.setPrimaryClip(ClipData.newPlainText("transcript", insertion))
         // Причины две, и они требуют разных действий от пользователя, поэтому
         // сообщения разные: одно про выключенное разрешение, другое про
         // отсутствие поля в фокусе.

@@ -67,7 +67,9 @@ object MeetingExport {
         // Если пользователь дал людям имена — в файл идут имена.
         val speakerAt: (Int) -> String? = { index ->
             val s = segments[index]
-            if (s.speaker != null && s.speaker != segments.getOrNull(index - 1)?.speaker) {
+            if (s.speaker == null && (s.speakerReview || meeting.speakers > 0 || s.voices.isNotEmpty())) {
+                context.getString(if (s.voices.size > 1) R.string.speaker_mixed else R.string.speaker_unknown)
+            } else if (s.speaker != null && s.speaker != segments.getOrNull(index - 1)?.speaker) {
                 MeetingStore.speakerLabel(context, meeting, s.speaker)
             } else null
         }

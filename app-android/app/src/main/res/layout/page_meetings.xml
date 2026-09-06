@@ -448,6 +448,10 @@
             android:layout_marginTop="16dp"
             android:visibility="gone" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/meetingListen" style="@style/Pill.Inset"
+            android:layout_width="match_parent" android:layout_height="48dp"
+            android:layout_marginTop="12dp" android:text="@string/meeting_listen" />
         <!-- Полоса хода работы — процентов в подписи мало, как у загрузок. -->
         <ProgressBar
             android:id="@+id/meetingProgress"
@@ -731,6 +735,34 @@
                 android:src="@drawable/ic_clear" />
         </LinearLayout>
 
+        <LinearLayout android:id="@+id/meetingPlayerBox"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical">
+          <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
+              android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/meetingPlay" style="@style/Text.Body"
+                android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="80dp"
+                android:gravity="center" android:text="@string/meeting_play"
+                android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground" />
+            <TextView android:id="@+id/meetingRewind" style="@style/Text.Body"
+                android:layout_width="64dp" android:layout_height="48dp" android:gravity="center"
+                android:text="@string/meeting_rewind" android:contentDescription="@string/meeting_rewind_cd"
+                android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground" />
+            <TextView android:id="@+id/meetingPosition" style="@style/Text.Muted"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:gravity="center" />
+            <TextView android:id="@+id/meetingSpeed" style="@style/Text.Body"
+                android:layout_width="64dp" android:layout_height="48dp" android:gravity="center"
+                android:text="1×" android:contentDescription="@string/meeting_speed"
+                android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground" />
+          </LinearLayout>
+          <SeekBar android:id="@+id/meetingSeek" android:layout_width="match_parent"
+              android:layout_height="32dp" android:max="1000" android:contentDescription="@string/meeting_seek" />
+        </LinearLayout>
+        <TextView android:id="@+id/meetingReview" style="@style/Text.Muted"
+            android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical"
+            android:text="@string/speaker_review_next" android:clickable="true" android:focusable="true"
+            android:foreground="?attr/selectableItemBackground" android:visibility="gone" />
         <!--
           Поиск по открытой расшифровке: подсвечивает слово во всех репликах
           и ведёт по ним. Без него найти нужное место в двухчасовой встрече
