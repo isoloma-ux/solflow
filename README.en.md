@@ -11,8 +11,8 @@ field and meeting transcription — on Mac, Windows and Android. Free, with no
 subscription and no uploading of audio anywhere: the models run right on
 your computer or phone, and the internet is needed once, to download them.
 
-The app's interface is available in Russian and English. The website and
-the release notes are in Russian.
+The app's interface, README and release notes for 0.9.7 are available in
+Russian and English. The website is in Russian.
 
 **Website with screenshots and setup steps:** [ivansolomin.ru/solflow](https://ivansolomin.ru/solflow)
 · **Latest version:** [Releases](https://github.com/isoloma-ux/solflow/releases/latest)
@@ -24,7 +24,7 @@ release.
 
 | System | Requirements | File in the release |
 |---|---|---|
-| Mac | Apple silicon (M1 or newer), macOS 12 or later | `SolFlow_X.Y.Z_macOS.zip` |
+| Mac | Apple silicon (M1 or newer), macOS 14 or later | `SolFlow_X.Y.Z_macOS.zip` |
 | Windows | 64-bit Windows 10 or 11 | `SolFlow_X.Y.Z_x64-setup.exe` |
 | Android | Android 8.0 or later, 64-bit processor | `SolFlow_X.Y.Z.apk` |
 
@@ -52,7 +52,7 @@ finds updates itself and offers to install them.
 
 Faster dictation, speaker review and recording maps with PNG/SVG export.
 The desktop creates maps locally; Android displays and edits synced results.
-[Release details](docs/release-0.9.7.md).
+[Full changes, downloads and update instructions in English](docs/release-0.9.7.en.md).
 
 ## What it does
 
@@ -187,9 +187,10 @@ The full list of steps, including building sherpa-onnx and the summary
 library, is in `.github/workflows/release.yml`: the release is built exactly
 that way.
 
-**Release** — push a `vX.Y.Z` tag: CI builds Windows, Mac and the APK, puts
-everything into one GitHub release and updates the `latest.json` manifest
-the apps update themselves from.
+**Release** — push a `vX.Y.Z` tag after a successful main build: CI builds
+Windows, Mac and the APK and uploads them to a draft release. Once all
+builds, packages and updater signatures are verified, the release is
+published and marked Latest. The apps use its `latest.json` manifest.
 
 ## Deliberate platform differences
 
