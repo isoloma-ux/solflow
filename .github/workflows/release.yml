@@ -96,6 +96,15 @@ jobs:
           ls -la solflow_llama.dll
           tauri build --config tauri.gpu.conf.json --bundles nsis -- --features gpu
 
+      - name: Проверка загрузчика и установки компонентов Windows
+        shell: pwsh
+        run: |
+          $env:SOLFLOW_TEST_DEPS = "$PWD/target/release/deps"
+          python ../../scripts/check-media-import.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python ../../scripts/check-media-import.py --install "$env:RUNNER_TEMP/solflow-media-check"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # Релиз создаётся, если его ещё нет, и в него кладётся установщик.
       # Неподписанный .exe встречает SmartScreen — об этом сказано прямо в
       # описании релиза, чтобы человек не пугался.

@@ -2,17 +2,16 @@
 //! cargo run --example transcribe_file -- путь/к/model.gguf путь/к/файлу.wav
 
 use std::time::Instant;
+#[path = "../src/wav.rs"]
+mod wav;
 
 fn main() {
     let mut args = std::env::args().skip(1);
     let model = args.next().expect("нужен путь к модели");
     let wav = args.next().expect("нужен путь к wav");
 
-    let bytes = std::fs::read(&wav).expect("wav не читается");
-    let pcm: Vec<f32> = bytes[44..]
-        .chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
-        .collect();
+    let mut input = wav::WavReader::open(std::path::Path::new(&wav)).expect("wav не читается");
+    let pcm = input.read(0, input.total_samples as usize).expect("данные wav не читаются");
     let seconds = pcm.len() as f32 / 16000.0;
 
     let loaded = Instant::now();

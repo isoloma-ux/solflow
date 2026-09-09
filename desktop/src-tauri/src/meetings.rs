@@ -2020,7 +2020,8 @@ pub fn pick_import_file(app: &AppHandle) -> Option<PathBuf> {
 
 /// Импорт по ссылке. Скачивание идёт в каталоге встречи, чтобы файл не
 /// пришлось никуда переносить, а название берётся из источника.
-pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
+pub fn import_url(app: &AppHandle, url: String, browser: Option<String>) -> Result<()> {
+    crate::fetch::validate_browser(&url, browser.as_deref())?;
     let (id, mut meta) = create(app, true)?;
     let state = app.state::<MeetingState>();
     state.cancel.lock().unwrap().insert(id, Arc::new(AtomicBool::new(false)));
@@ -2050,7 +2051,7 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
             cancelled: &cancelled,
         };
 
-        let result = crate::fetch::fetch(&url, &dir(&app, id), &progress).and_then(
+        let result = crate::fetch::fetch(&url, &dir(&app, id), &progress, browser.as_deref()).and_then(
             |(file, title)| {
                 meta.title = clean_title(&title, &meta.title);
                 save_meta(&app, id, &meta);
@@ -2061,7 +2062,7 @@ pub fn import_url(app: &AppHandle, url: String) -> Result<()> {
                 notify(&app);
 
                 let outcome = import_job(&app, id, &file, meta.clone());
-                keep_or_drop_source(&app, &file, &meta.title);
+                if outcome.is_ok() { keep_or_drop_source(&app, &file, &meta.title); }
                 outcome
             },
         );
@@ -2237,7 +2238,8 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
             "--replace",
         ],
     ) {
-        return Err(anyhow!("файл не читается как аудио или видео"));
+        let _ = std::fs::remove_file(&m4a);
+        return to_wav_ffmpeg(app, id, source, target);
     }
     let ok = convert_ok(
         "/usr/bin/afconvert",
@@ -2254,7 +2256,7 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
     );
     let _ = std::fs::remove_file(&m4a);
     if !ok {
-        return Err(anyhow!("не удалось привести звук к нужному формату"));
+        return to_wav_ffmpeg(app, id, source, target);
     }
     Ok(())
 }
@@ -2264,10 +2266,14 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
 /// и в нужный формат кладёт сразу.
 #[cfg(windows)]
 fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<()> {
+    to_wav_ffmpeg(app,id,source,target)
+}
+
+fn to_wav_ffmpeg(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<()> {
     // Первый импорт докачивает ffmpeg — как первая диаризация докачивает
     // модель голосов. Проценты идут в строку встречи: молчащая строка на
     // восьмидесяти мегабайтах выглядит как зависшая.
-    if !crate::tools::converter_ready() {
+    if crate::tools::ffmpeg().is_none() {
         let state = app.state::<MeetingState>();
         state.phase.lock().unwrap().insert(id, "helper");
         state.progress.lock().unwrap().insert(id, 0);
@@ -2294,6 +2300,7 @@ fn to_wav_16k(app: &AppHandle, id: i64, source: &Path, target: &Path) -> Result<
     let ok = convert_ok(
         &ffmpeg.to_string_lossy(),
         &[
+            "-nostdin",
             "-y",
             "-i",
             &source.to_string_lossy(),

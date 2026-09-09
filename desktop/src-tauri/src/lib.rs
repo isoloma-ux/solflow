@@ -218,7 +218,7 @@ pub fn fetch_url(
         }
     };
     let cancelled = || false;
-    fetch::fetch(url, dir, &fetch::Progress { report: &report, cancelled: &cancelled })
+    fetch::fetch(url, dir, &fetch::Progress { report: &report, cancelled: &cancelled }, None)
 }
 
 /// Похожесть голосов для примера diarize_check.
@@ -1234,12 +1234,8 @@ fn meeting_import_paths(app: AppHandle, paths: Vec<String>) {
 
 /// Импорт по ссылке: качаем звук, дальше обычная цепочка расшифровки.
 #[tauri::command]
-fn meeting_import_url(app: AppHandle, url: String) {
-    std::thread::spawn(move || {
-        if let Err(e) = meetings::import_url(&app, url) {
-            log::error!("импорт по ссылке: {e}");
-        }
-    });
+fn meeting_import_url(app: AppHandle, url: String, browser: Option<String>) -> Result<(), String> {
+    meetings::import_url(&app, url, browser).map_err(|e| e.to_string())
 }
 
 /// Стоит ли загрузчик для ссылок на видеосервисы.
@@ -1495,12 +1491,14 @@ fn downloader_ready() -> bool {
 }
 
 #[tauri::command]
-fn install_downloader(app: AppHandle) -> Result<(), String> {
+async fn install_downloader(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
     // Проценты уходят в окно: на Windows качается ещё и ffmpeg, это долго.
     let report = |pct: u8| {
         let _ = app.emit("solflow-downloader-progress", pct);
     };
     tools::install(&report).map_err(|e| e.to_string())
+    }).await.map_err(|e|e.to_string())?
 }
 
 #[tauri::command]

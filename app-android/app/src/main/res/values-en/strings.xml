@@ -478,4 +478,5 @@
 <string name="map_saved">Map saved to the selected file</string>
 <string name="whatsnew_body_096">• Recording maps use the Sol Flow light theme: Inter, monochrome surfaces and a green accent.\n\n• Added a map icon and export confirmation. More detailed maps from desktop are supported.</string>
 <string name="whatsnew_body_097">• Map controls stay clear of the clock, camera cutout and system bars.\n\n• The map editor accounts for the on-screen keyboard.</string>
+    <string name="whatsnew_body_098">• Desktop video import has been updated: streaming formats and YouTube download recovery.\n\n• Finished desktop recordings are available on your phone through configured sync. Direct file links and Yandex.Disk are still handled on Android.</string>
 </resources>

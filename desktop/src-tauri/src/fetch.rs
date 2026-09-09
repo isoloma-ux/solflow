@@ -89,8 +89,8 @@ fn urlencode(s: &str) -> String {
 fn looks_like_media(url: &str) -> bool {
     let path = url.split(['?', '#']).next().unwrap_or(url).to_lowercase();
     [
-        ".mp3", ".m4a", ".wav", ".aac", ".aiff", ".aif", ".caf", ".mp4", ".mov", ".m4v",
-        ".mkv", ".webm", ".ogg", ".opus", ".flac", ".wma", ".avi",
+        ".mp3", ".m4a", ".wav", ".aac", ".aiff", ".aif", ".caf", ".mp4", ".mov", ".m4v", ".mkv",
+        ".webm", ".ogg", ".opus", ".flac", ".wma", ".avi", ".ts", ".mts", ".m2ts",
     ]
     .iter()
     .any(|ext| path.ends_with(ext))
@@ -107,18 +107,18 @@ fn downloaded_bytes(dir: &Path) -> u64 {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with("download")
-        })
+        .filter(|e| e.file_name().to_string_lossy().starts_with("download"))
         .filter_map(|e| e.metadata().ok())
         .map(|m| m.len())
         .sum()
 }
 
 fn clean_downloads(dir: &Path) {
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok()) {
+    for entry in std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_name().to_string_lossy().starts_with("download") {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -127,8 +127,14 @@ fn clean_downloads(dir: &Path) {
 
 /// Скачивает звук по ссылке в [dir]. Возвращает путь к файлу и название,
 /// которое станет именем встречи.
-pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, String)> {
+pub fn fetch(
+    url: &str,
+    dir: &Path,
+    progress: &Progress,
+    browser: Option<&str>,
+) -> Result<(PathBuf, String)> {
     let url = url.trim();
+    validate_browser(url, browser)?;
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(anyhow!("нужна ссылка, начинающаяся с http"));
     }
@@ -173,142 +179,373 @@ pub fn fetch(url: &str, dir: &Path, progress: &Progress) -> Result<(PathBuf, Str
     }
 
     // 3. Страница с видео — работа для yt-dlp.
-    let tool = crate::tools::ytdlp().ok_or_else(|| {
-        anyhow!("для этой ссылки нужен загрузчик — поставьте его в настройках")
-    })?;
+    let tool = crate::tools::ytdlp()
+        .ok_or_else(|| anyhow!("для этой ссылки нужен загрузчик — поставьте его в настройках"))?;
 
-    // YouTube по-разному отвечает разным клиентам: обычный веб-запрос
-    // часто упирается в «страницу нужно перезагрузить», а мобильный
-    // проходит. Перебираем, пока какой-нибудь не отдаст файл.
-    let clients: [&[&str]; 4] = [
-        &[],
-        &["--extractor-args", "youtube:player_client=android"],
-        &["--extractor-args", "youtube:player_client=ios"],
-        &["--extractor-args", "youtube:player_client=tv"],
-    ];
+    download_page(&tool, url, dir, progress, browser)
+}
 
-    // Просим готовую дорожку одним файлом: слияние потоков потребовало бы
-    // ffmpeg, которого в системе нет.
-    let template = dir.join("download.%(ext)s");
-    let mut last_error = String::from("ссылка не поддерживается");
-    let mut title = String::new();
+/// Session access is opt-in, per request, and limited to YouTube hosts.
+pub fn validate_browser(url: &str, browser: Option<&str>) -> Result<()> {
+    let Some(browser) = browser else {
+        return Ok(());
+    };
+    let host = url.split('/').nth(2).unwrap_or("").to_ascii_lowercase();
+    if ![
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+    ]
+    .contains(&host.as_str())
+    {
+        return Err(anyhow!(
+            "Сессию браузера можно использовать только для ссылки YouTube."
+        ));
+    }
+    if !["chrome", "edge", "firefox", "safari"].contains(&browser)
+        || (cfg!(windows) && browser == "safari")
+    {
+        return Err(anyhow!("Выберите поддерживаемый браузер."));
+    }
+    Ok(())
+}
 
-    for extra in clients {
-        if title.is_empty() {
-            title = crate::sys::command(&tool)
-                // Вывод идёт в кодировке консоли, а на русской Windows это
-                // не UTF-8: названия приезжали ромбиками. Переменной среды
-                // мало — у загрузчика свой ключ, он важнее.
-                .env("PYTHONIOENCODING", "utf-8")
-                .args(["--encoding", "utf-8"])
-                .args(["--no-warnings", "--skip-download", "--print", "%(title)s"])
-                .args(extra)
-                .arg(url)
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_default();
+pub fn download_error(stderr: &str) -> &'static str {
+    let s = stderr.to_lowercase();
+    if s.contains("not a bot") || s.contains("confirm you're") || s.contains("confirm you’re") {
+        "YouTube просит подтвердить вход. Откройте ролик в браузере, пройдите проверку и повторите с выбранным браузером. Если не помогло — обновите загрузчик или попробуйте другую сеть."
+    } else if s.contains("decrypt")
+        || s.contains("cookie database")
+        || s.contains("could not copy")
+        || s.contains("keyring")
+        || s.contains("cookies database")
+        || s.contains("could not find") && s.contains("cookies")
+    {
+        "Не удалось прочитать сессию браузера. Закройте браузер и повторите или выберите другой браузер, в котором открывается ролик."
+    } else if s.contains("sign in")
+        || s.contains("login required")
+        || s.contains("private video")
+        || s.contains("members-only")
+        || s.contains("age-restricted")
+    {
+        "Видео требует входа или ограничено владельцем. Проверьте доступ в браузере; для YouTube можно выбрать этот браузер перед загрузкой."
+    } else if s.contains("429") || s.contains("too many requests") {
+        "Видеосервис временно ограничил запросы. Подождите и повторите позже."
+    } else if s.contains("unsupported url") {
+        "Эта ссылка не поддерживается загрузчиком. Импортируйте аудио или видеофайл."
+    } else if s.contains("timed out")
+        || s.contains("timeout")
+        || s.contains("resolve")
+        || s.contains("network")
+        || s.contains("connection")
+    {
+        "Не удалось подключиться к видеосервису. Проверьте интернет и доступ к ролику в браузере."
+    } else {
+        "Не удалось скачать видео. Обновите загрузчик в настройках и проверьте доступ к ролику в браузере."
+    }
+}
+
+fn terminate_download(child: &mut std::process::Child) {
+    // Standalone yt-dlp can spawn a bootloader child or FFmpeg. Stop the whole
+    // owned process group so cancellation also closes inherited stdout pipes.
+    #[cfg(unix)]
+    {
+        extern "C" {
+            fn kill(pid: i32, signal: i32) -> i32;
         }
-
-        // Общий размер спрашиваем заранее: сам загрузчик о нём молчит,
-        // пока не закончит, а ждать вслепую неприятно.
-        let total = crate::sys::command(&tool)
-            .args(["--no-warnings", "--skip-download", "--print", "%(filesize_approx)s"])
-            .args(extra)
-            .arg(url)
-            .output()
-            .ok()
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .trim()
-                    .parse::<f64>()
-                    .ok()
-                    .map(|v| v as u64)
-            })
-            .unwrap_or(0);
-
-        let mut child = crate::sys::command(&tool)
-            .args([
-                "--no-warnings",
-                "--no-playlist",
-                // Прогресс спрашиваем у самого загрузчика: считать по файлам
-                // на диске нечестно — он пишет во временные куски, и полоска
-                // стояла на нуле до самого конца.
-                "--newline",
-                "--progress-template",
-                PROGRESS_TEMPLATE,
-                "-f",
-                "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best[ext=mp4]/best",
-                "-o",
-            ])
-            .arg(&template)
-            .args(extra)
-            .arg(url)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        // Строки прогресса читает отдельный поток: основной должен успевать
-        // проверять отмену.
-        let seen = std::sync::Arc::new(std::sync::Mutex::new((0u64, 0u64)));
-        let stdout = child.stdout.take();
-        let reader_seen = seen.clone();
-        let reader = std::thread::spawn(move || {
-            use std::io::BufRead;
-            let Some(stdout) = stdout else { return };
-            for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(values) = parse_progress(&line) {
-                    *reader_seen.lock().unwrap() = values;
-                }
-            }
-        });
-
-        let status = loop {
-            if (progress.cancelled)() {
-                let _ = child.kill();
-                let _ = reader.join();
-                clean_downloads(dir);
-                return Err(anyhow!("отменено"));
-            }
-            if let Some(status) = child.try_wait()? {
-                break status;
-            }
-            // Пока загрузчик молчит, показываем то, что уже легло на диск.
-            let (done, said_total) = *seen.lock().unwrap();
-            let done = if done > 0 { done } else { downloaded_bytes(dir) };
-            (progress.report)(done, if said_total > 0 { said_total } else { total });
-            std::thread::sleep(std::time::Duration::from_millis(400));
-        };
-        let _ = reader.join();
-
-        if status.success() {
-            (progress.report)(downloaded_bytes(dir), total);
-            break;
+        unsafe {
+            kill(-(child.id() as i32), 9);
         }
-        let mut stderr = String::new();
-        if let Some(mut pipe) = child.stderr.take() {
-            use std::io::Read;
-            let _ = pipe.read_to_string(&mut stderr);
-        }
-        last_error = stderr
+    }
+    #[cfg(windows)]
+    {
+        let _ = crate::sys::command("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .output();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn download_page(
+    tool: &Path,
+    url: &str,
+    dir: &Path,
+    progress: &Progress,
+    browser: Option<&str>,
+) -> Result<(PathBuf, String)> {
+    use std::io::BufRead;
+    use std::process::Stdio;
+    use std::sync::{Arc, Mutex};
+    validate_browser(url, browser)?;
+    if (progress.cancelled)() {
+        return Err(anyhow!("отменено"));
+    }
+    clean_downloads(dir);
+    let mut command = crate::sys::command(tool);
+    command
+        .env("PYTHONIOENCODING", "utf-8")
+        .args([
+            "--ignore-config",
+            "--encoding",
+            "utf-8",
+            "--no-playlist",
+            "--no-simulate",
+            "--newline",
+            "--progress",
+            "--socket-timeout",
+            "20",
+            "--retries",
+            "2",
+            "--fragment-retries",
+            "2",
+            "--abort-on-unavailable-fragments",
+            "--print",
+            "before_dl:solflow-title %(title)j",
+            "--print",
+            "after_move:solflow-file %(filepath)j",
+            "--progress-template",
+            PROGRESS_TEMPLATE,
+            "-f",
+            "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/worst[ext=mp4]/worst",
+            "-o",
+        ])
+        .arg(dir.join("download.%(ext)s"));
+    if let Some(ffmpeg) = crate::tools::ffmpeg() {
+        command.arg("--ffmpeg-location").arg(ffmpeg);
+    }
+    if let Some(deno) = crate::tools::deno() {
+        command
+            .arg("--js-runtimes")
+            .arg(format!("deno:{}", deno.display()));
+    }
+    if let Some(browser) = browser {
+        command.args(["--cookies-from-browser", browser]);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
+        .arg("--")
+        .arg(url)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let seen = Arc::new(Mutex::new((0u64, 0u64, String::new(), String::new())));
+    let reader_seen = seen.clone();
+    let stdout = child.stdout.take().unwrap();
+    let reader = std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout)
             .lines()
-            .filter(|l| l.contains("ERROR"))
-            .last()
-            .unwrap_or("ссылка не поддерживается")
-            .trim()
-            .to_string();
+            .map_while(Result::ok)
+        {
+            let mut state = reader_seen.lock().unwrap();
+            if let Some((d, t)) = parse_progress(&line) {
+                state.0 = d;
+                state.1 = t;
+            } else if let Some(v) = line.strip_prefix("solflow-title ") {
+                state.2 = serde_json::from_str::<String>(v).unwrap_or_default();
+            } else if let Some(v) = line.strip_prefix("solflow-file ") {
+                state.3 = serde_json::from_str::<String>(v).unwrap_or_default();
+            }
+        }
+    });
+    // Drain stderr while the process runs: a full pipe used to block downloads.
+    let stderr = child.stderr.take().unwrap();
+    let errors = std::thread::spawn(move || {
+        let mut tail = std::collections::VecDeque::new();
+        for line in std::io::BufReader::new(stderr)
+            .lines()
+            .map_while(Result::ok)
+        {
+            if tail.len() == 16 {
+                tail.pop_front();
+            }
+            tail.push_back(line.chars().take(2048).collect::<String>());
+        }
+        tail.into_iter().collect::<Vec<_>>().join("\n")
+    });
+    let mut last_progress = None;
+    let status = loop {
+        if (progress.cancelled)() {
+            terminate_download(&mut child);
+            let _ = reader.join();
+            let _ = errors.join();
+            clean_downloads(dir);
+            return Err(anyhow!("отменено"));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(e) => {
+                terminate_download(&mut child);
+                let _ = reader.join();
+                let _ = errors.join();
+                clean_downloads(dir);
+                return Err(e.into());
+            }
+        }
+        // Release the mutex before callbacks/sleep so the pipe reader can drain.
+        let (d, t) = {
+            let state = seen.lock().unwrap();
+            (state.0, state.1)
+        };
+        let current = (if d > 0 { d } else { downloaded_bytes(dir) }, t);
+        if last_progress != Some(current) {
+            (progress.report)(current.0, current.1);
+            last_progress = Some(current);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    };
+    let _ = reader.join();
+    let stderr = errors.join().unwrap_or_default();
+    if !status.success() {
+        clean_downloads(dir);
+        return Err(anyhow!(download_error(&stderr)));
     }
-
-    if title.is_empty() {
-        title = "Запись по ссылке".to_string();
+    let state = seen.lock().unwrap();
+    let file = PathBuf::from(&state.3);
+    // A .part/.ytdl file is never a successfully downloaded recording.
+    let valid = file.file_stem().map(|s| s == "download").unwrap_or(false)
+        && file
+            .extension()
+            .map(|s| !["part", "ytdl", "json"].iter().any(|e| s == *e))
+            .unwrap_or(false)
+        && file
+            .canonicalize()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            == dir.canonicalize().ok()
+        && file.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    if !valid {
+        clean_downloads(dir);
+        return Err(anyhow!(
+            "Загрузчик не создал готовый медиафайл. Обновите загрузчик и повторите."
+        ));
     }
+    (progress.report)(file.metadata()?.len(), file.metadata()?.len());
+    Ok((
+        file,
+        if state.2.trim().is_empty() {
+            "Запись по ссылке".into()
+        } else {
+            state.2.clone()
+        },
+    ))
+}
 
-    // Имя файла заранее неизвестно — расширение выбрал сам загрузчик.
-    let file = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .find(|p| p.file_stem().map(|s| s == "download").unwrap_or(false))
-        .ok_or_else(|| anyhow!("загрузчик не смог: {last_error}"))?;
-    Ok((file, title))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn progress_estimate_and_invalid_values() {
+        assert_eq!(parse_progress("solflow 1024 NA 2048"), Some((1024, 2048)));
+        assert_eq!(parse_progress("solflow NaN -1 inf"), Some((0, 0)));
+        assert_eq!(parse_progress("something else"), None);
+    }
+    #[test]
+    fn transport_stream_links_are_direct_media() {
+        assert!(looks_like_media("https://example.test/movie.TS?key=value"));
+        assert!(looks_like_media("https://example.test/movie.m2ts"));
+        assert!(!looks_like_media("https://example.test/movie.ts/page"));
+    }
+    #[test]
+    fn session_is_never_allowed_for_other_hosts_or_arguments() {
+        assert!(validate_browser("https://www.youtube.com/watch?v=abc", Some("chrome")).is_ok());
+        assert!(validate_browser("https://youtu.be/abc", None).is_ok());
+        for host in [
+            "youtube.com.evil.test",
+            "youtube.com@evil.test",
+            "rutube.ru",
+        ] {
+            assert!(validate_browser(&format!("https://{host}/video"), Some("chrome")).is_err());
+        }
+        assert!(validate_browser(
+            "https://youtube.com/watch?v=abc",
+            Some("chrome:/private/profile")
+        )
+        .is_err());
+    }
+    #[test]
+    fn readable_errors_do_not_include_raw_output() {
+        let e = download_error(
+            "ERROR: [youtube] x: Sign in to confirm you’re not a bot. --cookies-from-browser",
+        );
+        assert!(e.contains("YouTube"));
+        assert!(!e.contains("--cookies"));
+        assert!(download_error("ERROR: Could not copy Chrome cookie database").contains("сессию"));
+        assert!(download_error("HTTP Error 429: Too Many Requests").contains("ограничил"));
+    }
+    #[cfg(unix)]
+    fn scenario(body: &str, cancel: bool) -> Result<(PathBuf, String)> {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "sf-fetch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tool = dir.join("fake.py");
+        std::fs::write(&tool,format!("#!/usr/bin/python3\nimport sys,pathlib,json,time\np=pathlib.Path(sys.argv[sys.argv.index('-o')+1].replace('%(ext)s','mp4'))\nassert '--ignore-config' in sys.argv\nassert '--cookies-from-browser' not in sys.argv\nassert '--skip-download' not in sys.argv\n{body}\n")).unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = std::time::Instant::now();
+        let result = download_page(
+            &tool,
+            "https://rutube.ru/video/test",
+            &dir,
+            &Progress {
+                report: &|_, _| {},
+                cancelled: &|| cancel && start.elapsed() > std::time::Duration::from_millis(350),
+            },
+            None,
+        );
+        if cancel {
+            assert!(start.elapsed() < std::time::Duration::from_secs(4));
+        }
+        if result.is_err() {
+            assert!(!dir.join("download.mp4.part").exists());
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+        result
+    }
+    #[test]
+    #[cfg(unix)]
+    fn drains_stderr_and_uses_completed_file() {
+        let r=scenario("for i in range(5000): print('warning '*60,file=sys.stderr)\np.write_bytes(b'media')\nprint('solflow-title '+json.dumps('Название'))\nprint('solflow-file '+json.dumps(str(p)))",false).unwrap();
+        assert_eq!(r.1, "Название");
+    }
+    #[test]
+    #[cfg(unix)]
+    fn partial_file_is_not_a_success() {
+        assert!(scenario("p.with_suffix('.mp4.part').write_bytes(b'partial')\nprint('ERROR: not a bot',file=sys.stderr)\nsys.exit(1)",false).is_err());
+        assert!(scenario("p.with_suffix('.mp4.part').write_bytes(b'partial')", false).is_err());
+    }
+    #[test]
+    #[cfg(unix)]
+    fn progress_pipe_keeps_draining() {
+        let started = std::time::Instant::now();
+        scenario("for i in range(10000): print('solflow %d 10000 NA'%i)\np.write_bytes(b'media')\nprint('solflow-file '+json.dumps(str(p)))",false).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+    #[test]
+    #[cfg(unix)]
+    fn cancellation_kills_children_holding_pipes() {
+        assert!(scenario("import subprocess\nsubprocess.Popen([sys.executable,'-c','import time; time.sleep(20)'])\ntime.sleep(20)", true).is_err());
+    }
+    #[test]
+    #[cfg(unix)]
+    fn metadata_wait_can_be_cancelled() {
+        assert!(scenario("time.sleep(20)", true)
+            .unwrap_err()
+            .to_string()
+            .contains("отменено"));
+    }
 }
