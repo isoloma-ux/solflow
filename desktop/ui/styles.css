@@ -1711,3 +1711,7 @@ textarea {
 #meetMapCardAction {margin-top:10px;}
 
 .meeting-ai-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex-basis:100%; padding-top:8px; border-top:1px solid var(--hairline); }
+
+.youtube-session { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0 16px; }
+.youtube-session[hidden] { display: none; }
+.youtube-session .small { flex-basis: 100%; }

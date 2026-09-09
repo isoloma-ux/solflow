@@ -800,7 +800,7 @@ function stateLabel(m) {
   if (m.phase === "transcribing") return t("Расшифровываю{0}", pct);
   // Причину показываем прямо в строке: раньше она уходила в подпись над
   // списком, и неудавшийся импорт выглядел так, будто ничего не случилось.
-  if (m.state === "failed") return m.error ? t("Не вышло: {0}", m.error) : t("Не удалось расшифровать");
+  if (m.state === "failed") return m.error ? t("Не вышло: {0}", t(m.error)) : t("Не удалось расшифровать");
   if (m.state === "transcribing") return t("Расшифровка прервана");
   if (m.state === "recorded") return t("Ожидает расшифровки");
   return "";
@@ -1821,7 +1821,7 @@ listen("solflow-save-failed", (e) => {
   el("meetStatus").textContent = t("Не удалось сохранить запись: {0}", e.payload);
 });
 listen("solflow-import-failed", (e) => {
-  el("meetStatus").textContent = t("Импорт не удался: {0}", e.payload);
+  el("meetStatus").textContent = t("Импорт не удался: {0}", t(e.payload));
 });
 
 // --- встречи: запись -------------------------------------------------------
@@ -1881,7 +1881,16 @@ el("meetImport").addEventListener("click", () => invoke("meeting_import"));
 
 // --- расшифровка по ссылке -------------------------------------------------
 
-clearableSearch("meetUrl", "meetUrlClear", () => {});
+function updateYoutubeSession() {
+  let host = "";
+  try { host = new URL(el("meetUrl").value.trim()).hostname.toLowerCase(); } catch {}
+  const youtube = ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be"].includes(host);
+  el("youtubeSession").hidden = !youtube;
+  if (!youtube) el("youtubeBrowser").value = "";
+  el("youtubeSafari").hidden = !IS_MAC;
+}
+clearableSearch("meetUrl", "meetUrlClear", updateYoutubeSession);
+el("meetUrl").addEventListener("input", updateYoutubeSession);
 
 async function importUrl() {
   const url = el("meetUrl").value.trim();
@@ -1896,7 +1905,7 @@ async function importUrl() {
   // а не после долгой попытки.
   const host = url.split("/")[2] || "";
   const direct =
-    /\.(mp3|m4a|wav|aac|aiff|caf|mp4|mov|m4v|mkv|webm|ogg|opus|flac)($|\?)/i.test(url) ||
+    /\.(mp3|m4a|wav|aac|aiff|caf|mp4|mov|m4v|mkv|webm|ogg|opus|flac|ts|mts|m2ts)($|\?)/i.test(url) ||
     /yandex|yadi\.sk/i.test(host);
   if (!direct && !(await invoke("downloader_ready"))) {
     el("urlHint").textContent =
@@ -1907,9 +1916,16 @@ async function importUrl() {
 
   el("urlHint").textContent = t("Качаю по ссылке");
   el("urlHint").hidden = false;
-  el("meetUrl").value = "";
-  el("meetUrlClear").hidden = true;
-  invoke("meeting_import_url", { url });
+  el("meetUrlGo").disabled = true;
+  const browser = el("youtubeSession").hidden ? null : el("youtubeBrowser").value || null;
+  try {
+    await invoke("meeting_import_url", { url, browser });
+    el("youtubeBrowser").value = "";
+    updateYoutubeSession();
+    el("urlHint").textContent = t("Загрузка добавлена. Прогресс — в списке записей.");
+  } catch (err) {
+    el("urlHint").textContent = t(String(err));
+  } finally { el("meetUrlGo").disabled = false; }
 }
 
 el("meetUrlGo").addEventListener("click", importUrl);
@@ -3359,10 +3375,11 @@ async function refreshSettings(reloadDevices = false) {
 
   const hasDownloader = await invoke("downloader_ready");
   el("downloaderDone").hidden = !hasDownloader;
-  el("installDownloader").hidden = hasDownloader;
+  el("installDownloader").hidden = false;
+  el("installDownloader").textContent = t(hasDownloader ? "Обновить загрузчик" : "Установить / обновить");
   if (hasDownloader) {
     el("downloaderHint").textContent =
-      t("Ссылки на YouTube и VK скачиваются и расшифровываются");
+      t("Загрузчик готов. Если ссылка перестала работать, обновите его.");
   }
 
   renderSync(await invoke("sync_status"));
@@ -3803,17 +3820,15 @@ listen("solflow-downloader-progress", (e) => {
 
 el("installDownloader").addEventListener("click", async () => {
   el("installDownloader").disabled = true;
-  el("downloaderHint").textContent = IS_MAC
-    ? t("Ставлю загрузчик, это займет минуту")
-    : t("Ставлю загрузчик и ffmpeg, это займет несколько минут");
+  el("downloaderHint").textContent = t("Обновляю компоненты загрузки, это может занять несколько минут");
   try {
     await invoke("install_downloader");
-    el("downloaderHint").textContent = t("Готово, ссылки на видео теперь работают");
+    await refreshSettings();
+    el("downloaderHint").textContent = t("Компоненты загрузки обновлены");
   } catch (err) {
-    el("downloaderHint").textContent = String(err);
+    el("downloaderHint").textContent = t(String(err));
   }
   el("installDownloader").disabled = false;
-  refreshSettings();
 });
 
 el("inputDevice").addEventListener("change", () => {

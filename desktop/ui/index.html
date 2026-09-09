@@ -146,14 +146,14 @@
             </button>
           </div>
           <p class="muted small formats">
-            Аудио и видео: mp3, m4a, wav, aac, aiff, caf, mp4, mov, m4v.
+            Аудио и видео: mp3, m4a, wav, aac, aiff, caf, mp4, mov, m4v, ts, mkv, webm.
             Название файла станет названием встречи
           </p>
 
           <div class="url-row">
             <div class="search-box grow">
               <input id="meetUrl" class="search" type="text"
-                     placeholder="Или вставьте ссылку: YouTube, VK, Яндекс.Диск, прямая ссылка" />
+                     placeholder="Или вставьте ссылку: YouTube, Rutube, VK, Яндекс.Диск, прямая ссылка" />
               <button id="meetUrlClear" class="search-clear"
                       aria-label="Очистить" hidden>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -163,6 +163,17 @@
             </button>
             </div>
             <button class="pill-inset compact" id="meetUrlGo">Расшифровать</button>
+          </div>
+          <div id="youtubeSession" class="youtube-session" hidden>
+            <label for="youtubeBrowser">Сессия YouTube</label>
+            <select id="youtubeBrowser" class="pill-inset compact">
+              <option value="">Без аккаунта</option>
+              <option value="chrome">Chrome</option>
+              <option value="edge">Edge</option>
+              <option value="firefox">Firefox</option>
+              <option value="safari" id="youtubeSafari">Safari</option>
+            </select>
+            <span class="muted small">Выбирайте браузер только если YouTube требует входа. Сессия используется локально для этой загрузки и не сохраняется в записи.</span>
           </div>
           <p class="muted small" id="urlHint" hidden></p>
 
@@ -1144,6 +1155,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="0.9.8"><ul class="whatsnew-list"><li>Импорт потокового видео Rutube и других форматов через дополнительный конвертер.</li><li>Обновление загрузчика и компонентов YouTube в настройках.</li><li>Сессия браузера для YouTube по вашему выбору; понятные ошибки и меньше повторных запросов.</li></ul></div>
           <div data-whatsnew-version="0.9.7"><ul class="whatsnew-list"><li>Техническое обновление общей версии приложения.</li></ul></div>
           <div data-whatsnew-version="0.9.6"><p class="whatsnew-prev-title">Раньше, в 0.9.6</p><ul class="whatsnew-list"><li>Карта записи теперь рядом с саммери и переводом: иконка, предпросмотр, автоматическое открытие и понятные ошибки. Экспорт учитывает общую папку; оформление соответствует светлой теме Sol Flow.</li></ul></div>
           <div data-whatsnew-version="0.9.5"><p class="whatsnew-prev-title">Раньше, в 0.9.5</p><ul class="whatsnew-list"><li>Быстрая диктовка: проверку Qwen перед вставкой можно выключить. Исправление пробелов остаётся; глубокая правка доступна отдельно в истории.</li><li>Карта записи: локальная генерация, редактируемые карточки, масштабирование и экспорт PNG/SVG с полупрозрачным логотипом Sol Flow.</li></ul></div>
