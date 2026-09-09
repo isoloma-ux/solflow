@@ -1,4 +1,4 @@
-# Media import: local version 0.9.8
+# Media import: version 0.9.8
 
 [Русский](media-import.md)
 
@@ -34,4 +34,4 @@ Executables are downloaded separately when installing components and are not par
 
 `scripts/check-media-import.py` compiles the actual downloader modules and tests error handling, partial files, progress and cancellation. Set `SOLFLOW_TEST_DEPS` to a coherent Rust build's `release/deps` directory. `--install DIR` and `--fetch DIR URL` operate in an isolated folder and do not use browser sessions. `scripts/check-workbench-ui.cjs` checks the interface with isolated Russian and English fixtures.
 
-This is a local test version. Publishing 0.9.8 requires separate approval.
+See [release 0.9.8](release-0.9.8.en.md) for validation and release scope.

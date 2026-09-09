@@ -11,7 +11,7 @@ field and meeting transcription — on Mac, Windows and Android. Free, with no
 subscription and no uploading of audio anywhere: the models run right on
 your computer or phone, and the internet is needed once, to download them.
 
-The app's interface, README and release notes for 0.9.7 are available in
+The app's interface, README and release notes for 0.9.8 are available in
 Russian and English. The website is in Russian.
 
 **Website with screenshots and setup steps:** [ivansolomin.ru/solflow](https://ivansolomin.ru/solflow)
@@ -47,6 +47,11 @@ Step-by-step with screenshots (in Russian) on the
 After installing, open Models and download one for your language. For
 Russian — GigaAM v3, about 270 MB; for English — Parakeet TDT 0.6B. The app
 finds updates itself and offers to install them.
+
+## New in 0.9.8
+
+Rutube stream imports on Mac, download stall fixes, updated YouTube components and explicit browser-session selection. After installing, update the downloader in Settings.
+[Full changes and instructions in English](docs/release-0.9.8.en.md).
 
 ## New in 0.9.7
 
