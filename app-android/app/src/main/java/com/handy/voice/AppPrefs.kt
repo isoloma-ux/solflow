@@ -13,6 +13,10 @@ object AppPrefs {
 
     private const val PREFS = "handy"
 
+    /** Extra room for curved displays whose firmware does not report waterfall insets. */
+    fun wideScreenEdges(context: Context): Boolean = flag(context, "wide_screen_edges", false)
+    fun setWideScreenEdges(context: Context, enabled: Boolean) = setFlag(context, "wide_screen_edges", enabled)
+
     // --- плавающая кнопка -------------------------------------------------
 
     /**

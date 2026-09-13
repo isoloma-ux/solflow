@@ -5,8 +5,6 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.handy.voice.databinding.ActivityIntroBinding
 
 /**
@@ -34,14 +32,7 @@ class IntroActivity : AppCompatActivity() {
         ui = ActivityIntroBinding.inflate(layoutInflater)
         setContentView(ui.root)
 
-        val density = resources.displayMetrics.density
-        val edge = (32 * density).toInt()
-        ViewCompat.setOnApplyWindowInsetsListener(ui.root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val extra = ((view.width - (640 * density).toInt()) / 2).coerceAtLeast(0)
-            view.setPadding(edge + extra, bars.top + edge, edge + extra, bars.bottom)
-            insets
-        }
+        ScreenInsets.install(this, ui.root) { safe -> ScreenInsets.pad(ui.root, safe) }
 
         ui.next.setOnClickListener {
             if (step == steps.lastIndex) done() else render(step + 1)

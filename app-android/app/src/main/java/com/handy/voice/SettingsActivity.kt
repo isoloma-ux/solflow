@@ -12,7 +12,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.handy.voice.databinding.ActivitySettingsBinding
@@ -51,17 +50,8 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(ui.root)
 
         // Те же отступы и колонка 640dp, что на главном экране.
-        val density = resources.displayMetrics.density
-        val edge = (32 * density).toInt()
-        ViewCompat.setOnApplyWindowInsetsListener(ui.root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val extra = ((view.width - (640 * density).toInt()) / 2).coerceAtLeast(0)
-            view.setPadding(edge + extra, bars.top + edge, edge + extra, bars.bottom)
-            insets
-        }
-        ui.root.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or_, _ ->
-            if (r - l != or_ - ol) v.requestApplyInsets()
-        }
+        ScreenInsets.install(this, ui.root) { safe -> ScreenInsets.pad(ui.root, safe) }
+
 
         ui.back.setOnClickListener { finish() }
 
@@ -114,6 +104,11 @@ class SettingsActivity : AppCompatActivity() {
             AppPrefs.setTheme(this, value)
             applyTheme(value)
             refresh()
+        }
+
+        switch(R.string.set_screen_edges, R.string.set_screen_edges_hint, AppPrefs.wideScreenEdges(this)) {
+            AppPrefs.setWideScreenEdges(this, it)
+            ViewCompat.requestApplyInsets(ui.root)
         }
 
         group(R.string.group_sound)
