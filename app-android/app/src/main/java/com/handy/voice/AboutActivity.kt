@@ -11,8 +11,6 @@ import android.os.Bundle
 import android.os.StatFs
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.handy.voice.databinding.ActivityAboutBinding
 import kotlinx.coroutines.Dispatchers
@@ -38,17 +36,8 @@ class AboutActivity : AppCompatActivity() {
         ui = ActivityAboutBinding.inflate(layoutInflater)
         setContentView(ui.root)
 
-        val density = resources.displayMetrics.density
-        val edge = (32 * density).toInt()
-        ViewCompat.setOnApplyWindowInsetsListener(ui.root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val extra = ((view.width - (640 * density).toInt()) / 2).coerceAtLeast(0)
-            view.setPadding(edge + extra, bars.top + edge, edge + extra, bars.bottom)
-            insets
-        }
-        ui.root.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or_, _ ->
-            if (r - l != or_ - ol) v.requestApplyInsets()
-        }
+        ScreenInsets.install(this, ui.root) { safe -> ScreenInsets.pad(ui.root, safe) }
+
 
         ui.back.setOnClickListener { finish() }
         ui.version.text = getString(R.string.about_version, BuildConfig.VERSION_NAME)

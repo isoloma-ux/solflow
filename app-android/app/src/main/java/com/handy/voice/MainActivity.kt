@@ -39,7 +39,6 @@ import com.google.android.material.snackbar.Snackbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -144,33 +143,12 @@ class MainActivity : AppCompatActivity() {
         ui = ActivityMainBinding.inflate(layoutInflater)
         setContentView(ui.root)
 
-        // Android 15+ рисует под системными панелями и игнорирует
-        // fitsSystemWindows, поэтому отступы считаем сами. 32dp — токен pad.
-        // На широких экранах (планшет, ландшафт) контент держится в колонке
-        // ~640dp: строки во всю ширину планшета нечитаемы.
-        val density = resources.displayMetrics.density
-        val edge = (32 * density).toInt()
-        ViewCompat.setOnApplyWindowInsetsListener(ui.content) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // Колонка по центру нужна только там, где разделы внизу: с
-            // рельсом слева экран уже разделён, и лишние отступы сдвигали бы
-            // содержимое вправо.
-            val extra = if (resources.getBoolean(R.bool.wide_layout)) 0
-            else ((view.width - (640 * density).toInt()) / 2).coerceAtLeast(0)
-            view.setPadding(edge + extra, bars.top + edge, edge + extra, bars.bottom)
-            // Шторка лежит поверх контента и системные отступы не наследует:
-            // без этого её заголовок уезжал под часы в строке состояния.
-            ui.drawerPanel.setPadding(
-                ui.drawerPanel.paddingStart, bars.top,
-                ui.drawerPanel.paddingEnd, bars.bottom,
-            )
-            insets
+        ScreenInsets.install(this, ui.root) { safe ->
+            ScreenInsets.pad(ui.content, safe, column = !resources.getBoolean(R.bool.wide_layout))
+            ScreenInsets.pad(ui.drawerPanel, safe, edge = 24, column = false, top = 0)
         }
-        // При первом проходе insets ширина ещё нулевая — пересчитываем после
-        // изменения размеров.
-        ui.content.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or_, _ ->
-            if (r - l != or_ - ol) v.requestApplyInsets()
-            sizeTabs()
+        for (tab in listOf(ui.navDictation, ui.navMeetings, ui.navHistory, ui.navModels)) {
+            (tab.parent as View).addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> sizeTabs() }
         }
 
         ModelStore.migrateLegacyLayout(this)
@@ -268,6 +246,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(45, "0.9.9", R.string.whatsnew_body_099),
             Triple(44, "0.9.8", R.string.whatsnew_body_098),
             Triple(43, "0.9.7", R.string.whatsnew_body_097),
             Triple(42, "0.9.6", R.string.whatsnew_body_096),
@@ -435,6 +414,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ViewCompat.requestApplyInsets(ui.root)
         if (!micAsked && AppPrefs.introShown(this) && !hasMic()) {
             micAsked = true
             askMic.launch(Manifest.permission.RECORD_AUDIO)

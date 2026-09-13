@@ -162,7 +162,13 @@ pub fn fetch(
     };
     if media_type {
         let target = dir.join("download");
-        download_to(url, &target, progress)?;
+        download_to(url, &target, progress).map_err(|e| {
+            if rutube_connection_failure(url, &e.to_string()) {
+                anyhow!(RUTUBE_CONNECTION_HINT)
+            } else {
+                e
+            }
+        })?;
         let name = url
             .split(['?', '#'])
             .next()
@@ -213,7 +219,40 @@ pub fn validate_browser(url: &str, browser: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn download_error(stderr: &str) -> &'static str {
+pub const RUTUBE_CONNECTION_HINT: &str = "Не удалось подключиться к Rutube. Если включён VPN или прокси, попробуйте отключить его и повторить загрузку.";
+
+fn network_failure(s: &str) -> bool {
+    [
+        "timed out",
+        "timeout",
+        "resolve",
+        "network",
+        "connection",
+        "nodename nor servname",
+        "name or service not known",
+        "name resolution",
+        "failed to lookup address",
+        "getaddrinfo failed",
+    ]
+    .iter()
+    .any(|part| s.contains(part))
+}
+
+fn rutube_connection_failure(url: &str, error: &str) -> bool {
+    let host = url
+        .split('/')
+        .nth(2)
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let s = error.to_lowercase();
+    (host == "rutube.ru" || host.ends_with(".rutube.ru"))
+        && (network_failure(&s) || s.contains("http error 403") || s.contains("http status: 403"))
+}
+
+pub fn download_error(url: &str, stderr: &str) -> &'static str {
     let s = stderr.to_lowercase();
     if s.contains("not a bot") || s.contains("confirm you're") || s.contains("confirm you’re") {
         "YouTube просит подтвердить вход. Откройте ролик в браузере, пройдите проверку и повторите с выбранным браузером. Если не помогло — обновите загрузчик или попробуйте другую сеть."
@@ -236,12 +275,9 @@ pub fn download_error(stderr: &str) -> &'static str {
         "Видеосервис временно ограничил запросы. Подождите и повторите позже."
     } else if s.contains("unsupported url") {
         "Эта ссылка не поддерживается загрузчиком. Импортируйте аудио или видеофайл."
-    } else if s.contains("timed out")
-        || s.contains("timeout")
-        || s.contains("resolve")
-        || s.contains("network")
-        || s.contains("connection")
-    {
+    } else if rutube_connection_failure(url, stderr) {
+        RUTUBE_CONNECTION_HINT
+    } else if network_failure(&s) {
         "Не удалось подключиться к видеосервису. Проверьте интернет и доступ к ролику в браузере."
     } else {
         "Не удалось скачать видео. Обновите загрузчик в настройках и проверьте доступ к ролику в браузере."
@@ -406,7 +442,7 @@ fn download_page(
     let stderr = errors.join().unwrap_or_default();
     if !status.success() {
         clean_downloads(dir);
-        return Err(anyhow!(download_error(&stderr)));
+        return Err(anyhow!(download_error(url, &stderr)));
     }
     let state = seen.lock().unwrap();
     let file = PathBuf::from(&state.3);
@@ -474,12 +510,49 @@ mod tests {
     #[test]
     fn readable_errors_do_not_include_raw_output() {
         let e = download_error(
+            "https://youtube.com/watch?v=x",
             "ERROR: [youtube] x: Sign in to confirm you’re not a bot. --cookies-from-browser",
         );
         assert!(e.contains("YouTube"));
         assert!(!e.contains("--cookies"));
-        assert!(download_error("ERROR: Could not copy Chrome cookie database").contains("сессию"));
-        assert!(download_error("HTTP Error 429: Too Many Requests").contains("ограничил"));
+        assert!(download_error(
+            "https://youtube.com/",
+            "ERROR: Could not copy Chrome cookie database"
+        )
+        .contains("сессию"));
+        assert!(
+            download_error("https://youtube.com/", "HTTP Error 429: Too Many Requests")
+                .contains("ограничил")
+        );
+    }
+    #[test]
+    fn rutube_hint_only_for_connection_or_access_failures() {
+        for host in ["rutube.ru", "www.rutube.ru", "RUTUBE.RU:443"] {
+            for error in ["Connection timed out", "HTTP Error 403: Forbidden",
+                "io: failed to lookup address information: nodename nor servname provided, or not known",
+                "Temporary failure in name resolution", "getaddrinfo failed"] {
+                assert_eq!(download_error(&format!("https://{host}/video/test/"), error), RUTUBE_CONNECTION_HINT);
+            }
+        }
+        for host in ["youtube.com", "rutube.ru.evil.test", "rutube.ru@evil.test"] {
+            assert_ne!(
+                download_error(&format!("https://{host}/"), "Connection refused"),
+                RUTUBE_CONNECTION_HINT
+            );
+        }
+        for error in [
+            "HTTP Error 404: Not Found",
+            "Video has been deleted",
+            "Unsupported URL",
+            "HTTP Error 429: Too Many Requests",
+            "Login required",
+            "Cancelled",
+        ] {
+            assert_ne!(
+                download_error("https://rutube.ru/video/test/", error),
+                RUTUBE_CONNECTION_HINT
+            );
+        }
     }
     #[cfg(unix)]
     fn scenario(body: &str, cancel: bool) -> Result<(PathBuf, String)> {

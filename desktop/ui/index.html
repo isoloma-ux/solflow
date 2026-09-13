@@ -176,6 +176,10 @@
             <span class="muted small">Выбирайте браузер только если YouTube требует входа. Сессия используется локально для этой загрузки и не сохраняется в записи.</span>
           </div>
           <p class="muted small" id="urlHint" hidden></p>
+          <div class="url-connection-hint" id="rutubeConnectionHint" role="status" hidden>
+            <span class="small" id="rutubeConnectionText"></span>
+            <button class="pill-inset compact" id="rutubeRetry">Повторить</button>
+          </div>
 
           <button class="danger-text icon-button" id="deleteProject" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -1155,6 +1159,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="0.9.9"><ul class="whatsnew-list"><li>При ошибке подключения к Rutube появится подсказка о VPN и прокси с кнопкой «Повторить».</li><li>Удаление записи подтверждается вторым нажатием без закрытия меню. Остальные действия выполняются одним нажатием.</li></ul></div>
           <div data-whatsnew-version="0.9.8"><ul class="whatsnew-list"><li>Импорт потокового видео Rutube и других форматов через дополнительный конвертер.</li><li>Обновление загрузчика и компонентов YouTube в настройках.</li><li>Сессия браузера для YouTube по вашему выбору; понятные ошибки и меньше повторных запросов.</li></ul></div>
           <div data-whatsnew-version="0.9.7"><ul class="whatsnew-list"><li>Техническое обновление общей версии приложения.</li></ul></div>
           <div data-whatsnew-version="0.9.6"><p class="whatsnew-prev-title">Раньше, в 0.9.6</p><ul class="whatsnew-list"><li>Карта записи теперь рядом с саммери и переводом: иконка, предпросмотр, автоматическое открытие и понятные ошибки. Экспорт учитывает общую папку; оформление соответствует светлой теме Sol Flow.</li></ul></div>

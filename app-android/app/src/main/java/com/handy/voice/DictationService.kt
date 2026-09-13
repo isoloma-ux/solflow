@@ -10,6 +10,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Point
+import android.view.WindowInsets
+import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -95,16 +98,19 @@ class DictationService : Service() {
         params = WindowManager.LayoutParams(
             size, size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            gravity = Gravity.TOP or Gravity.LEFT
             x = resources.displayMetrics.widthPixels - size - dp(16)
             y = resources.displayMetrics.heightPixels / 2
         }
+        laidOutX = params.x
+        laidOutY = params.y
         bubble.setOnTouchListener(DragHandler())
         windows.addView(bubble, params)
+        bubble.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> constrainBubble() }
+        bubble.post { constrainBubble() }
     }
 
     /**
@@ -153,7 +159,7 @@ class DictationService : Service() {
                     if (dragging) {
                         params.x = startX + dx.roundToInt()
                         params.y = startY + dy.roundToInt()
-                        runCatching { windows.updateViewLayout(bubble, params) }
+                        constrainBubble()
                     }
                 }
 
@@ -183,12 +189,43 @@ class DictationService : Service() {
         }
     }
 
-    /** Пузырь липнет к ближайшему боку, если пользователь этого хочет. */
-    private fun snapToEdge() {
-        if (!AppPrefs.snapToEdge(this)) return
-        val width = resources.displayMetrics.widthPixels
-        params.x = if (params.x + dp(28) < width / 2) dp(16) else width - dp(56) - dp(16)
-        runCatching { windows.updateViewLayout(bubble, params) }
+    /** Overlay x/y are relative to the system's usable parent frame, not the physical display. */
+    @Suppress("DEPRECATION")
+    private fun constrainBubble(snap: Boolean = false) {
+        if (!bubble.isAttachedToWindow || bubble.width == 0) return
+        val available = Point()
+        if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = windows.currentWindowMetrics
+            val safe = metrics.windowInsets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            available.set(metrics.bounds.width() - safe.left - safe.right,
+                metrics.bounds.height() - safe.top - safe.bottom)
+        } else {
+            windows.defaultDisplay.getSize(available)
+        }
+        val gap = dp(16) + ScreenInsets.extra(bubble)
+        val right = (available.x - bubble.width - gap).coerceAtLeast(gap)
+        val bottom = (available.y - bubble.height - dp(8)).coerceAtLeast(dp(8))
+        params.x = if (snap) {
+            if (params.x < (gap + right) / 2) gap else right
+        } else params.x.coerceIn(gap, right)
+        params.y = params.y.coerceIn(dp(8), bottom)
+        if (params.x != laidOutX || params.y != laidOutY) {
+            runCatching { windows.updateViewLayout(bubble, params) }.onSuccess {
+                laidOutX = params.x
+                laidOutY = params.y
+            }
+        }
+    }
+
+    private var laidOutX = 0
+    private var laidOutY = 0
+
+    private fun snapToEdge() = constrainBubble(snap = AppPrefs.snapToEdge(this))
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        bubble.post { snapToEdge() }
     }
 
     private fun showSnoozeZone() {
@@ -257,6 +294,7 @@ class DictationService : Service() {
         keyboardJob?.cancel()
         keyboardJob = scope.launch {
             while (true) {
+                constrainBubble()
                 val service = HandyAccessibilityService.instance
 
                 // Спецвозможности могут отключиться на ходу — Android делает
@@ -293,7 +331,7 @@ class DictationService : Service() {
         val limit = keyboardTop - dp(56) - dp(12)
         if (params.y > limit) {
             params.y = limit.coerceAtLeast(highest)
-            runCatching { windows.updateViewLayout(bubble, params) }
+            constrainBubble()
         }
     }
 

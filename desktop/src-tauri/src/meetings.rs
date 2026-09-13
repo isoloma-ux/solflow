@@ -2081,6 +2081,11 @@ pub fn import_url(app: &AppHandle, url: String, browser: Option<String>) -> Resu
                 let _ = std::fs::remove_file(audio_file(&app, id));
                 mark_failed(&app, id, &e.to_string());
                 let _ = app.emit("solflow-import-failed", format!("{e}"));
+                if e.to_string() == crate::fetch::RUTUBE_CONNECTION_HINT {
+                    let _ = app.emit("solflow-rutube-connection-failed", serde_json::json!({
+                        "url": url, "error": crate::fetch::RUTUBE_CONNECTION_HINT
+                    }));
+                }
             }
         }
         notify(&app);

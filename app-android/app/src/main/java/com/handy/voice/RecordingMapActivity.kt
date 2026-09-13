@@ -56,11 +56,11 @@ class RecordingMapActivity : AppCompatActivity() {
             isAppearanceLightStatusBars = true
             isAppearanceLightNavigationBars = true
         }
+        ScreenInsets.pad(container, Insets.NONE, edge = 16, column = false, top = 0)
         ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->
             val handled = WindowInsetsCompat.Type.systemBars() or
                 WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime()
-            val safe = insets.getInsets(handled)
-            view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            ScreenInsets.pad(view, ScreenInsets.safe(insets, keyboard = true), edge = 16, column = false, top = 0)
             // These areas are handled by the native container. Notify WebView
             // with zero insets so it neither pads twice nor retains keyboard space.
             WindowInsetsCompat.Builder(insets).setInsets(handled, Insets.NONE).build()
