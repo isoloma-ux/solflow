@@ -1881,7 +1881,30 @@ el("meetImport").addEventListener("click", () => invoke("meeting_import"));
 
 // --- расшифровка по ссылке -------------------------------------------------
 
+let rutubeRetryUrl = null;
+function clearRutubeHint() {
+  rutubeRetryUrl = null;
+  el("rutubeConnectionHint").hidden = true;
+}
+listen("solflow-rutube-connection-failed", (e) => {
+  // A delayed failure must not replace a different link the user is entering.
+  if (el("meetUrl").value.trim() !== e.payload.url.trim()) return;
+  rutubeRetryUrl = e.payload.url.trim();
+  el("rutubeConnectionText").textContent = t(e.payload.error);
+  el("rutubeRetry").textContent = t("Повторить");
+  el("rutubeConnectionHint").hidden = false;
+});
+el("rutubeRetry").addEventListener("click", async () => {
+  if (!rutubeRetryUrl || el("rutubeRetry").disabled) return;
+  el("meetUrl").value = rutubeRetryUrl;
+  updateYoutubeSession();
+  el("rutubeRetry").disabled = true;
+  try { await importUrl(); }
+  finally { el("rutubeRetry").disabled = false; }
+});
+
 function updateYoutubeSession() {
+  if (rutubeRetryUrl && el("meetUrl").value.trim() !== rutubeRetryUrl) clearRutubeHint();
   let host = "";
   try { host = new URL(el("meetUrl").value.trim()).hostname.toLowerCase(); } catch {}
   const youtube = ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be"].includes(host);
@@ -1893,6 +1916,7 @@ clearableSearch("meetUrl", "meetUrlClear", updateYoutubeSession);
 el("meetUrl").addEventListener("input", updateYoutubeSession);
 
 async function importUrl() {
+  if (el("meetUrlGo").disabled) return;
   const url = el("meetUrl").value.trim();
   if (!url) return;
   if (!/^https?:\/\//i.test(url)) {
@@ -1914,6 +1938,7 @@ async function importUrl() {
     return;
   }
 
+  clearRutubeHint();
   el("urlHint").textContent = t("Качаю по ссылке");
   el("urlHint").hidden = false;
   el("meetUrlGo").disabled = true;
@@ -2016,10 +2041,16 @@ function setWorkbenchPane(pane) {
 }
 el("meetMore").onclick = event => {
   event.stopPropagation();
+  if (!el("meetMoreMenu").hidden) { closeRecordingMenu(); return; }
   el("meetMoreMenu").hidden = !el("meetMoreMenu").hidden;
   el("meetMore").setAttribute("aria-expanded", String(!el("meetMoreMenu").hidden));
 };
-document.addEventListener("click", () => { el("meetMoreMenu").hidden = true; el("meetMore").setAttribute("aria-expanded", "false"); });
+function closeRecordingMenu() {
+  el("meetMoreMenu").hidden = true;
+  el("meetMore").setAttribute("aria-expanded", "false");
+  resetDeleteConfirmation();
+}
+document.addEventListener("click", closeRecordingMenu);
 el("meetTextTab").onclick = () => setWorkbenchPane("text");
 el("meetAnalysisTab").onclick = () => setWorkbenchPane("analysis");
 document.querySelector(".workbench-tabs").addEventListener("keydown", event => {
@@ -2050,6 +2081,7 @@ el("meetSpeakerFilter").onchange = () => { detailStructure = ""; renderDetail();
 
 
 function openMeeting(id) {
+  closeRecordingMenu();
   if (detailId !== id) resetMeetingAudio();
   el("meetSpeakerFilter").value = "";
   setWorkbenchPane("text");
@@ -2065,6 +2097,7 @@ function openMeeting(id) {
 }
 
 function closeMeeting() {
+  closeRecordingMenu();
   resetMeetingAudio();
   detailId = null;
   el("meetDetail").hidden = true;
@@ -2966,18 +2999,20 @@ el("meetAgain").addEventListener("click", () => {
 
 // Удаление в два нажатия — окно подтверждения тут ни к чему.
 let deleteArmed = null;
-el("meetDelete").addEventListener("click", () => {
-  if (!deleteArmed) {
-    el("meetDeleteLabel").textContent = t("Точно удалить?");
-    deleteArmed = setTimeout(() => {
-      deleteArmed = null;
-      el("meetDeleteLabel").textContent = t("Удалить");
-    }, 3000);
-    return;
-  }
+function resetDeleteConfirmation() {
   clearTimeout(deleteArmed);
   deleteArmed = null;
   el("meetDeleteLabel").textContent = t("Удалить");
+}
+el("meetDelete").addEventListener("click", (event) => {
+  if (!deleteArmed) {
+    // Keep the menu open for the confirmation; other items still bubble and close it.
+    event.stopPropagation();
+    el("meetDeleteLabel").textContent = t("Точно удалить?");
+    deleteArmed = setTimeout(resetDeleteConfirmation, 3000);
+    return;
+  }
+  resetDeleteConfirmation();
   invoke("meeting_delete", { id: detailId });
   closeMeeting();
 });

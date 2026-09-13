@@ -935,6 +935,18 @@ body.dropping .drop-target {
   margin-top: 12px;
 }
 .url-row .search { margin-top: 0; }
+.url-connection-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+}
+.url-connection-hint[hidden] { display: none; }
+.url-connection-hint .small { flex: 1 1 240px; }
 
 /* Прервать долгую работу можно прямо из строки списка. */
 .row-cancel {
