@@ -85,6 +85,22 @@ fn inventory(root: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     out.sort();
     out
 }
+#[cfg(windows)]
+#[test]
+fn windows_plain_and_verbatim_paths_preserve_junction_guard() {
+    let temp = tempfile::tempdir().unwrap();
+    let real = temp.path().join("real");
+    fs::create_dir(&real).unwrap();
+    assert!(solflow_mcp_core::checked_path(&real).is_ok());
+    assert!(solflow_mcp_core::checked_path(&real.canonicalize().unwrap()).is_ok());
+    let junction = temp.path().join("junction");
+    let result = Command::new("cmd").args(["/C", "mklink", "/J"])
+        .arg(&junction).arg(&real).output().unwrap();
+    assert!(result.status.success(), "junction creation failed: {:?}", result);
+    let denied = solflow_mcp_core::checked_path(&junction.join("export.sqlite3"));
+    fs::remove_dir(&junction).unwrap();
+    assert!(denied.is_err(), "junction must remain forbidden");
+}
 #[test]
 fn denied_by_default_and_source_bytes_unchanged() {
     let f = Fixture::new();

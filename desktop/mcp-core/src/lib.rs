@@ -92,6 +92,13 @@ pub fn checked_path(path: &Path) -> Result<PathBuf> {
     for part in path.components() {
         match part {
             std::path::Component::ParentDir | std::path::Component::CurDir => bail!("unsafe path"),
+            // A Windows prefix (for example \\?\C:) is not a filesystem
+            // object until RootDir is appended. Querying it alone fails with
+            // ERROR_INVALID_FUNCTION; inspect the rooted path next instead.
+            std::path::Component::Prefix(_) => {
+                current.push(part.as_os_str());
+                continue;
+            }
             _ => current.push(part.as_os_str()),
         }
         match fs::symlink_metadata(&current) {
