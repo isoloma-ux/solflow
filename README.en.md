@@ -11,11 +11,13 @@ field and meeting transcription — on Mac, Windows and Android. Free, with no
 subscription and no uploading of audio anywhere: the models run right on
 your computer or phone, and the internet is needed once, to download them.
 
-The app's interface, README and release notes for 0.9.9 are available in
+The app's interface, README and release notes for 1.0.0 are available in
 Russian and English. The website is in Russian.
 
 **Website with screenshots and setup steps:** [ivansolomin.ru/solflow](https://ivansolomin.ru/solflow)
 · **Latest version:** [Releases](https://github.com/isoloma-ux/solflow/releases/latest)
+
+MCP runs locally on Mac/Windows and does not host recordings on a website. A connected cloud AI receives selected texts on request, with separate user permission. Android syncs materials and permissions.
 
 ## Download
 
@@ -48,13 +50,23 @@ After installing, open Models and download one for your language. For
 Russian — GigaAM v3, about 270 MB; for English — Parakeet TDT 0.6B. The app
 finds updates itself and offers to install them.
 
+## New in 1.0.0
+
+- Connect selected projects to AI through MCP: only permitted texts are shared, and access can be revoked.
+- Purple highlighting and an AI badge identify shared projects. Manage access in the project panel or context menu.
+- Project permissions sync across devices. Changes take effect after both devices sync.
+- A ready-made request helps an assistant configure the AI client on your computer. The command and arguments can also be copied separately.
+- Updated Russian and English guide with dedicated Android instructions and interface screenshots.
+
+[MCP setup, changes and update instructions](docs/release-1.0.0.en.md).
+
 ## New in 0.9.9
 
 - **Android:** fixed missing side margins on older firmware. Main screens, the recording map and the floating button respect the safe display area; an extra-spacing setting is available for curved screens.
 - **Mac and Windows:** a VPN/proxy hint for Rutube connection failures, with a retry of the same link.
 - **Recording menu:** Delete → Really delete? without reopening the menu; other actions still take one click.
 
-[Detailed changes and validation limits](docs/release-0.9.9.en.md). MCP is not yet part of the app.
+[Detailed changes and validation limits](docs/release-0.9.9.en.md).
 
 ## New in 0.9.8
 

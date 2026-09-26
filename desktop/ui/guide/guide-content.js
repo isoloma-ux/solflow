@@ -395,8 +395,8 @@ const GUIDE = {
       "lead": "Разрешить проект и настроить клиент — два отдельных шага. Надпись «Настройка подключения к ИИ» предлагает инструкции, а не определяет активный клиент.",
       "desktop": "Откройте проект → «Доступ проекта к ИИ» → «Подключение клиента и дополнительные действия» → «Настройка подключения к ИИ».",
       "steps": [
-        "Для Claude Desktop выберите соответствующую инструкцию. В Claude откройте Settings → Developer → Edit Config. Добавьте запись solflow в mcpServers, сохранив другие настройки, затем полностью перезапустите Claude.",
-        "Для ChatGPT / Codex на компьютере используйте показанные параметры локального STDIO-сервера или блок config.toml. Если сервер уже добавлен, перезапустите подключение в настройках MCP.",
+        "Выберите ChatGPT / Codex или Claude Desktop и нажмите «Скопировать запрос для подключения». Отправьте запрос помощнику на том же компьютере: пути и инструкции уже включены.",
+        "Помощнику нужен доступ к локальным файлам. Без него раскройте «Настроить вручную»: скопируйте команду и каждый аргумент в отдельные поля. Полная конфигурация предназначена только для файла настроек. Если потребуется, перезапустите подключение.",
         "В новом чате попросите перечислить проекты Sol Flow, открыть тестовую запись и назвать факт с таймкодом. Затем отключите доступ в Sol Flow и попросите заново прочитать источник."
       ],
       "details": [
@@ -842,8 +842,8 @@ const GUIDE = {
       "lead": "Project permission and client setup are separate steps. AI connection setup provides instructions; it does not detect the active client.",
       "desktop": "Open a project → Project access for AI → Client setup and more options → AI connection setup.",
       "steps": [
-        "For Claude Desktop, choose its instructions. Open Settings → Developer → Edit Config in Claude. Add solflow under mcpServers, preserve existing settings, and fully restart Claude.",
-        "For desktop ChatGPT / Codex, use the local STDIO parameters or config.toml block shown in Sol Flow. Restart an existing server connection in MCP settings.",
+        "Choose ChatGPT / Codex or Claude Desktop and click Copy setup request. Send it to an assistant on the same computer: paths and instructions are already included.",
+        "The assistant needs local file access. Without it, expand Set up manually: copy the command and each argument into separate fields. The full configuration belongs only in the settings file. Restart the connection if needed.",
         "In a new chat, request the Sol Flow projects, read a test recording, and ask for a fact with a timestamp. Revoke access in Sol Flow and request a fresh source read."
       ],
       "details": [

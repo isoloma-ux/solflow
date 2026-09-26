@@ -1,5 +1,7 @@
 # Sol Flow 1.0 roadmap and outstanding work
 
+2026-09-26: Ivan confirmed Windows and MCP operation and authorized the 1.0.0 release for Windows, Mac and Android. Final package validation is in progress; older statuses below describe pilot stages. Current scope: [1.0.0](release-1.0.0.en.md).
+
 **26.09.2026 — Android MCP:** Android: purple project markers, AI access controls and permission sync implemented and verified on Xiaomi and Mac. Android guide uses actual mobile screenshots; the old Show steps animation is removed. [Details](mcp-android-access.md).
 
 

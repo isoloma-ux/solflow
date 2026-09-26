@@ -213,16 +213,35 @@
                   <p class="mcp-caption">Разрешение действует для клиентов, подключенных к Sol Flow через MCP. Настройка клиента выполняется отдельно.</p>
                   <button class="pill-inset compact" id="mcpConfig" aria-expanded="false" aria-controls="mcpConfigBox">Настройка подключения к ИИ</button>
                   <div id="mcpConfigBox" hidden>
-                    <label class="mcp-client-label" for="mcpClient">Инструкция для клиента</label>
+                    <label class="mcp-client-label" for="mcpClient">Куда подключить Sol Flow</label>
                     <select id="mcpClient">
                       <option value="openai">ChatGPT / Codex — приложение на компьютере</option>
                       <option value="claude">Claude Desktop</option>
                       <option value="other">Другой MCP-клиент</option>
                     </select>
-                    <p class="mcp-caption">Выбор инструкции не меняет разрешения проекта. Sol Flow не определяет активный клиент и не подключает его автоматически.</p>
-                    <p class="mcp-caption" id="mcpClientHelp"></p>
-                    <textarea id="mcpConfigText" readonly rows="7" aria-label="Конфигурация MCP"></textarea>
-                    <button class="pill-inset compact" id="mcpCopyConfig">Копировать конфигурацию</button>
+                    <div class="mcp-setup-card">
+                      <h4>Подключить с помощью ИИ</h4>
+                      <p class="mcp-caption">Скопируйте запрос и отправьте помощнику на этом же компьютере. Нужные пути уже внутри.</p>
+                      <button class="mcp-primary" id="mcpCopyPrompt">Скопировать запрос для подключения</button>
+                      <p class="mcp-caption">Помощник сможет настроить подключение, если ему доступна работа с локальными файлами. Без такого доступа он объяснит ручные шаги. Обычный чат в браузере не подключается одним запросом.</p>
+                      <details class="mcp-setup-details">
+                        <summary>Посмотреть запрос</summary>
+                        <textarea id="mcpSetupPrompt" readonly rows="10" aria-label="Запрос для подключения"></textarea>
+                      </details>
+                    </div>
+                    <p class="mcp-feedback" id="mcpSetupFeedback" role="status" aria-live="polite" hidden></p>
+                    <details class="mcp-setup-details" id="mcpManual">
+                      <summary>Настроить вручную</summary>
+                      <p class="mcp-caption" id="mcpClientHelp"></p>
+                      <p class="mcp-caption">Имя сервера: solflow. Тип подключения: STDIO. Команду и каждый аргумент вставляйте в отдельные поля, без кавычек и скобок.</p>
+                      <div id="mcpConnectionFields"></div>
+                      <details class="mcp-setup-details">
+                        <summary>Конфигурация для файла настроек</summary>
+                        <p class="mcp-caption">Этот блок предназначен для файла настроек. Не вставляйте его целиком в поле команды.</p>
+                        <textarea id="mcpConfigText" readonly rows="7" aria-label="Конфигурация MCP"></textarea>
+                        <button class="pill-inset compact" id="mcpCopyConfig">Копировать конфигурацию</button>
+                      </details>
+                    </details>
                   </div>
                 </section>
                 <section class="mcp-extra">
@@ -1216,6 +1235,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="1.0.0"><ul class="whatsnew-list"><li>Подключайте выбранные проекты к ИИ через MCP: доступ только к разрешённым текстам, с возможностью отключения.</li><li>Фиолетовый цвет и значок ИИ показывают открытые для ИИ проекты. Доступ можно менять в панели проекта и его контекстном меню.</li><li>Разрешения проектов синхронизируются между устройствами. Изменения действуют после синхронизации обоих устройств.</li><li>Готовый запрос помогает настроить подключение к клиенту ИИ на компьютере. Команда и аргументы также копируются отдельно.</li><li>Обновлённое руководство на русском и английском с отдельными инструкциями и снимками интерфейса Android.</li></ul></div>
           <div data-whatsnew-version="0.9.9"><ul class="whatsnew-list"><li>При ошибке подключения к Rutube появится подсказка о VPN и прокси с кнопкой «Повторить».</li><li>Удаление записи подтверждается вторым нажатием без закрытия меню. Остальные действия выполняются одним нажатием.</li></ul></div>
           <div data-whatsnew-version="0.9.8"><ul class="whatsnew-list"><li>Импорт потокового видео Rutube и других форматов через дополнительный конвертер.</li><li>Обновление загрузчика и компонентов YouTube в настройках.</li><li>Сессия браузера для YouTube по вашему выбору; понятные ошибки и меньше повторных запросов.</li></ul></div>
           <div data-whatsnew-version="0.9.7"><ul class="whatsnew-list"><li>Техническое обновление общей версии приложения.</li></ul></div>
@@ -1379,6 +1399,7 @@
   <script src="map/mindmap.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script src="mcp-setup.js"></script>
   <script src="mcp-ui.js"></script>
 </body>
 </html>

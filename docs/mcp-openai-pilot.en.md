@@ -86,3 +86,12 @@ OpenAI instructions were checked against https://learn.chatgpt.com/docs/extend/m
 The installed MCP server returned all 607 fragments of Ivan Solomin's Atom interview; every text and timestamp matched the source transcript. A summary and standalone interactive HTML mind map were saved in `11_Sol_Flow/MCP_пилот/`. No recording or generated result in Sol Flow was overwritten. Browser visual testing of the map was blocked by the browser file-protocol policy; no workaround was attempted. JavaScript syntax and DOM-model checks of eight branches, keyboard, text mode, and print action passed; these do not establish browser rendering.
 
 Build, original signing identity, native setup button, and OpenAI configuration verified. Controller checks cover client switching, TOML/JSON formats, unchanged grants, and existing permission flows. All 62 project/recording files and every permission row were preserved. Backup and evidence: `.local-tools/mac-mcp-install-20260926-4/`. This is a local Mac update, not a published release.
+
+
+## Setup request — 2026-09-26
+
+Ivan reports the Windows app and MCP work after correcting a full TOML block pasted into the command field. This is user-reported Windows testing.
+
+The shared Mac/Windows UI now leads with Copy setup request. It includes exact local paths, client-specific configuration instructions, backup and preservation of other settings, and MCP initialize/tools/list/list_projects verification without reading recordings. Automatic execution requires an assistant with access to files and processes on that computer. Copying alone changes neither client configuration nor project permissions. Manual setup is collapsed, with separate raw command/argument copy buttons; full configuration is explicitly for a settings file. UI, prompts and shared guide are bilingual. Android retains desktop setup guidance rather than running a local MCP server.
+
+Validated: 18 Mac/Windows/special-path prompt variants, RU/EN coverage, clipboard separation and unchanged permissions, real browser preview, Mac compilation and original signing identity. Mac was updated locally with a backup (mcp-setup-prompt-20260926). The previously delivered Windows EXE does not contain this button; no new Windows installer or Android APK was built for this change. End-to-end execution of the request by an independent assistant from a clean configuration remains untested.

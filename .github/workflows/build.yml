@@ -51,6 +51,7 @@ jobs:
       - name: MCP isolation and protocol tests
         shell: bash
         run: |
+          node ../../scripts/check-mcp-setup.cjs
           python3 ../../scripts/check-mcp.py
           python3 ../../scripts/prepare-mcp.py
 
@@ -90,6 +91,7 @@ jobs:
       - name: MCP isolation and protocol tests
         shell: bash
         run: |
+          node ../../scripts/check-mcp-setup.cjs
           python3 ../../scripts/check-mcp.py
           python3 ../../scripts/prepare-mcp.py
 

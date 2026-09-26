@@ -4200,7 +4200,7 @@ dependencies = [
 
 [[package]]
 name = "solflow"
-version = "0.9.9"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cpal",

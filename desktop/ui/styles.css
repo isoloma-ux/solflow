@@ -1775,6 +1775,13 @@ textarea {
 .mcp-client-label { display: block; font-weight: 600; margin-bottom: 8px; }
 #mcpClient { display: block; width: 100%; max-width: 560px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--graphite); color: var(--ink); font: inherit; }
 #mcpConfigBox .mcp-caption { margin-top: 12px; }
+.mcp-setup-card { margin-top: 16px; padding: 18px; border: 1px solid color-mix(in srgb, var(--ai-color) 45%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--ai-color) 6%, transparent); }
+.mcp-setup-details { margin-top: 16px; }
+.mcp-setup-details > summary { cursor: pointer; font-size: 13px; color: var(--fog); }
+.mcp-connection-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; margin-top: 14px; }
+.mcp-connection-field label { grid-column: 1 / -1; font-size: 12px; color: var(--fog); }
+.mcp-connection-field input { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--hairline); border-radius: 8px; color: var(--ink); background: var(--graphite); font: 12px ui-monospace, monospace; }
+.mcp-connection-field button { margin: 0; }
 .project-menu.project-access-menu { width: 236px; }
 .project-access-menu .lang-row { white-space: normal; }
 @media (max-width: 650px) { .mcp-options { grid-template-columns: 1fr; } .mcp-state { margin-left: 0; } }

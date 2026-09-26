@@ -76,6 +76,9 @@
     get('mcpConfigBox').hidden = true;
     get('mcpConfig').setAttribute('aria-expanded', 'false');
     get('mcpConfigText').value = '';
+    clientConfig = null;
+    get('mcpSetupPrompt').value = '';
+    get('mcpSetupFeedback').hidden = true;
     message(); render();
     if (project) load();
   };
@@ -126,6 +129,18 @@
     if(!disconnect) get('mcpSave').focus();
   };
   get('mcpRefresh').onclick = () => run(() => call('mcp_refresh'), 'Материалы обновлены');
+  async function copySetup(text, success) {
+    const feedback = get('mcpSetupFeedback');
+    try {
+      await navigator.clipboard.writeText(text);
+      feedback.textContent = t(success);
+      feedback.classList.toggle('error', false);
+    } catch(error) {
+      feedback.textContent = t('Не удалось скопировать. Раскройте текст, выделите его и скопируйте вручную.');
+      feedback.classList.toggle('error', true);
+    }
+    feedback.hidden = false;
+  }
   function renderClientConfig() {
     if (!clientConfig) return;
     const server = clientConfig.mcpServers.solflow;
@@ -143,6 +158,25 @@
     }
     get('mcpConfigText').value = config;
     get('mcpClientHelp').textContent = t(help);
+    get('mcpSetupPrompt').value = window.solflowMcpSetupPrompt(server, client, t);
+    get('mcpSetupFeedback').hidden = true;
+    const fields = get('mcpConnectionFields');
+    fields.replaceChildren();
+    [server.command, ...server.args].forEach((value, index) => {
+      const row = document.createElement('div');
+      row.className = 'mcp-connection-field';
+      const label = document.createElement('label');
+      const id = 'mcpConnectionField' + index;
+      label.htmlFor = id;
+      label.textContent = index === 0 ? t('Команда') : t('Аргумент {0}').replace('{0}', index);
+      const input = document.createElement('input');
+      input.id = id; input.type = 'text'; input.readOnly = true; input.value = value;
+      const button = document.createElement('button');
+      button.className = 'pill-inset compact'; button.textContent = t('Копировать');
+      button.setAttribute('aria-label', t('Копировать') + ': ' + label.textContent);
+      button.onclick = () => copySetup(value, 'Значение скопировано');
+      row.append(label, input, button); fields.appendChild(row);
+    });
   }
   get('mcpClient').onchange = renderClientConfig;
   get('mcpConfig').onclick = async () => {
@@ -166,8 +200,10 @@
     catch(error) {message(t(String(error)), true);}
   };
   get('mcpCopyConfig').onclick = async () => {
-    try {await navigator.clipboard.writeText(get('mcpConfigText').value);message(t('Конфигурация скопирована'));}
-    catch(error){message(t(String(error)), true);}
+    if(clientConfig) await copySetup(get('mcpConfigText').value, 'Конфигурация скопирована');
+  };
+  get('mcpCopyPrompt').onclick = async () => {
+    if(clientConfig) await copySetup(get('mcpSetupPrompt').value, 'Запрос скопирован. Отправьте его помощнику на этом компьютере.');
   };
   get('mcpTextCopy').onclick = async () => {
     if(busy) return;

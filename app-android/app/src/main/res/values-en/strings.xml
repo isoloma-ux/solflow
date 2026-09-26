@@ -2,6 +2,7 @@
 <!-- Английский интерфейс. Ключи и порядок те же, что в русском файле:
      так их проще держать в согласии. -->
 <resources>
+    <string name="whatsnew_body_100">• Projects shared with AI are purple and have an AI badge. Long-press a project in the menu or open its panel to enable or revoke access.\n\n• Choose shared materials: transcripts, summaries, maps and analyses. Permissions reach Mac and Windows after both devices sync.\n\n• Phone recordings become available to a connected AI through MCP on your computer. The server and client setup run on Mac and Windows.\n\n• Updated guide with real Android screenshots and instructions for sync and AI setup.</string>
     <string name="eyebrow_dictation">Dictation</string>
     <string name="starting">Starting</string>
     <string name="loading_model">Loading the model into memory</string>
