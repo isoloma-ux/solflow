@@ -1,7 +1,8 @@
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const path = require('node:path');
 const ctx = {window:{}}; vm.createContext(ctx);
-vm.runInContext(fs.readFileSync('desktop/ui/mcp-setup.js','utf8'),ctx);
-vm.runInContext(fs.readFileSync('desktop/ui/i18n.js','utf8'),ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../desktop/ui/mcp-setup.js'),'utf8'),ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../desktop/ui/i18n.js'),'utf8'),ctx);
 const servers = [
  {command:'/Applications/Sol Flow.app/Contents/MacOS/solflow-mcp',args:['--export-dir','/Users/Test User/Library/Application Support/Sol Flow/mcp-export']},
  {command:String.raw`C:\Users\Иван Тест\AppData\Local\Sol Flow\solflow-mcp.exe`,args:['--export-dir',String.raw`C:\Users\Иван Тест\AppData\Roaming\Sol Flow\mcp-export`]},
