@@ -48,6 +48,13 @@ jobs:
 
       # Диаризация тянет статический sherpa-onnx, которого под MSVC ещё нет, —
       # она за фичей и в этом прогоне выключена.
+      - name: MCP isolation and protocol tests
+        shell: bash
+        run: |
+          node ../../scripts/check-mcp-setup.cjs
+          python3 ../../scripts/check-mcp.py
+          python3 ../../scripts/prepare-mcp.py
+
       - name: cargo check
         run: cargo check --locked --no-default-features
 
@@ -81,6 +88,13 @@ jobs:
 
       # Библиотеки sherpa в репозиторий не кладутся (150 МБ), поэтому на CI
       # мак-сборка тоже проверяется без диаризации.
+      - name: MCP isolation and protocol tests
+        shell: bash
+        run: |
+          node ../../scripts/check-mcp-setup.cjs
+          python3 ../../scripts/check-mcp.py
+          python3 ../../scripts/prepare-mcp.py
+
       - name: cargo check
         run: cargo check --locked --no-default-features
 
@@ -158,6 +172,10 @@ jobs:
           cp shim-build/Release/solflow_llama.dll llama/lib/
           cp shim-build/Release/solflow_llama.lib llama/lib/
 
+      - name: Build MCP sidecar
+        shell: bash
+        run: python3 ../../scripts/prepare-mcp.py --release
+
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
@@ -191,10 +209,26 @@ jobs:
           ls -la *.dll
           tauri build --config tauri.gpu.conf.json --bundles nsis -- --features gpu
 
+      - name: Verify Windows payload and record checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sidecar = 'binaries/solflow-mcp-x86_64-pc-windows-msvc.exe'
+          if (!(Test-Path $sidecar)) { throw 'Missing MCP sidecar' }
+          $files = @(Get-ChildItem target/release/bundle/nsis/*.exe)
+          if ($files.Count -ne 1) { throw 'Expected exactly one fresh installer' }
+          $checksums = $files | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.Name }
+          $checksums | Set-Content target/release/bundle/nsis/SHA256SUMS.txt -Encoding utf8
+          @{commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; architecture='x64'; mcp_sha256=(Get-FileHash $sidecar -Algorithm SHA256).Hash.ToLower()} | ConvertTo-Json | Set-Content target/release/bundle/nsis/build-info.json -Encoding utf8
+
       # Номер прогона в имени: версия меняется по смыслу, а сборок между
       # версиями бывает несколько, и путать их не хочется.
       - uses: actions/upload-artifact@v4
         with:
           name: SolFlow-Windows-${{ github.run_number }}
-          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/*.sig
+            desktop/src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+            desktop/src-tauri/target/release/bundle/nsis/build-info.json
           if-no-files-found: error

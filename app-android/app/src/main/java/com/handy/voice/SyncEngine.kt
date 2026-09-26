@@ -404,6 +404,21 @@ object SyncEngine {
             if (firstError == null) firstError = e.message ?: e.toString()
         }
 
+        // AI access is a separate versioned file: older apps leave it untouched.
+        try {
+            val remoteAccess = if (remote.containsKey(AiAccess.FILE)) AiAccess.decode(download(AiAccess.FILE)) else emptyMap()
+            val before = AiAccess.load(context)
+            val merged = AiAccess.merge(context, remoteAccess)
+            if (before != merged) changed = true
+            if (merged != remoteAccess) upload(AiAccess.FILE, AiAccess.encode(merged))
+        } catch (e: Cloud.Unauthorized) {
+            state.save(context)
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "AI access sync failed", e)
+            if (firstError == null) firstError = e.message ?: e.toString()
+        }
+
         // --- звук ---
         if (syncAudio) {
             try {

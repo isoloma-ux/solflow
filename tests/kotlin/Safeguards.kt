@@ -6,6 +6,17 @@ import java.nio.file.Files
 
 fun main(args: Array<String>) {
     var checks = 0
+    File(File(args[0]).parentFile, "ai-access.tsv").readLines().forEach { line ->
+        val c=line.split('\t')
+        fun entry(i:Int):com.handy.voice.AiAccessEntry {
+            val b=c[i+1].map { it=='1' }
+            return com.handy.voice.AiAccessEntry(c[i].toLong(),com.handy.voice.AiGrant(b[0],b[1],b[2],b[3]))
+        }
+        val a=mapOf("10" to entry(0));val b=mapOf("10" to entry(2));val expected=mapOf("10" to entry(4))
+        check(com.handy.voice.AiAccessRules.merge(a,b)==expected)
+        check(com.handy.voice.AiAccessRules.merge(b,a)==expected)
+        checks+=2
+    }
     File(File(args[0]).parentFile, "speakers.tsv").readLines().forEach { line ->
         val c = line.split('\t')
         val bounds = c[1].split(';').map { v -> v.split(',').let { it[0].toFloat() to it[1].toFloat() } }

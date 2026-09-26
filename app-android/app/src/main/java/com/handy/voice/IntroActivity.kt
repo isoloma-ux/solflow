@@ -1,81 +1,68 @@
 package com.handy.voice
 
-import android.animation.ValueAnimator
 import android.os.Bundle
-import android.view.View
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
-import com.handy.voice.databinding.ActivityIntroBinding
+import com.google.android.material.button.MaterialButton
 
-/**
- * Вводный экран: четыре шага о том, что приложение делает и что для этого
- * нужно разрешить. Показывается один раз при первом запуске — дальше только
- * по просьбе из «О проекте».
- */
+/** Bundled guide shared with desktop. No bridge, network, or user-data access. */
 class IntroActivity : AppCompatActivity() {
-
-    private lateinit var ui: ActivityIntroBinding
-    private var step = 0
-
-    private data class Step(val icon: Int, val title: Int, val text: Int)
-
-    private val steps = listOf(
-        Step(R.drawable.ic_waveform, R.string.intro1_title, R.string.intro1_text),
-        Step(R.drawable.ic_mic, R.string.intro2_title, R.string.intro2_text),
-        Step(R.drawable.ic_text_lines, R.string.intro3_title, R.string.intro3_text),
-        Step(R.drawable.ic_file, R.string.intro4_title, R.string.intro4_text),
-        Step(R.drawable.ic_cloud, R.string.intro5_title, R.string.intro5_text),
-    )
-
+    private lateinit var web: WebView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ui = ActivityIntroBinding.inflate(layoutInflater)
-        setContentView(ui.root)
-
-        ScreenInsets.install(this, ui.root) { safe -> ScreenInsets.pad(ui.root, safe) }
-
-        ui.next.setOnClickListener {
-            if (step == steps.lastIndex) done() else render(step + 1)
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        web = WebView(this)
+        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(MaterialButton(this).apply {
+            setText(R.string.guide_close)
+            setOnClickListener { done() }
+        }, LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
+        ScreenInsets.install(this, root) { safe -> ScreenInsets.pad(root, safe, edge = 0, column = false, top = 0) }
+        web.settings.apply {
+            javaScriptEnabled = true
+            allowFileAccess = false
+            allowContentAccess = false
+            blockNetworkLoads = true
+            domStorageEnabled = false
+            setSupportMultipleWindows(false)
         }
-        ui.skip.setOnClickListener { done() }
-        // Системный «назад» листает шаги обратно, а с первого закрывает экран.
-        onBackPressedDispatcher.addCallback(this) {
-            if (step > 0) render(step - 1) else done()
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = true
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
+                val url = request.url
+                val path = url.path.orEmpty().removePrefix("/")
+                val allowed = path in setOf("guide.css", "guide.js", "guide-content.js") ||
+                    path.matches(Regex("shots/[a-z-]+[.]png"))
+                if (url.scheme != "https" || url.host != "guide.solflow.invalid" || !allowed) {
+                    return WebResourceResponse("text/plain", "UTF-8", "".byteInputStream())
+                }
+                val mime = when {
+                    path.endsWith(".css") -> "text/css"
+                    path.endsWith(".js") -> "application/javascript"
+                    else -> "image/png"
+                }
+                return runCatching { WebResourceResponse(mime, "UTF-8", assets.open(path)) }
+                    .getOrElse { WebResourceResponse("text/plain", "UTF-8", "".byteInputStream()) }
+            }
         }
-
-        render(0)
+        val lang = if (resources.configuration.locales[0].language == "ru") "ru" else "en"
+        web.loadDataWithBaseURL("https://guide.solflow.invalid/guide.html?platform=android&lang=$lang",
+            assets.open("guide.html").bufferedReader().use { it.readText() }, "text/html", "UTF-8", null)
+        onBackPressedDispatcher.addCallback(this) { done() }
     }
-
-    private fun render(next: Int) {
-        val forward = next > step
-        step = next
-        val current = steps[step]
-        ui.icon.setImageResource(current.icon)
-        ui.title.setText(current.title)
-        ui.text.setText(current.text)
-        ui.step.text = getString(R.string.intro_step, step + 1, steps.size)
-        ui.next.setText(if (step == steps.lastIndex) R.string.intro_start else R.string.intro_next)
-        ui.skip.visibility = if (step == steps.lastIndex) View.GONE else View.VISIBLE
-        slide(forward)
-    }
-
-    /** Шаг въезжает с той стороны, куда пошёл пользователь — как вкладки. */
-    private fun slide(forward: Boolean) {
-        if (!ValueAnimator.areAnimatorsEnabled()) return
-        val shift = 28 * resources.displayMetrics.density * if (forward) 1 else -1
-        for (view in listOf(ui.icon, ui.title, ui.text)) {
-            view.translationX = shift
-            view.alpha = 0f
-            view.animate()
-                .translationX(0f)
-                .alpha(1f)
-                .setDuration(resources.getInteger(R.integer.anim_base).toLong())
-                .start()
-        }
-    }
-
     private fun done() {
         AppPrefs.setIntroShown(this, true)
         finish()
+    }
+    override fun onDestroy() {
+        web.stopLoading()
+        web.destroy()
+        super.onDestroy()
     }
 }

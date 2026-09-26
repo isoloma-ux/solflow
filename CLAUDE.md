@@ -115,3 +115,12 @@ WindowInsets и TYPE_APPLICATION_OVERLAY. Данные и синхронизац
 - Каждое сохранение `meta.json` ставит `updated` (millis) — на нем держится
   слияние конфликтов. Удаление встречи обязано пройти через
   `meetings::delete` / `MeetingStore.delete`, иначе не будет надгробия.
+
+## MCP (локальная разработка 1.0, 26.09.2026)
+
+MCP server runs on Mac/Windows. User requested Android permission controls on
+2026-09-26: grants now sync via ai-access-v1.json. Android does not run the MCP
+server. Default access is off. Remote changes apply after both devices sync.
+Keep projects.json and meetings/<id>/ formats intact. See docs/mcp-android-access.md. Иван явно разрешил публикацию 1.0.0 26.09.2026 после подтверждения Windows/MCP; публикация выполняется после проверок пакетов и подписей.
+После MCP — аккаунты Apple Developer / Google Play; iPhone отложен.
+Актуальный бэклог: docs/roadmap-1.0.md и docs/roadmap-1.0.en.md.

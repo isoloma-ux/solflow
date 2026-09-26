@@ -211,6 +211,18 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/projectAiAccess"
+            style="@style/Pill.Inset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/ai_access"
+            android:textColor="@color/ai_purple"
+            android:visibility="gone"
+            app:icon="@drawable/ic_ai"
+            app:iconTint="@color/ai_purple" />
+
         <!--
           Панель пакетных действий: появляется после долгого нажатия на
           карточке и на это время забирает место у кнопки записи.

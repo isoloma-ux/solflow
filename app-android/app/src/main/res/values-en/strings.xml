@@ -2,6 +2,7 @@
 <!-- Английский интерфейс. Ключи и порядок те же, что в русском файле:
      так их проще держать в согласии. -->
 <resources>
+    <string name="whatsnew_body_100">• Projects shared with AI are purple and have an AI badge. Long-press a project in the menu or open its panel to enable or revoke access.\n\n• Choose shared materials: transcripts, summaries, maps and analyses. Permissions reach Mac and Windows after both devices sync.\n\n• Phone recordings become available to a connected AI through MCP on your computer. The server and client setup run on Mac and Windows.\n\n• Updated guide with real Android screenshots and instructions for sync and AI setup.</string>
     <string name="eyebrow_dictation">Dictation</string>
     <string name="starting">Starting</string>
     <string name="loading_model">Loading the model into memory</string>
@@ -138,7 +139,8 @@
     <string name="intro_next">Next</string>
     <string name="intro_skip">Skip</string>
     <string name="intro_start">Start</string>
-    <string name="intro_again">Show the intro again</string>
+    <string name="intro_again">Sol Flow guide</string>
+    <string name="guide_close">Continue to the app</string>
     <string name="intro2_title">Dictate into any app</string>
     <string name="intro3_title">Meetings: recording, transcript, speakers</string>
     <string name="intro4_title">Projects, search and export</string>
@@ -321,7 +323,7 @@
     <string name="sync_code_message">Code: %1$s\n\n1. The code is already in the clipboard\n2. Open the sign-in page — the button below\n3. Paste the code and tap “Allow”\n\nYou can close this window: the app waits for confirmation in the background, and the settings row will switch to “connected” by itself</string>
     <string name="intro5_title">Meetings on every device</string>
     <string name="intro5_text">Connect Yandex Disk in Settings — you sign in with a short code. Recordings, projects and summaries become the same on the phone and the computer; the data lives in the app folder on your Disk.</string>
-    <string name="about_sync">Meetings and projects can stay the same on all your devices: connect Yandex Disk in Settings, signing in with a short code. The data lives in the app folder on your Disk, there are no third-party servers.</string>
+    <string name="about_sync">Connect Yandex Disk or Google Drive using the same account on every device. Meetings, projects, and finished results sync through your chosen cloud; audio transfer is optional.</string>
     <string name="channel_updates">Updates</string>
     <string name="summary_open">Show in full</string>
     <string name="transcript_title">Transcript</string>
@@ -407,7 +409,7 @@
     <string name="selection_audio_none">None of the selected meetings have audio</string>
     <string name="selection_hint">Long press to select several</string>
     <string name="about_hint">Who makes this, what it\'s built from, where the new version is</string>
-    <string name="about_pitch">Your voice becomes text right on the phone. Nothing goes to the internet: not the meeting recordings, not the dictations, not people\'s names.</string>
+    <string name="about_pitch">Speech recognition runs on your phone. Optional sync sends selected data to your cloud. Manage project access for AI here; connect an MCP client on your computer.</string>
     <string name="link_youtube">YouTube</string>
     <string name="link_engine">Recognition engine</string>
     <string name="link_failed">Nothing here can open that link</string>
@@ -482,4 +484,20 @@
     <string name="whatsnew_body_099">• Fixed spacing on older Android versions: text and navigation no longer sit against the screen edges.\n• The interface, recording map and floating button respect the safe display area.\n• Settings now offer extra spacing for curved screens.</string>
     <string name="set_screen_edges">Extra screen edge spacing</string>
     <string name="set_screen_edges_hint">Moves text and buttons away from curved edges. Enable if the standard spacing is not enough.</string>
+    <string name="ai_access">Project access for AI</string>
+    <string name="ai_connect">Connect to AI</string>
+    <string name="ai_disconnect">Disconnect AI access</string>
+    <string name="ai_badge">AI</string>
+    <string name="ai_enabled">AI access allowed</string>
+    <string name="ai_closed">AI access off</string>
+    <string name="ai_save">Save permissions</string>
+    <string name="ai_help">This permission syncs through your cloud to computers with updated Sol Flow. MCP runs on the computer; the phone controls access. Changes take effect there after both devices sync.</string>
+    <string name="ai_private">AI receives only the selected finished text. Audio and keys are excluded. Previously received text stays in chat history after disconnecting.</string>
+    <string name="ai_no_cloud">Connect the same cloud on the phone and computer in Sync settings. You can save the permission now.</string>
+    <string name="ai_saved">Saved. Sync the phone and computer to apply access.</string>
+    <string name="ai_error">Could not save permission. Try again.</string>
+    <string name="ai_transcript">Transcripts</string>
+    <string name="ai_summary">Summaries</string>
+    <string name="ai_map">Mind maps</string>
+    <string name="ai_analyses">Analyses</string>
 </resources>

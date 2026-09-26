@@ -262,6 +262,7 @@ fn try_save_meta(app: &AppHandle, id: i64, meta: &Meta) -> Result<()> {
     crate::transcript_store::atomic_write(
         &dir(app, id).join("meta.json"), &serde_json::to_vec_pretty(&stamped)?,
     )?;
+    crate::mcp::invalidate(app);
     crate::sync::touch(app);
     Ok(())
 }
@@ -282,6 +283,7 @@ fn save_transcript(app: &AppHandle, id: i64, segments: &[Segment]) -> Result<()>
     crate::transcript_store::atomic_write(
         &dir(app, id).join("transcript.json"), &serde_json::to_vec(segments)?,
     )?;
+    crate::mcp::invalidate(app);
     crate::sync::touch(app);
     Ok(())
 }
@@ -456,6 +458,7 @@ fn save_extras(app: &AppHandle, id: i64, extras: &Extras) {
     if path.parent().map(|p| p.exists()).unwrap_or(false) {
         let _ = std::fs::write(path, serde_json::to_string_pretty(extras).unwrap());
     }
+    crate::mcp::invalidate(app);
 }
 
 pub fn clear_extra(app: &AppHandle, id: i64, kind: &str) {
@@ -727,6 +730,7 @@ pub fn delete(app: &AppHandle, id: i64) {
     // устройство привезло бы встречу обратно.
     crate::sync::note_deleted(app, id);
     let _ = std::fs::remove_dir_all(dir(app, id));
+    crate::mcp::invalidate(app);
     notify(app);
 }
 
@@ -823,6 +827,7 @@ fn save_projects(app: &AppHandle, list: &[Project]) {
         projects_file(app),
         serde_json::to_string_pretty(list).unwrap(),
     );
+    crate::mcp::invalidate(app);
     crate::sync::touch(app);
 }
 
@@ -2021,8 +2026,13 @@ pub fn pick_import_file(app: &AppHandle) -> Option<PathBuf> {
 /// Импорт по ссылке. Скачивание идёт в каталоге встречи, чтобы файл не
 /// пришлось никуда переносить, а название берётся из источника.
 pub fn import_url(app: &AppHandle, url: String, browser: Option<String>) -> Result<()> {
+    import_url_to_project(app, url, browser, None)
+}
+pub fn import_url_to_project(app: &AppHandle, url: String, browser: Option<String>, project: Option<String>) -> Result<()> {
     crate::fetch::validate_browser(&url, browser.as_deref())?;
     let (id, mut meta) = create(app, true)?;
+    meta.project = project.filter(|id| projects(app).iter().any(|p| &p.id == id));
+    save_meta(app, id, &meta);
     let state = app.state::<MeetingState>();
     state.cancel.lock().unwrap().insert(id, Arc::new(AtomicBool::new(false)));
     state.phase.lock().unwrap().insert(id, "fetching");
@@ -2153,7 +2163,12 @@ pub fn cancel(app: &AppHandle, id: i64) {
 }
 
 pub fn import(app: &AppHandle, source: PathBuf) -> Result<()> {
+    import_to_project(app, source, None)
+}
+pub fn import_to_project(app: &AppHandle, source: PathBuf, project: Option<String>) -> Result<()> {
     let (id, mut meta) = create(app, true)?;
+    meta.project = project.filter(|id| projects(app).iter().any(|p| &p.id == id));
+    save_meta(app, id, &meta);
     // Имя файла становится названием встречи: по нему её и ищут потом,
     // «Импорт 26 августа» ни о чём не говорит.
     if let Some(name) = source.file_stem().map(|s| s.to_string_lossy().to_string()) {

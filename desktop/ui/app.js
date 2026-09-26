@@ -886,6 +886,7 @@ function renderProjects() {
         openProjectMenu(item, id, label);
       };
     }
+    window.solflowMcpDecorateProject?.(item, id);
     box.appendChild(item);
 
     // Развёрнутый проект показывает свои записи списком.
@@ -938,6 +939,7 @@ function renderProjects() {
   const current = meetProjects.find((p) => p.id === projectFilter);
   el("meetingsTitle").textContent = current ? current.name : t("Записи и расшифровки");
   el("deleteProject").hidden = !current;
+  window.solflowMcpProject?.(current);
 }
 
 /** Поле вместо строки: Enter сохраняет, Escape и потеря фокуса отменяют. */
@@ -1161,7 +1163,7 @@ function closeProjectMenu() {
 function openProjectMenu(anchor, id, label) {
   closeProjectMenu();
   const menu = document.createElement("div");
-  menu.className = "lang-panel menu project-menu";
+  menu.className = "lang-panel menu project-menu floating project-access-menu";
   menu.onclick = (e) => e.stopPropagation();
 
   const item = (text, action, danger) => {
@@ -1182,6 +1184,9 @@ function openProjectMenu(anchor, id, label) {
     renderProjects();
     renderMeetings();
   });
+  const aiEnabled = window.solflowMcpEnabled?.(id);
+  item(t(aiEnabled ? "Настроить доступ к ИИ…" : "Подключить к ИИ…"), () => window.solflowMcpOpen?.(id));
+  if (aiEnabled) item(t("Отключить доступ к ИИ"), () => window.solflowMcpOpen?.(id, true));
   item(t("Переименовать"), () => startInlineRename(anchor, id));
   item(
     openProjects.has(String(id)) ? t("Свернуть") : t("Развернуть"),
@@ -1208,7 +1213,11 @@ function openProjectMenu(anchor, id, label) {
   };
   menu.appendChild(remove);
 
-  anchor.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  document.body.appendChild(menu);
+  const box = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(rect.right + 6, window.innerWidth - box.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(rect.top, window.innerHeight - box.height - 8))}px`;
   projectMenuEl = menu;
 }
 
@@ -1877,7 +1886,7 @@ el("meetRecord").addEventListener("click", () =>
   invoke(meetRecActive ? "meeting_record_stop" : "meeting_record_start")
 );
 el("meetPause").addEventListener("click", () => invoke("meeting_record_pause"));
-el("meetImport").addEventListener("click", () => invoke("meeting_import"));
+el("meetImport").addEventListener("click", () => invoke("meeting_import", {project: projectFilter}));
 
 // --- расшифровка по ссылке -------------------------------------------------
 
@@ -1944,7 +1953,7 @@ async function importUrl() {
   el("meetUrlGo").disabled = true;
   const browser = el("youtubeSession").hidden ? null : el("youtubeBrowser").value || null;
   try {
-    await invoke("meeting_import_url", { url, browser });
+    await invoke("meeting_import_url", { url, browser, project: projectFilter });
     el("youtubeBrowser").value = "";
     updateYoutubeSession();
     el("urlHint").textContent = t("Загрузка добавлена. Прогресс — в списке записей.");
@@ -1984,7 +1993,7 @@ listen("tauri://drag-drop", (e) => {
   // Деталь закрываем только теперь: до броска пользователь мог передумать.
   showPage("meetings");
   closeMeeting();
-  invoke("meeting_import_paths", { paths });
+  invoke("meeting_import_paths", { paths, project: projectFilter });
 });
 
 // --- встречи: деталь -------------------------------------------------------
@@ -3885,181 +3894,20 @@ document.querySelectorAll(".link[data-url]").forEach((button) => {
 });
 
 /**
- * Вводный экран при первом запуске. Вместо картинок — мини-макеты из тех же
- * токенов, что и интерфейс: они не разъезжаются при правках и живут в обеих
- * темах.
+ * Локальное руководство для первого запуска и повторного открытия из «О проекте».
  */
-const INTRO = [
-  {
-    title: t("Голос становится текстом на вашем {0}", IS_MAC ? "Mac" : t("компьютере")),
-    text:
-      t("Ничего не уходит в интернет: ни диктовки, ни записи встреч. Модель ") +
-      t("распознавания живет на диске и работает без сети."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line on"></div><div class="shot-line short"></div>
-          <div class="shot-line short"></div><div class="shot-line short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-title"></div>
-          <div class="shot-dot"></div>
-          <div class="shot-wave">
-            <i style="height:8px"></i><i style="height:16px"></i><i style="height:24px"></i>
-            <i style="height:14px"></i><i style="height:20px"></i><i style="height:10px"></i>
-            <i style="height:18px"></i><i style="height:12px"></i>
-          </div>
-        </div>
-      </div>`,
-  },
-  {
-    title: t("Диктуйте в любое приложение"),
-    text:
-      t("Нажмите {0} где угодно: быстрое нажатие — ", IS_MAC ? t("⌥Пробел") : t("Ctrl+Пробел")) +
-      t("запись пошла, второе — ") +
-      t("текст вставился в активное поле. Или зажмите, скажите и отпустите. ") +
-      t("Сочетание и микрофон меняются в настройках."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line on"></div><div class="shot-line short"></div>
-          <div class="shot-line short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-row wide"></div>
-          <div class="shot-row mid"></div>
-          <div class="shot-tags"><span class="shot-pill filled"></span></div>
-          <div class="shot-row wide"></div>
-        </div>
-      </div>`,
-  },
-  {
-    title: t("Встречи: запись, расшифровка, говорящие"),
-    text:
-      t("Пишите встречу часами или бросьте в окно файл — подойдет аудио и ") +
-      t("видео, можно дать ссылку на YouTube или Яндекс.Диск. Приложение ") +
-      t("разложит речь по времени и разделит голоса, а имена подставит в текст."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line"></div><div class="shot-line on short"></div>
-          <div class="shot-line short"></div><div class="shot-line short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-title"></div>
-          <div class="shot-tags">
-            <span class="shot-pill"></span><span class="shot-pill"></span>
-          </div>
-          <div class="shot-row wide"></div>
-          <div class="shot-row mid"></div>
-          <div class="shot-row wide"></div>
-        </div>
-      </div>`,
-  },
-  {
-    title: t("Проекты, поиск и экспорт"),
-    text:
-      t("Записи раскладываются по проектам — перетащите их мышью в папку ") +
-      t("слева. Готовое отдается в txt, Markdown, Word и PDF: заголовок, ") +
-      t("метки времени, имена говорящих."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line"></div><div class="shot-line on short"></div>
-          <div class="shot-line short"></div><div class="shot-line short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-title"></div>
-          <div class="shot-tags">
-            <span class="shot-pill"></span><span class="shot-pill"></span>
-            <span class="shot-pill filled"></span>
-          </div>
-          <div class="shot-row wide"></div>
-          <div class="shot-row mid"></div>
-        </div>
-      </div>`,
-  },
-  {
-    title: t("Умная модель на борту {0}", IS_MAC ? "Mac" : t("компьютера")),
-    text:
-      t("По вашему подтверждению приложение скачает языковую модель — около 2,5 ГБ, один раз. ") +
-      t("Она считает саммери и придумывает названия, отвечает на вопросы по расшифровке, ") +
-      t("выписывает тезисы, решения и задачи, цитаты, оглавление, пишет письмо по итогам ") +
-      t("и пересказ для поста — под тип записи: встреча, вебинар, интервью. ") +
-      t("Все это на вашем компьютере, ни одна строка не уходит в сеть."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line"></div><div class="shot-line on short"></div>
-          <div class="shot-line short"></div><div class="shot-line short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-title"></div>
-          <div class="shot-tags">
-            <span class="shot-pill filled"></span><span class="shot-pill"></span>
-            <span class="shot-pill"></span><span class="shot-pill"></span>
-          </div>
-          <div class="shot-row wide"></div>
-          <div class="shot-row mid"></div>
-          <div class="shot-row wide"></div>
-        </div>
-      </div>`,
-  },
-  {
-    title: t("Встречи на всех устройствах"),
-    text:
-      t("Подключите Яндекс.Диск или Google Drive в настройках — вход по короткому коду. ") +
-      t("Записи, проекты и саммери станут одинаковыми на телефоне и ") +
-      t("компьютере; данные лежат в папке приложения на вашем Диске."),
-    shot: `<div class="shot">
-        <div class="shot-side">
-          <div class="shot-line"></div><div class="shot-line short"></div>
-          <div class="shot-line short"></div><div class="shot-line on short"></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-title"></div>
-          <div class="shot-row wide"></div>
-          <div class="shot-tags"><span class="shot-pill filled"></span><span class="shot-pill"></span></div>
-          <div class="shot-row mid"></div>
-        </div>
-      </div>`,
-  },
-];
-
-let introStep = 0;
-
-function renderIntro() {
-  const step = INTRO[introStep];
-  el("introBody").innerHTML =
-    `${step.shot}<p class="intro-title">${step.title}</p>` +
-    `<p class="intro-text">${step.text}</p>`;
-  el("introDots").innerHTML = INTRO.map(
-    (_, i) => `<span class="${i === introStep ? "on" : ""}"></span>`
-  ).join("");
-  el("introNext").textContent =
-    introStep === INTRO.length - 1 ? t("Начать") : t("Дальше");
-  el("introSkip").hidden = introStep === INTRO.length - 1;
-}
-
 function showIntro() {
-  introStep = 0;
-  renderIntro();
-  el("intro").hidden = false;
+  const lang = typeof UI_LANG !== 'undefined' && UI_LANG === 'en' ? 'en' : 'ru';
+  el("guideFrame").src = `guide/guide.html?lang=${lang}&platform=${IS_MAC ? 'mac' : 'windows'}`;
+  if (!el("intro").open) el("intro").showModal();
 }
-
 function closeIntro() {
-  el("intro").hidden = true;
-  try {
-    localStorage.setItem("introSeen", "1");
-  } catch (e) {
-    // Приватный режим или запрет на хранение — просто покажем ещё раз.
-  }
+  el("intro").close();
+  el("guideFrame").src = 'about:blank';
+  try { localStorage.setItem("introSeen", "1"); } catch (_) {}
 }
-
-el("introNext").addEventListener("click", () => {
-  if (introStep === INTRO.length - 1) {
-    closeIntro();
-    return;
-  }
-  introStep += 1;
-  renderIntro();
-});
-el("introSkip").addEventListener("click", closeIntro);
+el("introClose").addEventListener("click", closeIntro);
+el("intro").addEventListener("cancel", event => { event.preventDefault(); closeIntro(); });
 el("showIntro").addEventListener("click", showIntro);
 
 // --- что нового ------------------------------------------------------------

@@ -31,4 +31,6 @@
     <color name="speaker_4">#71499c</color>
     <color name="speaker_5">#0f7c74</color>
     <color name="speaker_6">#7d621a</color>
+    <color name="ai_purple">#6840ae</color>
+    <color name="ai_background">#E9E4F2</color>
 </resources>

@@ -94,6 +94,12 @@ jobs:
           "$signer" verify --print-certs "$apk" | grep -q "certificate SHA-256 digest: 61b0ad7f3a5d852e4ba322829adbc814d417a99354af29b32c0f7909bf8daaea" \
             || { echo "APK подписан не нашим ключом"; exit 1; }
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SolFlow-Android-${{ github.run_number }}
+          path: app-android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
       - name: Публикуем
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: app-android

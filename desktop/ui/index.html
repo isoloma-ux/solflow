@@ -181,6 +181,83 @@
             <button class="pill-inset compact" id="rutubeRetry">Повторить</button>
           </div>
 
+          <details class="mcp-panel" id="mcpPanel" hidden>
+            <summary class="mcp-heading"><span>Доступ проекта к ИИ</span><span class="mcp-state" id="mcpState">Проверяем доступ…</span></summary>
+            <div class="mcp-body">
+              <section class="mcp-sharing" aria-labelledby="mcpMaterialsHeading">
+                <h3 id="mcpMaterialsHeading">Какие материалы доступны ИИ</h3>
+                <p class="mcp-caption">Выберите материалы этого проекта. Доступ появится после подключения.</p>
+                <div class="mcp-options">
+                  <label><input type="checkbox" id="mcpTranscript" /><span><strong>Расшифровки</strong><small>Полный текст записей</small></span></label>
+                  <label><input type="checkbox" id="mcpSummary" /><span><strong>Саммери</strong><small>Краткие итоги</small></span></label>
+                  <label><input type="checkbox" id="mcpMap" /><span><strong>Карты</strong><small>Карты мыслей</small></span></label>
+                  <label><input type="checkbox" id="mcpAnalyses" /><span><strong>Разборы</strong><small>Результаты анализа записей</small></span></label>
+                </div>
+                <div class="mcp-actions">
+                  <button class="mcp-primary" id="mcpSave" disabled>Подключить проект</button>
+                  <button class="pill-inset compact" id="mcpRevoke" hidden>Отключить доступ</button>
+                </div>
+                <p class="mcp-caption" id="mcpStatus"></p>
+                <p class="mcp-caption">Разрешения передаются через синхронизацию на обновленные устройства. Изменение с телефона действует на компьютере после синхронизации обоих устройств.</p>
+                <p class="mcp-feedback" id="mcpFeedback" role="status" aria-live="polite" hidden></p>
+              </section>
+              <aside class="mcp-privacy">
+                <strong>Что передается</strong>
+                <p>Подключенный ИИ получает выбранные тексты по запросу. Аудио и ключи остаются на компьютере.</p>
+                <p>После отключения новые запросы закрыты. Уже отправленные тексты остаются в истории чата.</p>
+              </aside>
+              <details class="mcp-advanced">
+                <summary>Подключение клиента и дополнительные действия</summary>
+                <section class="mcp-extra">
+                  <h4>Клиент ИИ</h4>
+                  <p class="mcp-caption">Разрешение действует для клиентов, подключенных к Sol Flow через MCP. Настройка клиента выполняется отдельно.</p>
+                  <button class="pill-inset compact" id="mcpConfig" aria-expanded="false" aria-controls="mcpConfigBox">Настройка подключения к ИИ</button>
+                  <div id="mcpConfigBox" hidden>
+                    <label class="mcp-client-label" for="mcpClient">Куда подключить Sol Flow</label>
+                    <select id="mcpClient">
+                      <option value="openai">ChatGPT / Codex — приложение на компьютере</option>
+                      <option value="claude">Claude Desktop</option>
+                      <option value="other">Другой MCP-клиент</option>
+                    </select>
+                    <div class="mcp-setup-card">
+                      <h4>Подключить с помощью ИИ</h4>
+                      <p class="mcp-caption">Скопируйте запрос и отправьте помощнику на этом же компьютере. Нужные пути уже внутри.</p>
+                      <button class="mcp-primary" id="mcpCopyPrompt">Скопировать запрос для подключения</button>
+                      <p class="mcp-caption">Помощник сможет настроить подключение, если ему доступна работа с локальными файлами. Без такого доступа он объяснит ручные шаги. Обычный чат в браузере не подключается одним запросом.</p>
+                      <details class="mcp-setup-details">
+                        <summary>Посмотреть запрос</summary>
+                        <textarea id="mcpSetupPrompt" readonly rows="10" aria-label="Запрос для подключения"></textarea>
+                      </details>
+                    </div>
+                    <p class="mcp-feedback" id="mcpSetupFeedback" role="status" aria-live="polite" hidden></p>
+                    <details class="mcp-setup-details" id="mcpManual">
+                      <summary>Настроить вручную</summary>
+                      <p class="mcp-caption" id="mcpClientHelp"></p>
+                      <p class="mcp-caption">Имя сервера: solflow. Тип подключения: STDIO. Команду и каждый аргумент вставляйте в отдельные поля, без кавычек и скобок.</p>
+                      <div id="mcpConnectionFields"></div>
+                      <details class="mcp-setup-details">
+                        <summary>Конфигурация для файла настроек</summary>
+                        <p class="mcp-caption">Этот блок предназначен для файла настроек. Не вставляйте его целиком в поле команды.</p>
+                        <textarea id="mcpConfigText" readonly rows="7" aria-label="Конфигурация MCP"></textarea>
+                        <button class="pill-inset compact" id="mcpCopyConfig">Копировать конфигурацию</button>
+                      </details>
+                    </details>
+                  </div>
+                </section>
+                <section class="mcp-extra">
+                  <h4>Обновление материалов</h4>
+                  <p class="mcp-caption">Готовые материалы обновляются автоматически. Здесь можно запустить обновление вручную.</p>
+                  <button class="pill-inset compact" id="mcpRefresh">Обновить материалы</button>
+                </section>
+                <section class="mcp-extra">
+                  <h4>Текстовая копия</h4>
+                  <p class="mcp-caption">Копия включает все разрешенные проекты. Файлы остаются на компьютере после отзыва MCP-доступа. Их правка не меняет записи Sol Flow.</p>
+                  <button class="pill-inset compact" id="mcpTextCopy">Сохранить текстовую копию</button>
+                </section>
+              </details>
+            </div>
+          </details>
+
           <button class="danger-text icon-button" id="deleteProject" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
                  stroke-linecap="round" aria-hidden="true">
@@ -1046,8 +1123,7 @@
         <p class="kicker">О проекте</p>
         <h1>Sol Flow</h1>
         <p class="muted">
-          Голос превращается в текст прямо на вашем компьютере. Ничего не
-          уходит в интернет: ни записи встреч, ни диктовки, ни имена людей
+          Распознавание речи и локальные итоги работают на вашем компьютере. Синхронизация и MCP передают выбранные данные только после включения соответствующего доступа.
         </p>
 
         <section class="panel">
@@ -1142,7 +1218,7 @@
           <pre id="bugPreviewText" class="bug-preview" hidden></pre>
         </section>
 
-        <button class="show-all" id="showIntro">Показать вводный экран заново</button>
+        <button class="show-all" id="showIntro">Руководство по Sol Flow</button>
       </main>
     </div>
 
@@ -1159,6 +1235,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="1.0.0"><ul class="whatsnew-list"><li>Подключайте выбранные проекты к ИИ через MCP: доступ только к разрешённым текстам, с возможностью отключения.</li><li>Фиолетовый цвет и значок ИИ показывают открытые для ИИ проекты. Доступ можно менять в панели проекта и его контекстном меню.</li><li>Разрешения проектов синхронизируются между устройствами. Изменения действуют после синхронизации обоих устройств.</li><li>Готовый запрос помогает настроить подключение к клиенту ИИ на компьютере. Команда и аргументы также копируются отдельно.</li><li>Обновлённое руководство на русском и английском с отдельными инструкциями и снимками интерфейса Android.</li></ul></div>
           <div data-whatsnew-version="0.9.9"><ul class="whatsnew-list"><li>При ошибке подключения к Rutube появится подсказка о VPN и прокси с кнопкой «Повторить».</li><li>Удаление записи подтверждается вторым нажатием без закрытия меню. Остальные действия выполняются одним нажатием.</li></ul></div>
           <div data-whatsnew-version="0.9.8"><ul class="whatsnew-list"><li>Импорт потокового видео Rutube и других форматов через дополнительный конвертер.</li><li>Обновление загрузчика и компонентов YouTube в настройках.</li><li>Сессия браузера для YouTube по вашему выбору; понятные ошибки и меньше повторных запросов.</li></ul></div>
           <div data-whatsnew-version="0.9.7"><ul class="whatsnew-list"><li>Техническое обновление общей версии приложения.</li></ul></div>
@@ -1306,17 +1383,10 @@
     </div>
 
     <!-- Вводный экран: показывается один раз при первом запуске -->
-    <div class="intro" id="intro" hidden>
-      <div class="intro-card">
-        <div class="intro-body" id="introBody"></div>
-        <div class="intro-foot">
-          <span class="intro-dots" id="introDots"></span>
-          <span class="spacer"></span>
-          <button class="model-remove" id="introSkip">Пропустить</button>
-          <button class="pill-inset compact" id="introNext">Дальше</button>
-        </div>
-      </div>
-    </div>
+    <dialog id="intro" class="guide-dialog" aria-label="Руководство по Sol Flow">
+      <iframe id="guideFrame" title="Руководство по Sol Flow" sandbox="allow-scripts"></iframe>
+      <div class="guide-foot"><button class="pill-inset compact" id="introClose">Перейти в приложение</button></div>
+    </dialog>
   </div>
 
   <dialog id="mapConfirmDialog" class="map-confirm"><p id="mapConfirmText"></p><div><button id="mapConfirmNo">Отмена</button><button id="mapConfirmYes">Подтвердить</button></div></dialog>
@@ -1329,5 +1399,7 @@
   <script src="map/mindmap.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script src="mcp-setup.js"></script>
+  <script src="mcp-ui.js"></script>
 </body>
 </html>

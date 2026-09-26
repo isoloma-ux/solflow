@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='solflow-regression-') as out:
         stdlib, annotations,
     ])
     classes = str(Path(out) / 'kotlin-classes')
-    sources = [root / 'app-android/app/src/main/java/com/handy/voice' / name for name in ['TextCleanup.kt', 'TranscriptFiles.kt', 'SpeakerAttribution.kt']]
+    sources = [root / 'app-android/app/src/main/java/com/handy/voice' / name for name in ['TextCleanup.kt', 'TranscriptFiles.kt', 'SpeakerAttribution.kt', 'AiAccessRules.kt']]
     sources.append(root / 'tests/kotlin/Safeguards.kt')
     subprocess.run([java, '-cp', compiler_cp, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
                     '-no-stdlib', '-no-reflect', '-jvm-target', '17',
