@@ -88,11 +88,11 @@ class MeetingService : Service() {
             }
             ACTION_IMPORT -> {
                 foregroundForWork()
-                beginImport(intent.getStringExtra(EXTRA_URI).orEmpty())
+                beginImport(intent.getStringExtra(EXTRA_URI).orEmpty(), intent.getStringExtra(EXTRA_PROJECT))
             }
             ACTION_IMPORT_URL -> {
                 foregroundForWork()
-                beginImportUrl(intent.getStringExtra(EXTRA_URL).orEmpty())
+                beginImportUrl(intent.getStringExtra(EXTRA_URL).orEmpty(), intent.getStringExtra(EXTRA_PROJECT))
             }
             ACTION_DIARIZE -> {
                 foregroundForWork()
@@ -419,9 +419,12 @@ class MeetingService : Service() {
      * расшифровка. Временный файл удаляется сразу после разбора: приложению
      * нужен только звук, а исходник может весить гигабайты.
      */
-    private fun beginImportUrl(url: String) {
+    private fun beginImportUrl(url: String, project: String?) {
         if (url.isEmpty()) return
-        val meeting = MeetingStore.create(this, imported = true)
+        val meeting = MeetingStore.create(this, imported = true).copy(
+            project = project?.takeIf { id -> MeetingStore.projects(this).any { it.id == id } },
+        )
+        MeetingStore.save(this, meeting)
 
         progress[meeting.id] = 0
         phase[meeting.id] = R.string.meeting_state_fetching
@@ -483,10 +486,13 @@ class MeetingService : Service() {
 
     // --- импорт -----------------------------------------------------------
 
-    private fun beginImport(uriString: String) {
+    private fun beginImport(uriString: String, project: String?) {
         if (uriString.isEmpty()) return
         val uri = Uri.parse(uriString)
-        val meeting = MeetingStore.create(this, imported = true)
+        val meeting = MeetingStore.create(this, imported = true).copy(
+            project = project?.takeIf { id -> MeetingStore.projects(this).any { it.id == id } },
+        )
+        MeetingStore.save(this, meeting)
 
         progress[meeting.id] = 0
         phase[meeting.id] = R.string.meeting_state_importing
@@ -797,6 +803,7 @@ class MeetingService : Service() {
         private const val ACTION_DIARIZE = "com.handy.voice.MEETING_DIARIZE"
         private const val EXTRA_ID = "id"
         private const val EXTRA_URI = "uri"
+        private const val EXTRA_PROJECT = "project"
         private const val EXTRA_URL = "url"
         private const val EXTRA_SPEAKERS = "speakers"
 
@@ -882,15 +889,16 @@ class MeetingService : Service() {
         private var pendingFd: ParcelFileDescriptor? = null
 
         /** Расшифровка по ссылке: качаем сами, дальше — обычный импорт. */
-        fun importUrl(context: Context, url: String) {
+        fun importUrl(context: Context, url: String, project: String? = null) {
             context.startForegroundService(
                 Intent(context, MeetingService::class.java)
                     .setAction(ACTION_IMPORT_URL)
                     .putExtra(EXTRA_URL, url)
+                    .putExtra(EXTRA_PROJECT, project)
             )
         }
 
-        fun import(context: Context, uri: Uri) {
+        fun import(context: Context, uri: Uri, project: String? = null) {
             runCatching { pendingFd?.close() }
             pendingFd = runCatching {
                 context.contentResolver.openFileDescriptor(uri, "r")
@@ -899,6 +907,7 @@ class MeetingService : Service() {
                 Intent(context, MeetingService::class.java)
                     .setAction(ACTION_IMPORT)
                     .putExtra(EXTRA_URI, uri.toString())
+                    .putExtra(EXTRA_PROJECT, project)
             )
         }
 

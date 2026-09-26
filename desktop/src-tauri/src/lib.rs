@@ -25,6 +25,7 @@ mod lang;
 mod hud;
 pub mod meetings;
 mod models;
+mod mcp;
 pub mod mindmap;
 mod net;
 mod paste;
@@ -1212,10 +1213,10 @@ fn meeting_record_pause(app: AppHandle) {
 
 /// Диалог выбора и конвертация — в фоне: команда возвращается сразу.
 #[tauri::command]
-fn meeting_import(app: AppHandle) {
+fn meeting_import(app: AppHandle, project: Option<String>) {
     std::thread::spawn(move || {
         if let Some(path) = meetings::pick_import_file(&app) {
-            if let Err(e) = meetings::import(&app, path) {
+            if let Err(e) = meetings::import_to_project(&app, path, project) {
                 log::error!("импорт: {e}");
             }
         }
@@ -1224,9 +1225,9 @@ fn meeting_import(app: AppHandle) {
 
 /// Файлы, брошенные в окно: каждый идёт отдельной встречей.
 #[tauri::command]
-fn meeting_import_paths(app: AppHandle, paths: Vec<String>) {
+fn meeting_import_paths(app: AppHandle, paths: Vec<String>, project: Option<String>) {
     for path in paths {
-        if let Err(e) = meetings::import(&app, std::path::PathBuf::from(path)) {
+        if let Err(e) = meetings::import_to_project(&app, std::path::PathBuf::from(path), project.clone()) {
             log::error!("импорт перетащенного файла: {e}");
         }
     }
@@ -1234,8 +1235,8 @@ fn meeting_import_paths(app: AppHandle, paths: Vec<String>) {
 
 /// Импорт по ссылке: качаем звук, дальше обычная цепочка расшифровки.
 #[tauri::command]
-fn meeting_import_url(app: AppHandle, url: String, browser: Option<String>) -> Result<(), String> {
-    meetings::import_url(&app, url, browser).map_err(|e| e.to_string())
+fn meeting_import_url(app: AppHandle, url: String, browser: Option<String>, project: Option<String>) -> Result<(), String> {
+    meetings::import_url_to_project(&app, url, browser, project).map_err(|e| e.to_string())
 }
 
 /// Стоит ли загрузчик для ссылок на видеосервисы.
@@ -1798,6 +1799,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| match event.state() {
@@ -1905,6 +1907,12 @@ pub fn run() {
             meeting_search,
             autostart_enabled,
             set_autostart,
+            mcp::mcp_start_links,
+            mcp::mcp_status,
+            mcp::mcp_set_access,
+            mcp::mcp_refresh,
+            mcp::mcp_text_copy,
+            mcp::mcp_claude_config,
             projects_list,
             project_create,
             project_rename,
@@ -1967,6 +1975,7 @@ pub fn run() {
             apply_audio_keeper(app.handle());
             app.manage(models::ModelStore::new());
             app.manage(meetings::MeetingState::new());
+            mcp::init(app.handle());
             // После настроек и состояния встреч: синхронизация читает и то,
             // и другое.
             sync::init(app.handle());

@@ -751,6 +751,15 @@ impl Run<'_> {
         Ok(())
     }
 
+    fn sync_ai_access(&mut self) -> Result<()> {
+        use solflow_mcp_core::access::{Policy, FILE};
+        let remote = if self.remote.contains_key(FILE) { Policy::decode(&self.download(FILE)?)? } else { Policy::default() };
+        let merged = crate::mcp::merge_synced_access(self.app, &remote).map_err(|e| anyhow!(e))?;
+        if merged != remote { self.upload(FILE, &serde_json::to_vec(&merged)?)?; }
+        self.changed_local = true;
+        Ok(())
+    }
+
     // --- звук ---
 
     fn sync_audio(&mut self, ids: &BTreeSet<i64>, busy: &HashSet<i64>) -> Result<()> {
@@ -866,6 +875,11 @@ fn run(app: &AppHandle) -> Result<()> {
         first_error.get_or_insert(e);
     }
 
+    if let Err(e) = run.sync_ai_access() {
+        if provider::is_unauthorized(&e) { run.state.save(); return Err(e); }
+        first_error.get_or_insert(e);
+    }
+
     if sync_audio {
         if let Err(e) = run.sync_audio(&ids, &busy) {
             if provider::is_unauthorized(&e) {
@@ -882,6 +896,7 @@ fn run(app: &AppHandle) -> Result<()> {
     run.state.save();
 
     if run.changed_local {
+        crate::mcp::invalidate(app);
         meetings::notify(app);
     }
 

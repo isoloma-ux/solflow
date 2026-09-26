@@ -133,9 +133,10 @@ class MainActivity : AppCompatActivity() {
      * Видео берём наравне со звуком: внутри mp4 или mkv лежит обычная
      * звуковая дорожка, а [AudioImport] и так выбирает из файла именно её.
      */
+    private var pendingImportProject: String? = null
     private val pickAudio =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) MeetingService.import(this, uri)
+            if (uri != null) MeetingService.import(this, uri, pendingImportProject)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -876,7 +877,8 @@ class MainActivity : AppCompatActivity() {
         onTap: () -> Unit,
     ) {
         val expanded = key in openDrawerProjects
-        drawerRow(
+        val ai = AiAccess.grant(this, key).enabled
+        val projectRow = drawerRow(
             title, active,
             expanded = expanded,
             onToggle = {
@@ -886,6 +888,15 @@ class MainActivity : AppCompatActivity() {
             onLongTap = onLongTap,
             onTap = onTap,
         )
+        if (ai) {
+            projectRow.text = "$title  · ${getString(R.string.ai_badge)}"
+            projectRow.setTextColor(getColor(R.color.ai_purple))
+            projectRow.setBackgroundResource(R.drawable.bg_ai_project)
+            projectRow.compoundDrawablePadding = (8 * resources.displayMetrics.density).toInt()
+            projectRow.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_ai, 0,
+                if (expanded) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, 0)
+            projectRow.contentDescription = "$title. ${getString(R.string.ai_enabled)}"
+        }
         if (!expanded) return
         if (inside.isEmpty()) {
             drawerRow(getString(R.string.drawer_empty), false, muted = true, indent = true) {}
@@ -907,13 +918,19 @@ class MainActivity : AppCompatActivity() {
     private fun projectSheet(project: MeetingStore.Project) {
         actionSheet(
             project.name,
-            listOf(
+            buildList {
+                add(SheetOption("ai_access", getString(R.string.ai_access), R.drawable.ic_ai))
+                if (AiAccess.grant(this@MainActivity, project.id).enabled) add(SheetOption("ai_off", getString(R.string.ai_disconnect), R.drawable.ic_ai))
+                addAll(listOf(
                 SheetOption(RENAME_PROJECT, getString(R.string.project_rename), R.drawable.ic_edit),
                 SheetOption.DIVIDER,
                 SheetOption(DELETE_PROJECT, getString(R.string.project_delete), R.drawable.ic_trash, danger = true),
-            ),
+                ))
+            },
         ) { value ->
             when (value) {
+                "ai_access" -> projectAiDialog(project)
+                "ai_off" -> saveAiAccess(project.id, AiGrant())
                 RENAME_PROJECT -> askProjectName(project.name) { name ->
                     MeetingStore.renameProject(this, project.id, name)
                     renderMeetings()
@@ -922,6 +939,53 @@ class MainActivity : AppCompatActivity() {
                 DELETE_PROJECT -> confirmProjectDelete(project.id)
             }
         }
+    }
+
+    private fun saveAiAccess(id: String, grant: AiGrant) {
+        runCatching { AiAccess.set(this, id, grant) }.onSuccess {
+            renderMeetings(); renderDrawer()
+            Toast.makeText(this, R.string.ai_saved, Toast.LENGTH_LONG).show()
+        }.onFailure { Toast.makeText(this, R.string.ai_error, Toast.LENGTH_LONG).show() }
+    }
+
+    private fun projectAiDialog(project: MeetingStore.Project) {
+        val grant = AiAccess.grant(this, project.id)
+        val density = resources.displayMetrics.density
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24*density).toInt(), (12*density).toInt(), (24*density).toInt(), 0)
+        }
+        fun text(value: String, purple: Boolean = false) = TextView(this).apply {
+            text = value; textSize = 14f; setTextColor(getColor(if (purple) R.color.ai_purple else R.color.fog))
+            setPadding(0, (8*density).toInt(), 0, (8*density).toInt()); body.addView(this)
+        }
+        text(getString(if (grant.enabled) R.string.ai_enabled else R.string.ai_closed), true)
+        text(getString(R.string.ai_help))
+        if (!SyncManager.connected(this)) text(getString(R.string.ai_no_cloud))
+        val initial = if (grant.enabled) listOf(grant.transcript,grant.summary,grant.map,grant.analyses) else listOf(true,false,false,false)
+        val checks = listOf(R.string.ai_transcript,R.string.ai_summary,R.string.ai_map,R.string.ai_analyses).mapIndexed { i,label ->
+            com.google.android.material.checkbox.MaterialCheckBox(this).apply {
+                setText(label); isChecked = initial[i]; buttonTintList = android.content.res.ColorStateList.valueOf(getColor(R.color.ai_purple)); body.addView(this)
+            }
+        }
+        text(getString(R.string.ai_private))
+        val scroll = android.widget.ScrollView(this).apply { addView(body) }
+        val builder = MaterialAlertDialogBuilder(this).setTitle(project.name + " · " + getString(R.string.ai_access))
+            .setView(scroll).setNegativeButton(android.R.string.cancel,null)
+            .setPositiveButton(if (grant.enabled) R.string.ai_save else R.string.ai_connect) { _,_ ->
+                saveAiAccess(project.id,AiGrant(checks[0].isChecked,checks[1].isChecked,checks[2].isChecked,checks[3].isChecked))
+            }
+        if (grant.enabled) builder.setNeutralButton(R.string.ai_disconnect) { _,_ -> saveAiAccess(project.id,AiGrant()) }
+        val dialog = builder.show()
+        // Reserve room for the title and all actions, including large system fonts.
+        scroll.layoutParams = scroll.layoutParams.apply {
+            height = (resources.displayMetrics.heightPixels * 0.48f).toInt()
+        }
+        fun updateSave() {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).isEnabled = checks.any { it.isChecked }
+        }
+        checks.forEach { it.setOnCheckedChangeListener { _, _ -> updateSave() } }
+        updateSave()
     }
 
     /** То же, что умеет открытая встреча, — из шторки, по долгому нажатию. */
@@ -1169,6 +1233,7 @@ class MainActivity : AppCompatActivity() {
             MeetingService.suppressNoise = on
         }
         m.meetingImport.setOnClickListener {
+            pendingImportProject = projectFilter?.takeIf { it != NO_PROJECT }
             pickAudio.launch(arrayOf("audio/*", "video/*"))
         }
         m.meetingLink.setOnClickListener { askLink() }
@@ -1262,6 +1327,9 @@ class MainActivity : AppCompatActivity() {
         m.meetingFindNext.setOnClickListener { nextMatch() }
 
         m.filterProject.setOnClickListener { chooseProject() }
+        m.projectAiAccess.setOnClickListener {
+            MeetingStore.projects(this).firstOrNull { it.id == projectFilter }?.let { projectAiDialog(it) }
+        }
         m.selectionCancel.setOnClickListener { clearSelection() }
         m.selectionDelete.setOnClickListener { deleteSelected() }
         m.selectionTranscribe.setOnClickListener { transcribeSelected() }
@@ -1671,7 +1739,7 @@ class MainActivity : AppCompatActivity() {
             Snackbar.make(ui.root, problem, Snackbar.LENGTH_LONG).show()
             return
         }
-        MeetingService.importUrl(this, url)
+        MeetingService.importUrl(this, url, projectFilter?.takeIf { it != NO_PROJECT })
         show(Page.MEETINGS)
         Snackbar.make(ui.root, R.string.link_started, Snackbar.LENGTH_SHORT).show()
     }
@@ -1960,6 +2028,12 @@ class MainActivity : AppCompatActivity() {
             )
             append(" ▾")
         }
+        val aiProject = MeetingStore.projects(this).firstOrNull { it.id == projectFilter }
+        val aiEnabled = aiProject?.let { AiAccess.grant(this,it.id).enabled } ?: false
+        m.projectAiAccess.visibility = visibility(aiProject != null && !selecting)
+        m.projectAiAccess.text = getString(if (aiEnabled) R.string.ai_enabled else R.string.ai_connect)
+        m.filterProject.setTextColor(getColor(if (aiEnabled) R.color.ai_purple else R.color.ink))
+        if (aiEnabled) m.filterProject.text = "${m.filterProject.text} · ${getString(R.string.ai_badge)}"
         // Подчёркивание — только у включённого фильтра, как в каталоге.
         m.filterProject.setBackgroundResource(
             if (projectFilter != null) R.drawable.bg_tab_active else 0

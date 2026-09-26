@@ -74,6 +74,10 @@ jobs:
           cp shim-build/Release/solflow_llama.dll llama/lib/
           cp shim-build/Release/solflow_llama.lib llama/lib/
 
+      - name: Build MCP sidecar
+        shell: bash
+        run: python3 ../../scripts/prepare-mcp.py --release
+
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2
 
@@ -189,6 +193,10 @@ jobs:
           ls sherpa/lib | head
         env:
           SHERPA: 1.13.6
+
+      - name: Build MCP sidecar
+        shell: bash
+        run: python3 ../../scripts/prepare-mcp.py --release
 
       - name: Ставим tauri-cli
         run: npm install -g @tauri-apps/cli@^2

@@ -21,4 +21,6 @@
     <color name="speaker_5">#4ecec2</color>
     <color name="speaker_6">#dcb85e</color>
     <color name="danger">#e0685f</color>
+    <color name="ai_purple">#C4ABF5</color>
+    <color name="ai_background">#393246</color>
 </resources>

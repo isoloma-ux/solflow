@@ -5,6 +5,7 @@ plugins {
 android {
     namespace = "com.handy.voice"
     sourceSets.getByName("main").assets.srcDir("../../desktop/ui/map")
+    sourceSets.getByName("main").assets.srcDir("../../desktop/ui/guide")
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 

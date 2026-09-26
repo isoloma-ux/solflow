@@ -22,10 +22,12 @@ gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+solflow-mcp-core = { path = "../mcp-core" }
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 # Системное уведомление о новой версии — баннер в окне видит не каждый.
 tauri-plugin-notification = "2"
@@ -61,7 +63,7 @@ transcribe-cpp = { version = "0.2.0", default-features = false }
 [target.'cfg(windows)'.dependencies]
 # Второй запуск .exe не должен поднимать вторую копию: на macOS система
 # сама возвращает уже открытое приложение, на Windows об этом просят плагин.
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 windows-sys = { version = "0.61", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
 
 [lib]

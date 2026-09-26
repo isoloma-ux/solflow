@@ -66,3 +66,8 @@ app-ios/SolFlow.xcodeproj/
 .local-tools/
 desktop/src-tauri/target-local-check/
 /target-local-check/
+
+# Local MCP builds
+/desktop/mcp-core/target/
+/desktop/mcp-server/target/
+/desktop/src-tauri/binaries/
