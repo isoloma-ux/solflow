@@ -252,7 +252,7 @@
     <string name="meeting_state_failed">Transcription failed</string>
     <string name="meeting_back">← Back</string>
     <string name="meeting_meta">%1$s · %2$s</string>
-    <string name="meeting_delete_confirm">Delete the meeting along with the recording and transcript?</string>
+    <string name="meeting_delete_confirm">Move this recording to trash? When sync is enabled, the deletion will be shared with other devices.</string>
     <string name="meeting_rename_title">Meeting name</string>
     <string name="save">Save</string>
     <string name="export_txt">txt</string>
@@ -500,4 +500,10 @@
     <string name="ai_summary">Summaries</string>
     <string name="ai_map">Mind maps</string>
     <string name="ai_analyses">Analyses</string>
+    <string name="shared_trash">Trash</string>
+    <string name="trash_empty">Trash is empty. Deletions are shared through the selected cloud after sync.</string>
+    <string name="trash_pending">awaiting sync</string>
+    <string name="trash_restore">Restore</string>
+    <string name="trash_restore_hint">Restore this recording to the library? The archive is retained. The restore will be shared with other devices on sync.</string>
+    <string name="whatsnew_body_110">• Deleted recordings enter the shared trash in the selected cloud: the archive is verified before deletion is shared.\n\n• Restoring returns a recording with a new identity; retrying does not create duplicates.\n\n• Archives never expire automatically. Older deletions without an archive cannot be restored from the cloud.</string>
 </resources>

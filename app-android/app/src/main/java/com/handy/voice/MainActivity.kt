@@ -247,6 +247,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(47, "1.1.0", R.string.whatsnew_body_110),
             Triple(46, "1.0.0", R.string.whatsnew_body_100),
             Triple(45, "0.9.9", R.string.whatsnew_body_099),
             Triple(44, "0.9.8", R.string.whatsnew_body_098),
@@ -724,6 +725,9 @@ class MainActivity : AppCompatActivity() {
                 ui.drawer.closeDrawer(GravityCompat.START)
                 startActivity(Intent(this, SettingsActivity::class.java))
             }
+        }
+        drawerRow(getString(R.string.shared_trash), false) {
+            ui.drawer.closeDrawer(GravityCompat.START); showTrash()
         }
         drawerRow(getString(R.string.tab_settings), false) {
             ui.drawer.closeDrawer(GravityCompat.START)
@@ -1703,7 +1707,7 @@ class MainActivity : AppCompatActivity() {
                 for (id in ids) {
                     if (id == MeetingService.recordingId) continue
                     if (openMeetingId == id) openMeetingId = null
-                    MeetingStore.delete(this, id)
+                    moveToTrash(id)
                 }
                 clearSelection()
             }
@@ -2480,12 +2484,29 @@ class MainActivity : AppCompatActivity() {
         copyToClipboard(text)
     }
 
+    private fun showTrash() {
+        val rows = SharedTrash.rows(this)
+        val builder = MaterialAlertDialogBuilder(this).setTitle(R.string.shared_trash).setNegativeButton(R.string.close, null)
+        if (rows.isEmpty()) builder.setMessage(R.string.trash_empty)
+        else builder.setItems(rows.map { it.title + if(it.restoring) " · " + getString(R.string.trash_pending) else "" }.toTypedArray()) { _, index ->
+            val row = rows[index]
+            MaterialAlertDialogBuilder(this).setTitle(row.title).setMessage(R.string.trash_restore_hint)
+                .setPositiveButton(R.string.trash_restore) { _, _ ->
+                    runCatching { SharedTrash.restore(this,row.id) }.onSuccess { renderMeetings(); renderDrawer() }
+                        .onFailure { Snackbar.make(ui.root,it.message ?: it.toString(),Snackbar.LENGTH_LONG).show() }
+                }.setNegativeButton(R.string.cancel,null).show()
+        }
+        builder.show()
+    }
+    private fun moveToTrash(id: Long): Boolean = runCatching { MeetingStore.delete(this,id) }
+        .onFailure { Snackbar.make(ui.root,it.message ?: it.toString(),Snackbar.LENGTH_LONG).show() }.isSuccess
+
     private fun deleteMeeting(id: Long? = openMeetingId) {
         if (id == null) return
         MaterialAlertDialogBuilder(this)
             .setMessage(R.string.meeting_delete_confirm)
             .setPositiveButton(R.string.meeting_delete) { _, _ ->
-                MeetingStore.delete(this, id)
+                moveToTrash(id)
                 if (openMeetingId == id) openMeetingId = null
                 renderMeetings()
                 if (ui.drawer.isDrawerOpen(GravityCompat.START)) renderDrawer()

@@ -232,6 +232,7 @@ object SyncEngine {
         }
 
         val remote = cloud.list(token, Cloud.Folder.MEETINGS).associateBy { it.name }
+        for(id in SharedTrash.pending(context)) if(id !in state.pendingDeletes) state.pendingDeletes += id
         val ids = sortedSetOf<Long>()
         ids += MeetingStore.ids(context)
         ids += remote.keys.mapNotNull(::idOf)
@@ -324,6 +325,7 @@ object SyncEngine {
         }
 
         fun tombstone(id: Long) {
+            SharedTrash.publish(context,id,cloud,token,syncAudio)
             upload("$id.deleted", "{}".toByteArray())
             for (name in listOf("$id.meta.json", "$id.transcript.json")) {
                 if (remote.containsKey(name)) {
@@ -332,17 +334,19 @@ object SyncEngine {
                 }
             }
             runCatching { cloud.delete(token, Cloud.Folder.AUDIO, "$id.wav") }
+            SharedTrash.deletedSent(context,id)
             state.pendingDeletes.remove(id)
         }
 
         fun applyTombstone(id: Long) {
             val dir = MeetingStore.dir(context, id)
             if (dir.exists()) {
-                dir.deleteRecursively()
+                SharedTrash.retain(context,id,false)
                 changed = true
             }
             state.files.remove("$id.meta.json")
             state.files.remove("$id.transcript.json")
+            SharedTrash.deletedSent(context,id)
             state.pendingDeletes.remove(id)
         }
 
@@ -450,6 +454,7 @@ object SyncEngine {
             }
         }
 
+        try { SharedTrash.sync(context,cloud,token,syncAudio) } catch (e: Exception) { if(firstError==null) firstError=e.message ?: e.toString() }
         if (firstError == null) state.lastSync = System.currentTimeMillis()
         state.save(context)
         return Outcome(changed, firstError)

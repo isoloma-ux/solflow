@@ -610,7 +610,7 @@ listen("solflow-models", refreshModels);
 // Разделы живут в сайдбаре, он всегда на месте. История переходов своя:
 // по ней работает возврат двухпальцевым свайпом вправо на трекпаде.
 
-const PAGES = ["dictation", "history", "meetings", "models", "settings", "about"];
+const PAGES = ["dictation", "history", "meetings", "models", "settings", "about", "trash"];
 let page = "dictation";
 const backStack = [];
 
@@ -629,6 +629,7 @@ function showPage(name, fromHistory = false) {
   });
   el("content").scrollTop = 0;
   if (name === "history") refreshHistory();
+  if (name === "trash") refreshTrash();
   if (name === "settings") refreshSettings(true);
   if (name === "about") {
     document.querySelector('.nav-item[data-page="about"]')?.classList.remove("has-news");
@@ -1125,7 +1126,7 @@ function openSidebarMeetingMenu(anchor, meeting, x, y) {
     }
     closeProjectMenu();
     if (detailId === meeting.id) closeMeeting();
-    invoke("meeting_delete", { id: meeting.id });
+    deleteToTrash("meeting_delete", { id: meeting.id });
   };
 
   // У курсора и правее него: соседние записи остаются видны, и по промаху
@@ -1627,7 +1628,7 @@ el("bulkDelete").addEventListener("click", () => {
   clearTimeout(bulkDeleteArmed);
   bulkDeleteArmed = null;
   el("bulkDeleteLabel").textContent = t("Удалить");
-  invoke("meetings_delete", { ids: [...selected] });
+  deleteToTrash("meetings_delete", { ids: [...selected] });
   clearSelection();
 });
 
@@ -1717,7 +1718,7 @@ function openRowMenu(meeting, button) {
       return;
     }
     closeRowMenu();
-    invoke("meeting_delete", { id: meeting.id });
+    deleteToTrash("meeting_delete", { id: meeting.id });
   };
   menu.appendChild(remove);
 
@@ -3022,7 +3023,7 @@ el("meetDelete").addEventListener("click", (event) => {
     return;
   }
   resetDeleteConfirmation();
-  invoke("meeting_delete", { id: detailId });
+  deleteToTrash("meeting_delete", { id: detailId });
   closeMeeting();
 });
 
@@ -4291,3 +4292,28 @@ listen("solflow-map-cancelled",e=>{
   if(detailId!==e.payload)return;
   const m=meetRows.find(r=>r.id===e.payload);if(m)renderRecordingMap(m);
 });
+
+async function deleteToTrash(command, args) {
+  try { await invoke(command, args); if (page === "trash") await refreshTrash(); }
+  catch (error) { showPage("trash"); el("trashStatus").textContent = String(error); }
+}
+async function refreshTrash() {
+  try {
+    const rows = await invoke("trash_list"); const box = el("trashRows"); box.replaceChildren();
+    for (const row of rows) {
+      const card = document.createElement("section"); card.className = "panel";
+      const title = document.createElement("h2"); title.textContent = row.title;
+      const date = document.createElement("p"); date.className = "muted small"; date.textContent = new Date(row.deleted_at).toLocaleString();
+      const restore = document.createElement("button"); restore.className = "pill-inset";
+      restore.textContent = t(row.restoring ? "Восстановление ожидает синхронизации" : "Восстановить"); restore.disabled = row.restoring;
+      restore.onclick = async () => {
+        restore.disabled = true;
+        try { await invoke("trash_restore", { id: row.id }); el("trashStatus").textContent = t("Запись восстановлена. Изменение передастся при синхронизации."); await refreshTrash(); }
+        catch(error) { el("trashStatus").textContent = String(error); restore.disabled = false; }
+      };
+      card.append(title,date,restore); box.append(card);
+    }
+    if (!rows.length) { const empty = document.createElement("p"); empty.textContent = t("Корзина пуста"); box.append(empty); }
+  } catch(error) { el("trashStatus").textContent = String(error); }
+}
+listen("solflow-meetings", () => { if(page === "trash") refreshTrash(); });

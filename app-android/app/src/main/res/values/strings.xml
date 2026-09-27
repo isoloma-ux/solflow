@@ -155,7 +155,7 @@
     <string name="meeting_meta">%1$s · %2$s</string>
     <string name="meeting_transcribe">Расшифровать</string>
     <string name="meeting_delete">Удалить</string>
-    <string name="meeting_delete_confirm">Удалить встречу вместе с записью и расшифровкой?</string>
+    <string name="meeting_delete_confirm">Переместить встречу в корзину? При включённой синхронизации удаление передастся другим устройствам.</string>
     <string name="meeting_rename_title">Название встречи</string>
     <string name="save">Сохранить</string>
     <string name="export_txt">txt</string>
@@ -540,4 +540,10 @@
     <string name="ai_summary">Саммари</string>
     <string name="ai_map">Карты мыслей</string>
     <string name="ai_analyses">Разборы</string>
+    <string name="shared_trash">Корзина</string>
+    <string name="trash_empty">Корзина пуста. Удаления передаются через выбранное облако после синхронизации.</string>
+    <string name="trash_pending">ожидает синхронизации</string>
+    <string name="trash_restore">Восстановить</string>
+    <string name="trash_restore_hint">Вернуть запись в библиотеку? Архив сохранится. Восстановление передастся другим устройствам при синхронизации.</string>
+    <string name="whatsnew_body_110">• Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.\n\n• Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.\n\n• Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.</string>
 </resources>

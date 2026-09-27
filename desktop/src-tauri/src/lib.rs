@@ -24,6 +24,7 @@ mod lang;
 #[cfg_attr(not(target_os = "macos"), path = "hud_win.rs")]
 mod hud;
 pub mod meetings;
+mod trash;
 mod models;
 mod mcp;
 pub mod mindmap;
@@ -1543,8 +1544,14 @@ fn meeting_rename(app: AppHandle, id: i64, title: String) {
 }
 
 #[tauri::command]
-fn meeting_delete(app: AppHandle, id: i64) {
-    meetings::delete(&app, id);
+fn meeting_delete(app: AppHandle, id: i64) -> Result<(), String> {
+    meetings::delete(&app, id).map_err(|e|e.to_string())
+}
+#[tauri::command]
+fn trash_list(app: AppHandle) -> Vec<trash::Row> { trash::rows(&app) }
+#[tauri::command]
+fn trash_restore(app: AppHandle, id: i64) -> Result<i64,String> {
+    sync::local_change(&app, || trash::request_restore(&app,id)).map_err(|e|e.to_string())
 }
 
 #[tauri::command]
@@ -1675,10 +1682,9 @@ async fn meetings_export_combined(
 }
 
 #[tauri::command]
-fn meetings_delete(app: AppHandle, ids: Vec<i64>) {
-    for id in ids {
-        meetings::delete(&app, id);
-    }
+fn meetings_delete(app: AppHandle, ids: Vec<i64>) -> Result<(),String> {
+    for id in ids { meetings::delete(&app,id).map_err(|e|e.to_string())?; }
+    Ok(())
 }
 
 /// Саммери пачкой: каждая встаёт в ту же очередь к движку, что и одиночная.
@@ -1897,6 +1903,8 @@ pub fn run() {
             meeting_audio_path,
             meeting_rename,
             meeting_delete,
+            trash_list,
+            trash_restore,
             meeting_set_project,
             meeting_export,
             meetings_export,

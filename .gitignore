@@ -71,3 +71,8 @@ desktop/src-tauri/target-local-check/
 /desktop/mcp-core/target/
 /desktop/mcp-server/target/
 /desktop/src-tauri/binaries/
+
+# Local verification artifacts and optional links to native dependencies
+/checks/
+/tcpp
+/app-android/app/src/main/jniLibs

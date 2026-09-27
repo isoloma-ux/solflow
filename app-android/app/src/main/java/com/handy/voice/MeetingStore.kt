@@ -174,11 +174,10 @@ object MeetingStore {
             .mapNotNull { load(context, it) }
             .sortedByDescending { it.at }
 
-    fun delete(context: Context, id: Long) {
-        // Сначала отметка для синхронизации, потом файлы: иначе следующее
-        // устройство привезло бы встречу обратно.
+    fun delete(context: Context, id: Long) = SyncManager.localChange {
+        check(id != MeetingService.recordingId && id !in MeetingService.phase.keys) { "Запись обрабатывается / Recording is being processed" }
+        SharedTrash.retain(context, id, true)
         SyncManager.noteDeleted(context, id)
-        dir(context, id).deleteRecursively()
     }
 
     fun saveTranscript(context: Context, id: Long, segments: List<MeetingSegment>) {

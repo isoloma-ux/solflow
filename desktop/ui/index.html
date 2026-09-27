@@ -18,6 +18,7 @@
         <button class="nav-item" data-page="meetings">Встречи</button>
         <div class="nav-sub" id="navProjects"></div>
 
+        <button class="nav-item" data-page="trash">Корзина</button>
         <button class="nav-item" data-page="models">Модели</button>
         <button class="nav-item" data-page="settings">Настройки</button>
         <button class="nav-item" data-page="about">О проекте</button>
@@ -77,6 +78,11 @@
         </section>
       </main>
 
+      <main class="page" id="pageTrash" hidden>
+        <p class="kicker">Общая библиотека</p><h1>Корзина</h1>
+        <p class="muted">Удаления и восстановление передаются через выбранное облако. Архивы не очищаются автоматически.</p>
+        <p id="trashStatus" role="status"></p><div id="trashRows"></div>
+      </main>
       <!-- История -->
       <main class="page" id="pageHistory" hidden>
         <p class="kicker">История</p>
@@ -1235,6 +1241,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="1.1.0"><ul class="whatsnew-list"><li>Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.</li><li>Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.</li><li>Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.</li></ul></div>
           <div data-whatsnew-version="1.0.0"><ul class="whatsnew-list"><li>Подключайте выбранные проекты к ИИ через MCP: доступ только к разрешённым текстам, с возможностью отключения.</li><li>Фиолетовый цвет и значок ИИ показывают открытые для ИИ проекты. Доступ можно менять в панели проекта и его контекстном меню.</li><li>Разрешения проектов синхронизируются между устройствами. Изменения действуют после синхронизации обоих устройств.</li><li>Готовый запрос помогает настроить подключение к клиенту ИИ на компьютере. Команда и аргументы также копируются отдельно.</li><li>Обновлённое руководство на русском и английском с отдельными инструкциями и снимками интерфейса Android.</li></ul></div>
           <div data-whatsnew-version="0.9.9"><ul class="whatsnew-list"><li>При ошибке подключения к Rutube появится подсказка о VPN и прокси с кнопкой «Повторить».</li><li>Удаление записи подтверждается вторым нажатием без закрытия меню. Остальные действия выполняются одним нажатием.</li></ul></div>
           <div data-whatsnew-version="0.9.8"><ul class="whatsnew-list"><li>Импорт потокового видео Rutube и других форматов через дополнительный конвертер.</li><li>Обновление загрузчика и компонентов YouTube в настройках.</li><li>Сессия браузера для YouTube по вашему выбору; понятные ошибки и меньше повторных запросов.</li></ul></div>

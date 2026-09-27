@@ -80,7 +80,7 @@ jobs:
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: solflow
-        run: gradle assembleRelease --no-daemon
+        run: gradle testDebugUnitTest assembleRelease --no-daemon
 
       # Подпись проверяем прямо здесь: неподписанный или подписанный чужим
       # ключом APK не встанет поверх установленного, а понять это можно

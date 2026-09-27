@@ -8,6 +8,17 @@
 // собирает на ходу, идут через t().
 
 const EN = {
+  "Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.": "Deleted recordings enter the shared trash in the selected cloud: the archive is verified before deletion is shared.",
+  "Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.": "Restoring returns a recording with a new identity; retrying does not create duplicates.",
+  "Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.": "Archives never expire automatically. Older deletions without an archive cannot be restored from the cloud.",
+
+  "Корзина": "Trash",
+  "Общая библиотека": "Shared library",
+  "Удаления и восстановление передаются через выбранное облако. Архивы не очищаются автоматически.": "Deletions and restores sync through the selected cloud. Archives never expire automatically.",
+  "Восстановление ожидает синхронизации": "Restore awaiting sync",
+  "Восстановить": "Restore",
+  "Запись восстановлена. Изменение передастся при синхронизации.": "Recording restored. The change will be shared on sync.",
+  "Корзина пуста": "Trash is empty",
   "Разрешения передаются через синхронизацию на обновленные устройства. Изменение с телефона действует на компьютере после синхронизации обоих устройств.": "Permissions sync to updated devices. A change from your phone takes effect on the computer after both devices sync.",
   "Распознавание речи и локальные итоги работают на вашем компьютере. Синхронизация и MCP передают выбранные данные только после включения соответствующего доступа.": "Speech recognition and local summaries run on your computer. Sync and MCP transfer selected data only after you enable the respective access.",
   "Руководство по Sol Flow": "Sol Flow guide",
