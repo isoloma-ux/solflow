@@ -16,8 +16,8 @@ android {
         // Версия общая для всех систем: релиз один на троих, и проверка
         // обновлений сравнивает номер с тегом. Раньше телефон жил своей
         // нумерацией (2.2) и потому считал 0.2.x старее себя.
-        versionCode = 46
-        versionName = "1.0.0"
+        versionCode = 48
+        versionName = "1.1.0"
 
         ndk {
             // Только arm64: 32-битных телефонов, которым нужна была бы armeabi-v7a,
@@ -113,6 +113,8 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")

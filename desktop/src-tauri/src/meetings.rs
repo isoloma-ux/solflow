@@ -721,17 +721,13 @@ pub fn set_project(app: &AppHandle, id: i64, project: Option<String>) {
     }
 }
 
-pub fn delete(app: &AppHandle, id: i64) {
-    let state = app.state::<MeetingState>();
-    if let Some(flag) = state.cancel.lock().unwrap().get(&id) {
-        flag.store(true, Ordering::Relaxed);
-    }
-    // Сначала отметка для синхронизации, потом файлы: иначе следующее
-    // устройство привезло бы встречу обратно.
-    crate::sync::note_deleted(app, id);
-    let _ = std::fs::remove_dir_all(dir(app, id));
-    crate::mcp::invalidate(app);
-    notify(app);
+pub fn delete(app: &AppHandle, id: i64) -> anyhow::Result<()> {
+    crate::sync::local_change(app, || {
+        if busy_ids(app).contains(&id) { anyhow::bail!("Запись обрабатывается / Recording is being processed") }
+        crate::trash::retain(app,id,true)?;
+        crate::sync::note_deleted(app,id);
+        crate::mcp::invalidate(app); notify(app); Ok(())
+    })
 }
 
 /// Что нашлось внутри одной записи: сколько совпадений и первые из них

@@ -90,6 +90,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
           rm -rf target/release/bundle/nsis
+          cargo test --locked --no-default-features --lib -- --test-threads=1
           cargo build --release --locked --features gpu
           cp target/release/*.dll .
           cp sherpa/win/lib/*.dll .
@@ -112,6 +113,17 @@ jobs:
       # Релиз создаётся, если его ещё нет, и в него кладётся установщик.
       # Неподписанный .exe встречает SmartScreen — об этом сказано прямо в
       # описании релиза, чтобы человек не пугался.
+      # Manual branch builds are downloadable test artifacts, never a release.
+      - name: Test Windows installer
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolFlow-Windows-test-${{ github.run_number }}
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/*.sig
+          if-no-files-found: error
+
       - name: Публикуем
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -244,6 +256,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: "Sol Flow Signing"
         run: |
           rm -rf target/release/bundle/macos
+          cargo test --locked --no-default-features --lib -- --test-threads=1
           tauri build --bundles app --config tauri.mac-release.conf.json
           # Проверяем, что подпись «на месте» действительно легла: без неё
           # система объявляет скачанный бандл повреждённым (проверено).
@@ -258,6 +271,18 @@ jobs:
           codesign -d --entitlements - "target/release/bundle/macos/Sol Flow.app" 2>&1 \
             | grep -q "audio-input" \
             || { echo "нет права на микрофон в подписи"; exit 1; }
+
+      - name: Package test Mac app
+        if: github.event_name == 'workflow_dispatch'
+        run: ditto -c -k --keepParent "target/release/bundle/macos/Sol Flow.app" "SolFlow-test-macOS.zip"
+
+      - name: Test Mac app
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolFlow-Mac-test-${{ github.run_number }}
+          path: desktop/src-tauri/SolFlow-test-macOS.zip
+          if-no-files-found: error
 
       # Приложение кладётся в архив с именем без пробелов, а в манифест
       # дописывается вторая платформа — к той, что уже положила Windows.

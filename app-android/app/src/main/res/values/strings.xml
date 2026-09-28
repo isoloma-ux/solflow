@@ -155,7 +155,7 @@
     <string name="meeting_meta">%1$s · %2$s</string>
     <string name="meeting_transcribe">Расшифровать</string>
     <string name="meeting_delete">Удалить</string>
-    <string name="meeting_delete_confirm">Удалить встречу вместе с записью и расшифровкой?</string>
+    <string name="meeting_delete_confirm">Переместить встречу в корзину? При включённой синхронизации удаление передастся другим устройствам.</string>
     <string name="meeting_rename_title">Название встречи</string>
     <string name="save">Сохранить</string>
     <string name="export_txt">txt</string>
@@ -540,4 +540,24 @@
     <string name="ai_summary">Саммари</string>
     <string name="ai_map">Карты мыслей</string>
     <string name="ai_analyses">Разборы</string>
+    <string name="shared_trash">Корзина</string>
+    <string name="trash_empty">Корзина пуста. Удаления передаются через выбранное облако после синхронизации.</string>
+    <string name="trash_pending">ожидает синхронизации</string>
+    <string name="trash_restore">Восстановить</string>
+    <string name="trash_restore_hint">Вернуть запись в библиотеку? Архив сохранится. Восстановление передастся другим устройствам при синхронизации.</string>
+    <string name="whatsnew_body_110">• Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.\n\n• Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.\n\n• Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.\n\n• Значки в меню и счётчик записей в корзине. Кнопки восстановления видны рядом с каждой записью.\n\n• Очистка корзины из меню или самого раздела — с подтверждением. Окончательное удаление передаётся через выбранное облако.\n\n• Устройства без сети получают отметки окончательного удаления при следующей синхронизации. Уже восстановленные записи сохраняются.</string>
+    <string name="trash_clear">Очистить корзину</string>
+    <string name="trash_clear_title">Очистить корзину?</string>
+    <string name="trash_clear_count">Записей для удаления: %1$d</string>
+    <string name="trash_clear_cloud">Аудио и расшифровки будут удалены безвозвратно из общей корзины выбранного облака и на остальных устройствах после синхронизации. Уже восстановленные записи сохранятся.</string>
+    <string name="trash_clear_local">Аудио и расшифровки будут удалены безвозвратно из корзины этого устройства. Уже восстановленные записи сохранятся.</string>
+    <string name="trash_clear_confirm">Удалить навсегда</string>
+    <string name="trash_clearing">Очистка ожидает синхронизации</string>
+    <string name="trash_clear_queued">Очистка поставлена в очередь. Она завершится при синхронизации.</string>
+    <string name="trash_cleared">Корзина очищена.</string>
+    <string name="trash_empty_hint">Удалённые записи появятся здесь. Их можно восстановить, пока корзина не очищена.</string>
+    <string name="trash_deleted_at">Удалено: %1$s</string>
+    <string name="trash_audio_text">Аудио и текст</string>
+    <string name="trash_text_only">Текст</string>
+    <string name="trash_description">Удаления и восстановление передаются через выбранное облако. Архивы не очищаются автоматически.</string>
 </resources>

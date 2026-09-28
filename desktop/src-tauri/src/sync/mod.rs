@@ -361,6 +361,13 @@ pub fn note_deleted(app: &AppHandle, id: i64) {
     touch(app);
 }
 
+/// Serialize reversible local mutations with cloud IO. Never let an old sync snapshot re-upload a deleted folder.
+pub fn local_change<T>(app: &AppHandle, action: impl FnOnce() -> Result<T>) -> Result<T> {
+    let runtime = app.state::<SyncRuntime>();
+    let _guard = runtime.gate.try_lock().map_err(|_| anyhow!("Синхронизация выполняется. Повторите после завершения / Sync is running; try again when it finishes"))?;
+    action()
+}
+
 /// Синхронизация сейчас, в фоне. Идущая — не прерывается, просьба ждёт её.
 pub fn sync_now(app: &AppHandle) {
     let app = app.clone();
@@ -596,6 +603,8 @@ impl Run<'_> {
     // --- встреча ---
 
     fn tombstone(&mut self, id: i64) -> Result<()> {
+        let audio = self.app.state::<AppState>().settings.lock().unwrap().sync_audio;
+        crate::trash::publish(self.app,id,self.cloud,&self.token,audio)?;
         self.upload(&format!("{id}.deleted"), b"{}")?;
         for name in [format!("{id}.meta.json"), format!("{id}.transcript.json")] {
             if self.remote.contains_key(&name) {
@@ -603,19 +612,22 @@ impl Run<'_> {
             }
         }
         let _ = self.cloud.delete(&self.token, Folder::Audio, &format!("{id}.wav"));
+        crate::trash::deleted_sent(self.app,id)?;
         self.state.pending_deletes.retain(|d| *d != id);
         Ok(())
     }
 
-    fn apply_tombstone(&mut self, id: i64) {
+    fn apply_tombstone(&mut self, id: i64) -> Result<()> {
         let dir = meetings::dir(self.app, id);
         if dir.exists() {
-            let _ = std::fs::remove_dir_all(&dir);
+            crate::trash::retain(self.app,id,false)?;
             self.changed_local = true;
         }
         self.state.files.remove(&format!("{id}.meta.json"));
         self.state.files.remove(&format!("{id}.transcript.json"));
+        crate::trash::deleted_sent(self.app,id)?;
         self.state.pending_deletes.retain(|d| *d != id);
+        Ok(())
     }
 
     fn sync_meta(&mut self, id: i64) -> Result<()> {
@@ -809,11 +821,13 @@ fn run(app: &AppHandle) -> Result<()> {
         state.save();
     }
 
+    crate::trash::sync_purges(app, cloud, &token)?;
     let remote: HashMap<String, provider::RemoteFile> = cloud.list(&token, Folder::Meetings)?
         .into_iter()
         .map(|f| (f.name.clone(), f))
         .collect();
 
+    for id in crate::trash::pending(app) { if !state.pending_deletes.contains(&id) { state.pending_deletes.push(id); } }
     let busy = meetings::busy_ids(app);
     let mut ids: BTreeSet<i64> = meetings::local_ids(app).into_iter().collect();
     ids.extend(remote.keys().filter_map(|n| parse_id(n)));
@@ -842,7 +856,7 @@ fn run(app: &AppHandle) -> Result<()> {
         }
         let result = (|| -> Result<()> {
             if run.remote.contains_key(&format!("{id}.deleted")) {
-                run.apply_tombstone(id);
+                run.apply_tombstone(id)?;
                 return Ok(());
             }
             if run.state.pending_deletes.contains(&id) {
@@ -889,6 +903,8 @@ fn run(app: &AppHandle) -> Result<()> {
             first_error.get_or_insert(e);
         }
     }
+
+    if let Err(e) = crate::trash::sync(app,cloud,&run.token,sync_audio) { first_error.get_or_insert(e); }
 
     if first_error.is_none() {
         run.state.last_sync = now_ms();

@@ -269,6 +269,11 @@ object SyncManager {
         if (System.currentTimeMillis() - lastRun > minOf(interval, OPEN_THROTTLE_MS)) runNow(context)
     }
 
+    fun <T> localChange(action: () -> T): T {
+        check(!running) { "Синхронизация выполняется / Sync is running" }
+        return synchronized(lock) { action() }
+    }
+
     /** Синхронизация сейчас, в фоновом потоке. */
     fun runNow(context: Context) {
         val app = context.applicationContext

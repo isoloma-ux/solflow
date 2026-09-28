@@ -56,7 +56,9 @@ jobs:
           python3 ../../scripts/prepare-mcp.py
 
       - name: cargo check
-        run: cargo check --locked --no-default-features
+        run: |
+          cargo check --locked --no-default-features
+          cargo test --locked --no-default-features --lib -- --test-threads=1
 
   macos:
     runs-on: macos-14
@@ -96,7 +98,9 @@ jobs:
           python3 ../../scripts/prepare-mcp.py
 
       - name: cargo check
-        run: cargo check --locked --no-default-features
+        run: |
+          cargo check --locked --no-default-features
+          cargo test --locked --no-default-features --lib -- --test-threads=1
 
   # Установщик для Windows: его и ставят на живую машину для проверки.
   # Собирается на каждый push в main и по кнопке — лежит в артефактах

@@ -11,7 +11,7 @@ field and meeting transcription — on Mac, Windows and Android. Free, with no
 subscription and no uploading of audio anywhere: the models run right on
 your computer or phone, and the internet is needed once, to download them.
 
-The app's interface, README and release notes for 1.0.0 are available in
+The app's interface, README and release notes are available in
 Russian and English. The website is in Russian.
 
 **Website with screenshots and setup steps:** [ivansolomin.ru/solflow](https://ivansolomin.ru/solflow)
@@ -49,6 +49,18 @@ Step-by-step with screenshots (in Russian) on the
 After installing, open Models and download one for your language. For
 Russian — GigaAM v3, about 270 MB; for English — Parakeet TDT 0.6B. The app
 finds updates itself and offers to install them.
+
+## New in 1.1.0
+
+- Shared recording trash through the selected provider: Yandex Disk or Google Drive.
+- Restore the transcript, project, summary, map and retained audio on another device.
+- Archives are verified before sharing deletions; retrying a restore does not create another copy.
+- Archives never expire automatically. Older deletions without an archive cannot be restored from the cloud.
+
+- Menu icons, a trash count and explicit restore buttons.
+- Empty Trash with confirmation from the sidebar or Trash screen; permanent deletion syncs to updated devices.
+
+[Changes, limitations and updating](docs/release-1.1.0.en.md).
 
 ## New in 1.0.0
 
