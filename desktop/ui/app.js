@@ -99,7 +99,7 @@ function setPerm(id, granted) {
   perm.querySelector("button").hidden = granted;
 }
 
-listen("solflow-state", (e) => render(e.payload));
+const stateListenerReady = listen("solflow-state", (e) => render(e.payload));
 listen("solflow-level", (e) => {
   levels.shift();
   levels.push(e.payload);
@@ -3927,7 +3927,7 @@ el("showIntro").addEventListener("click", showIntro);
 // Показывается один раз после смены версии. На первом запуске хватает
 // вводного экрана, поэтому окно молча помечает версию как увиденную.
 // Суффикс поднимают, когда текст обновился внутри той же версии.
-const WHATSNEW_REV = "-4";
+const WHATSNEW_REV = "-5";
 
 /** «1.2.3» новее «1.2.2»? Пустая или кривая строка считается древней. */
 function versionNewer(a, b) {
@@ -3955,7 +3955,7 @@ function maybeShowWhatsNew(version) {
   }
   for (const block of document.querySelectorAll("[data-whatsnew-version]")) {
     const v = block.dataset.whatsnewVersion;
-    block.hidden = previous !== "" && !versionNewer(v, previous);
+    block.hidden = previous !== "" && v !== version && !versionNewer(v, previous);
   }
   el("whatsnewTitle").textContent = t("Что нового в {0}", version);
   el("whatsnew").hidden = false;
@@ -4116,7 +4116,9 @@ el("checkUpdate").addEventListener("click", () => checkUpdate(true));
 // русский список.
 const languageReady = invoke("set_ui_language", { language: UI_LANG }).catch(() => {});
 
-invoke("ui_state");
+stateListenerReady.then(() => invoke("ui_state")).catch(error => {
+  el("status").textContent = el("sidebarStatus").textContent = String(error);
+});
 invoke("app_version").then((version) => {
   appVersion = version;
   el("appVersion").textContent = version;
