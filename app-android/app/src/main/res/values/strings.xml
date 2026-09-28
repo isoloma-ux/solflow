@@ -541,7 +541,7 @@
     <string name="ai_map">Карты мыслей</string>
     <string name="ai_analyses">Разборы</string>
     <string name="shared_trash">Корзина</string>
-    <string name="trash_empty">Корзина пуста. Удаления передаются через выбранное облако после синхронизации.</string>
+    <string name="trash_empty">Корзина пуста</string>
     <string name="trash_pending">ожидает синхронизации</string>
     <string name="trash_restore">Восстановить</string>
     <string name="trash_restore_hint">Вернуть запись в библиотеку? Архив сохранится. Восстановление передастся другим устройствам при синхронизации.</string>

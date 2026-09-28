@@ -501,7 +501,7 @@
     <string name="ai_map">Mind maps</string>
     <string name="ai_analyses">Analyses</string>
     <string name="shared_trash">Trash</string>
-    <string name="trash_empty">Trash is empty. Deletions are shared through the selected cloud after sync.</string>
+    <string name="trash_empty">Trash is empty</string>
     <string name="trash_pending">awaiting sync</string>
     <string name="trash_restore">Restore</string>
     <string name="trash_restore_hint">Restore this recording to the library? The archive is retained. The restore will be shared with other devices on sync.</string>
