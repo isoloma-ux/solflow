@@ -55,6 +55,7 @@ class TrashActivity : AppCompatActivity() {
     private fun render() {
         val rows = SharedTrash.rows(this)
         clear.isEnabled = !working && rows.any { !it.restoring && !it.clearing }
+        clear.alpha = if (clear.isEnabled) 1f else .4f
         status.text = SyncManager.message ?: if(SyncManager.running) getString(R.string.drawer_sync_running) else ""
         body.removeAllViews()
         if(rows.isEmpty()) {
@@ -75,6 +76,7 @@ class TrashActivity : AppCompatActivity() {
             card.addView(text(getString(R.string.trash_deleted_at,DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(row.deletedAt))),13f,R.color.fog))
             val restore = button(getString(if(row.clearing) R.string.trash_clearing else if(row.restoring) R.string.trash_pending else R.string.trash_restore),R.drawable.ic_sf_restore)
             restore.isEnabled = !working && !row.restoring && !row.clearing
+            restore.alpha = if (restore.isEnabled) 1f else .5f
             restore.setOnClickListener {
                 working=true; render()
                 lifecycleScope.launch {
