@@ -159,11 +159,9 @@ fn purge_at(base: &Path, cloud: &dyn Provider, token: &str) -> Result<()> {
             if !valid_id(id) {
                 continue;
             }
-            let bytes = cloud.download(token, Folder::Meetings, &item.name)?;
-            let v: Value = serde_json::from_slice(&bytes)?;
-            if v["schema"] != 1
-                || v["id"] != id
-                || format!("{:x}", md5::compute(&bytes)) != item.md5
+            let expected = purge_bytes(id);
+            if item.md5 != format!("{:x}", md5::compute(&expected))
+                || item.size != expected.len() as u64
             {
                 bail!("Invalid permanent deletion marker")
             }
@@ -214,38 +212,43 @@ fn purge_at(base: &Path, cloud: &dyn Provider, token: &str) -> Result<()> {
             }
         }
     }
+    let audio_listing = if ids.is_empty() {
+        Vec::new()
+    } else {
+        cloud.list(token, Folder::Audio)?
+    };
     for id in ids {
-        put_checked(
-            cloud,
-            token,
-            Folder::Meetings,
-            &purge_name(&id),
-            &purge_bytes(&id),
-        )?;
-        // Keep the original tombstone for clients that do not understand permanent trash.
-        put_checked(
-            cloud,
-            token,
-            Folder::Meetings,
-            &format!("{id}.deleted"),
-            b"{}",
-        )?;
-        for (folder, names) in [
-            (
+        if !listing.iter().any(|f| f.name == purge_name(&id)) {
+            put_checked(
+                cloud,
+                token,
                 Folder::Meetings,
-                vec![
-                    archive_name(&id),
-                    format!("{id}.meta.json"),
-                    format!("{id}.transcript.json"),
-                ],
-            ),
-            (Folder::Audio, vec![audio_name(&id), format!("{id}.wav")]),
+                &purge_name(&id),
+                &purge_bytes(&id),
+            )?;
+        }
+        // Existing legacy tombstones may contain additional fields. Their presence is sufficient.
+        if !listing.iter().any(|f| f.name == format!("{id}.deleted")) {
+            put_checked(
+                cloud,
+                token,
+                Folder::Meetings,
+                &format!("{id}.deleted"),
+                b"{}",
+            )?;
+        }
+        for name in [
+            archive_name(&id),
+            format!("{id}.meta.json"),
+            format!("{id}.transcript.json"),
         ] {
-            let existing = cloud.list(token, folder)?;
-            for name in names {
-                if existing.iter().any(|f| f.name == name) {
-                    cloud.delete(token, folder, &name)?;
-                }
+            if listing.iter().any(|f| f.name == name) {
+                cloud.delete(token, Folder::Meetings, &name)?;
+            }
+        }
+        for name in [audio_name(&id), format!("{id}.wav")] {
+            if audio_listing.iter().any(|f| f.name == name) {
+                cloud.delete(token, Folder::Audio, &name)?;
             }
         }
         let dir = base.join(&id);
@@ -718,6 +721,7 @@ mod tests {
     struct Memory {
         files: Mutex<std::collections::HashMap<(Folder, String), Vec<u8>>>,
         fail_delete: std::sync::atomic::AtomicBool,
+        list_calls: std::sync::atomic::AtomicUsize,
     }
     impl Provider for Memory {
         fn id(&self) -> &'static str {
@@ -746,6 +750,8 @@ mod tests {
             Ok(())
         }
         fn list(&self, _: &str, folder: Folder) -> Result<Vec<RemoteFile>> {
+            self.list_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Ok(self
                 .files
                 .lock()
@@ -1000,6 +1006,30 @@ mod tests {
             .unwrap();
         purge_at(&base, &cloud, "").unwrap();
         assert!(!base.join("100").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn old_purge_markers_require_only_two_listings_per_pass() {
+        let (base, cloud) = fixture();
+        for n in 100..200 {
+            let id = n.to_string();
+            cloud
+                .upload("", Folder::Meetings, &purge_name(&id), &purge_bytes(&id))
+                .unwrap();
+            cloud
+                .upload(
+                    "",
+                    Folder::Meetings,
+                    &format!("{id}.deleted"),
+                    b"{\"legacy\":true}",
+                )
+                .unwrap();
+        }
+        purge_at(&base, &cloud, "").unwrap();
+        assert_eq!(
+            cloud.list_calls.load(std::sync::atomic::Ordering::Relaxed),
+            2
+        );
         fs::remove_dir_all(base).unwrap();
     }
 }

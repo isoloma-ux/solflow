@@ -32,7 +32,7 @@ This release does not change title conflict resolution across devices: the previ
 
 Packages: `SolFlow_1.1.0_x64-setup.exe`, `SolFlow_1.1.0_macOS.zip`, `SolFlow_1.1.0.apk` (Android versionCode 48). Install over the previous version without uninstalling the app or clearing its data.
 
-Local validation passed 52 desktop application tests and 9 Android shared-trash tests. Publication requires final CI package, updater signature and existing Android/Mac identity verification. The Windows interface was not manually tested for this release; this is an accepted validation limit, not a guarantee that no bugs remain.
+Local validation passed 53 desktop application tests and 10 Android shared-trash tests. Publication requires final CI package, updater signature and existing Android/Mac identity verification. The Windows interface was not manually tested for this release; this is an accepted validation limit, not a guarantee that no bugs remain.
 
 Mac uses the existing self-signed certificate without Apple notarization. Windows has no Authenticode signature; updater package signatures are checked separately. Distribution uses GitHub and the built-in updater, not app stores.
 

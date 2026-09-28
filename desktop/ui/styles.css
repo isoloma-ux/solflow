@@ -1837,3 +1837,5 @@ button:disabled { cursor:default; }
 #pageTrash > .muted, .trash-dialog .muted, .trash-empty .muted { color:var(--fog); font-size:14px; line-height:1.6; }
 .trash-card .muted { color:var(--fog); font-size:13px; line-height:1.5; }
 #navProjects > button { display:flex; align-items:center; gap:10px; }
+
+.trash-restore:disabled, .trash-clear-icon:disabled, #trashClear:disabled { opacity:.5; }

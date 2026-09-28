@@ -66,8 +66,8 @@ object SharedTrash {
         for(item in listing) {
             if(!item.name.startsWith("trash-v1-") || !item.name.endsWith(".purged.json")) continue
             val id=item.name.removePrefix("trash-v1-").removeSuffix(".purged.json"); if(!validId(id)) continue
-            val bytes=cloud.download(token,Cloud.Folder.MEETINGS,item.name); val v=JSONObject(String(bytes))
-            check(v.getInt("schema")==1 && v.getString("id")==id && SyncEngine.md5(bytes)==item.md5) { "Invalid permanent deletion marker" }
+            val expected=purgeBytes(id)
+            check(item.md5==SyncEngine.md5(expected) && item.size==expected.size.toLong()) { "Invalid permanent deletion marker" }
             atomic(File(base,"purged/$id.json"),purgeBytes(id)); ids+=id
         }
         for(dir in base.listFiles() ?: emptyArray()) {
@@ -79,15 +79,12 @@ object SharedTrash {
             atomic(File(base,"purged/$id.json"),purgeBytes(id)); ids+=id
         }
         for(marker in File(base,"purged").listFiles() ?: emptyArray()) if(validId(marker.nameWithoutExtension)) ids+=marker.nameWithoutExtension
+        val audioListing=if(ids.isEmpty()) emptyList() else cloud.list(token,Cloud.Folder.AUDIO)
         for(id in ids) {
-            put(cloud,token,Cloud.Folder.MEETINGS,purgeName(id),purgeBytes(id))
-            put(cloud,token,Cloud.Folder.MEETINGS,"$id.deleted","{}".toByteArray())
-            for((folder,names) in listOf(
-                Cloud.Folder.MEETINGS to listOf(archiveName(id),"$id.meta.json","$id.transcript.json"),
-                Cloud.Folder.AUDIO to listOf(audioName(id),"$id.wav"))) {
-                val existing=cloud.list(token,folder)
-                for(name in names) if(existing.any { it.name==name }) cloud.delete(token,folder,name)
-            }
+            if(listing.none { it.name==purgeName(id) }) put(cloud,token,Cloud.Folder.MEETINGS,purgeName(id),purgeBytes(id))
+            if(listing.none { it.name=="$id.deleted" }) put(cloud,token,Cloud.Folder.MEETINGS,"$id.deleted","{}".toByteArray())
+            for(name in listOf(archiveName(id),"$id.meta.json","$id.transcript.json")) if(listing.any { it.name==name }) cloud.delete(token,Cloud.Folder.MEETINGS,name)
+            for(name in listOf(audioName(id),"$id.wav")) if(audioListing.any { it.name==name }) cloud.delete(token,Cloud.Folder.AUDIO,name)
             val dir=File(base,id); if(dir.exists()) check(dir.deleteRecursively()) { "Could not clear local trash" }
         }
     }

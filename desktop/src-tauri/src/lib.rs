@@ -1554,8 +1554,8 @@ async fn trash_clear(app: AppHandle, ids: Vec<i64>, scope: String) -> Result<usi
     tauri::async_runtime::spawn_blocking(move || sync::local_change(&app, || trash::request_clear(&app, ids, scope)).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn trash_restore(app: AppHandle, id: i64) -> Result<i64,String> {
-    sync::local_change(&app, || trash::request_restore(&app,id)).map_err(|e|e.to_string())
+async fn trash_restore(app: AppHandle, id: i64) -> Result<i64,String> {
+    tauri::async_runtime::spawn_blocking(move || sync::local_change(&app, || trash::request_restore(&app,id)).map_err(|e|e.to_string())).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

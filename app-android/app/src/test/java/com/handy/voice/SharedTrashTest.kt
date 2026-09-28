@@ -8,6 +8,7 @@ import java.nio.file.Files
 class SharedTrashTest {
     private class Memory: Cloud.Provider {
         var failDelete = false
+        var listCalls = 0
         val files = mutableMapOf<Pair<Cloud.Folder,String>,ByteArray>()
         override val id="synthetic"; override val title="Synthetic"; override val configured=true
         override fun deviceCode(deviceName: String, deviceId: String): Cloud.DeviceCode = error("not used")
@@ -15,7 +16,7 @@ class SharedTrashTest {
         override fun refresh(refreshToken: String): Cloud.Tokens = error("not used")
         override fun revoke(token: String) {}; override fun account(token: String)="synthetic"
         override fun prepare(token: String) {}
-        override fun list(token: String,folder: Cloud.Folder)=files.filterKeys { it.first==folder }.map { (k,v)->Cloud.RemoteFile(k.second,SyncEngine.md5(v),1,v.size.toLong()) }
+        override fun list(token: String,folder: Cloud.Folder)=files.also { listCalls++ }.filterKeys { it.first==folder }.map { (k,v)->Cloud.RemoteFile(k.second,SyncEngine.md5(v),1,v.size.toLong()) }
         override fun upload(token: String,folder: Cloud.Folder,name: String,bytes: ByteArray) { files[folder to name]=bytes }
         override fun uploadFile(token: String,folder: Cloud.Folder,name: String,file: File)=upload(token,folder,name,file.readBytes())
         override fun download(token: String,folder: Cloud.Folder,name: String)=files.getValue(folder to name)
@@ -108,6 +109,16 @@ class SharedTrashTest {
         val (base,cloud)=purgeFixture(); try {
             File(base,"100/purge-request").delete(); cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-100.purged.json","""{"id":"100","schema":1}""".toByteArray())
             SharedTrash.purgeAt(base,cloud,""); assertFalse(File(base,"100").exists())
+        } finally { base.deleteRecursively() }
+    }
+
+    @Test fun oldMarkersUseOnlyTwoListingsPerPass() {
+        val base=fixture(); val cloud=Memory(); try {
+            for(id in 100..199) {
+                cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-$id.purged.json","""{"id":"$id","schema":1}""".toByteArray())
+                cloud.upload("",Cloud.Folder.MEETINGS,"$id.deleted","""{"legacy":true}""".toByteArray())
+            }
+            SharedTrash.purgeAt(base,cloud,""); assertEquals(2,cloud.listCalls)
         } finally { base.deleteRecursively() }
     }
 
