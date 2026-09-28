@@ -8,6 +8,7 @@
 // собирает на ходу, идут через t().
 
 const EN = {
+  "Все изменения сохранены": "All changes saved",
   "Проект": "Project",
   "Значки в меню и счётчик записей в корзине. Кнопки восстановления видны рядом с каждой записью.": "Menu icons and a recording count in Trash. Each recording has a visible Restore button.",
   "Очистка корзины из меню или самого раздела — с подтверждением. Окончательное удаление передаётся через выбранное облако.": "Empty Trash from the menu or the Trash screen, with confirmation. Permanent deletion syncs through the selected cloud.",

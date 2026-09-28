@@ -57,6 +57,9 @@ finds updates itself and offers to install them.
 - Archives are verified before sharing deletions; retrying a restore does not create another copy.
 - Archives never expire automatically. Older deletions without an archive cannot be restored from the cloud.
 
+- Menu icons, a trash count and explicit restore buttons.
+- Empty Trash with confirmation from the sidebar or Trash screen; permanent deletion syncs to updated devices.
+
 [Changes, limitations and updating](docs/release-1.1.0.en.md).
 
 ## New in 1.0.0

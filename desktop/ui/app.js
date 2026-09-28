@@ -3476,6 +3476,14 @@ function flashSync(ok) {
 }
 
 function renderSync(s) {
+  el("navSync").disabled = s.running;
+  el("navSync").title = s.running ? t("Синхронизирую…") : s.last_sync ? t("Синхронизировано {0}", fmtSyncTime(s.last_sync)) : t("Синхронизация");
+  el("trashSyncStatus").textContent = s.message ? t("Не вышло: {0}", s.message) : s.running ? t("Синхронизирую…") : s.connected && s.last_sync ? t("Синхронизировано {0}", fmtSyncTime(s.last_sync)) : "";
+  if (!s.running) refreshTrash().then(() => {
+    if (!s.message && !trashRowsSnapshot.some(row => row.clearing) && el("trashStatus").textContent === t("Очистка поставлена в очередь. Она завершится при синхронизации.")) {
+      el("trashStatus").textContent = trashRowsSnapshot.length ? t("Все изменения сохранены") : t("Корзина очищена.");
+    }
+  });
   const hint = el("syncHint");
   hint.classList.remove("sync-error");
 
