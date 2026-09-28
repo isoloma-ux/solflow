@@ -28,6 +28,9 @@ pub struct Row {
     pub deleted_at: i64,
     pub audio: bool,
     pub restoring: bool,
+    pub clearing: bool,
+    pub scope: String,
+    pub project: String,
 }
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
@@ -97,6 +100,165 @@ fn restored_name(id: &str) -> String {
 fn audio_name(id: &str) -> String {
     format!("trash-v1-{id}.wav")
 }
+// Permanent markers outlive payloads. They are scoped to the connected account.
+fn purge_name(id: &str) -> String {
+    format!("trash-v1-{id}.purged.json")
+}
+fn purge_bytes(id: &str) -> Vec<u8> {
+    format!("{{\"id\":\"{id}\",\"schema\":1}}").into_bytes()
+}
+fn purged_at(base: &Path, id: &str) -> bool {
+    base.join("purged").join(format!("{id}.json")).exists()
+}
+pub fn purged(app: &AppHandle, id: i64) -> bool {
+    purged_at(&root(app), &id.to_string())
+}
+
+pub fn request_clear(app: &AppHandle, ids: Vec<i64>, scope: String) -> Result<usize> {
+    let base = root(app);
+    if base.to_string_lossy() != scope {
+        bail!("Cloud account changed; reopen trash")
+    }
+    let mut count = 0;
+    for id in ids {
+        if id <= 0 {
+            bail!("Invalid recording ID")
+        }
+        let dir = base.join(id.to_string());
+        if !dir.join("archive.json").exists()
+            || dir.join("restored.json").exists()
+            || dir.join("restore-request").exists()
+        {
+            continue;
+        }
+        atomic(&dir.join("purge-request"), b"1")?;
+        if !crate::sync::status(app).connected {
+            atomic(
+                &base.join("purged").join(format!("{id}.json")),
+                &purge_bytes(&id.to_string()),
+            )?;
+            fs::remove_dir_all(dir)?;
+        }
+        count += 1;
+    }
+    crate::sync::touch(app);
+    crate::meetings::notify(app);
+    Ok(count)
+}
+
+/// Repeated before and after normal sync. Verify the durable marker before removing any payload.
+fn purge_at(base: &Path, cloud: &dyn Provider, token: &str) -> Result<()> {
+    let listing = cloud.list(token, Folder::Meetings)?;
+    let mut ids = std::collections::BTreeSet::new();
+    for item in &listing {
+        if let Some(id) = item
+            .name
+            .strip_prefix("trash-v1-")
+            .and_then(|n| n.strip_suffix(".purged.json"))
+        {
+            if !valid_id(id) {
+                continue;
+            }
+            let bytes = cloud.download(token, Folder::Meetings, &item.name)?;
+            let v: Value = serde_json::from_slice(&bytes)?;
+            if v["schema"] != 1
+                || v["id"] != id
+                || format!("{:x}", md5::compute(&bytes)) != item.md5
+            {
+                bail!("Invalid permanent deletion marker")
+            }
+            atomic(
+                &base.join("purged").join(format!("{id}.json")),
+                &purge_bytes(id),
+            )?;
+            ids.insert(id.to_owned());
+        }
+    }
+    for entry in fs::read_dir(base).into_iter().flatten().flatten() {
+        let dir = entry.path();
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !valid_id(&id) || !dir.join("purge-request").exists() {
+            continue;
+        }
+        // A restore completed on another device while confirmation was open: preserve it.
+        if !purged_at(base, &id)
+            && (listing.iter().any(|f| {
+                f.name == restored_name(&id) || f.name == format!("{}.meta.json", restore_id(&id))
+            }) || dir.join("restore-request").exists())
+        {
+            fs::remove_file(dir.join("purge-request"))?;
+            continue;
+        }
+        put_checked(
+            cloud,
+            token,
+            Folder::Meetings,
+            &purge_name(&id),
+            &purge_bytes(&id),
+        )?;
+        atomic(
+            &base.join("purged").join(format!("{id}.json")),
+            &purge_bytes(&id),
+        )?;
+        ids.insert(id);
+    }
+    // Remembered markers also repair a cloud where an old client reuploaded an archive.
+    for entry in fs::read_dir(base.join("purged"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        if let Some(id) = entry.path().file_stem().and_then(|n| n.to_str()) {
+            if valid_id(id) {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    for id in ids {
+        put_checked(
+            cloud,
+            token,
+            Folder::Meetings,
+            &purge_name(&id),
+            &purge_bytes(&id),
+        )?;
+        // Keep the original tombstone for clients that do not understand permanent trash.
+        put_checked(
+            cloud,
+            token,
+            Folder::Meetings,
+            &format!("{id}.deleted"),
+            b"{}",
+        )?;
+        for (folder, names) in [
+            (
+                Folder::Meetings,
+                vec![
+                    archive_name(&id),
+                    format!("{id}.meta.json"),
+                    format!("{id}.transcript.json"),
+                ],
+            ),
+            (Folder::Audio, vec![audio_name(&id), format!("{id}.wav")]),
+        ] {
+            let existing = cloud.list(token, folder)?;
+            for name in names {
+                if existing.iter().any(|f| f.name == name) {
+                    cloud.delete(token, folder, &name)?;
+                }
+            }
+        }
+        let dir = base.join(&id);
+        if dir.exists() {
+            fs::remove_dir_all(dir)?;
+        }
+    }
+    Ok(())
+}
+pub fn sync_purges(app: &AppHandle, cloud: &dyn Provider, token: &str) -> Result<()> {
+    purge_at(&root(app), cloud, token)
+}
+
 fn file_md5(path: &Path) -> Result<String> {
     use std::io::Read;
     let mut file = fs::File::open(path)?;
@@ -118,6 +280,12 @@ pub fn retain(app: &AppHandle, id: i64, outgoing: bool) -> Result<()> {
     }
     let source = crate::meetings::dir(app, id);
     let target = root(app).join(id.to_string());
+    if purged(app, id) {
+        if source.exists() {
+            fs::remove_dir_all(source)?;
+        }
+        return Ok(());
+    }
     if source.exists() {
         let meta: Value = serde_json::from_slice(&fs::read(source.join("meta.json"))?)?;
         let transcript = if source.join("transcript.json").exists() {
@@ -199,7 +367,11 @@ pub fn rows(app: &AppHandle) -> Vec<Row> {
     let mut rows = Vec::new();
     for e in fs::read_dir(root(app)).into_iter().flatten().flatten() {
         let p = e.path();
-        if p.join("restored.json").exists() {
+        if p.join("restored.json").exists()
+            || p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|id| purged_at(&root(app), id))
+        {
             continue;
         }
         if let Ok(a) = fs::read(p.join("archive.json"))
@@ -212,6 +384,9 @@ pub fn rows(app: &AppHandle) -> Vec<Row> {
                 deleted_at: a.deleted_at,
                 audio: a.audio_md5.is_some(),
                 restoring: p.join("restore-request").exists(),
+                clearing: p.join("purge-request").exists(),
+                scope: root(app).to_string_lossy().into_owned(),
+                project: a.meta["project"].as_str().unwrap_or("").to_owned(),
             });
         }
     }
@@ -245,6 +420,9 @@ pub fn request_restore(app: &AppHandle, id: i64) -> Result<i64> {
         bail!("Recording is busy")
     }
     let path = root(app).join(id.to_string());
+    if purged(app, id) || path.join("purge-request").exists() {
+        bail!("Recording is being permanently deleted")
+    }
     let manifest = if path.join("cloud-archive.json").exists() {
         path.join("cloud-archive.json")
     } else {
@@ -322,6 +500,9 @@ pub fn publish(
     token: &str,
     audio_enabled: bool,
 ) -> Result<()> {
+    if purged(app, id) {
+        return Ok(());
+    }
     publish_at(
         &root(app).join(id.to_string()),
         id,
@@ -337,6 +518,13 @@ fn publish_at(
     token: &str,
     audio_enabled: bool,
 ) -> Result<()> {
+    if cloud
+        .list(token, Folder::Meetings)?
+        .iter()
+        .any(|f| f.name == purge_name(&id.to_string()))
+    {
+        return Ok(());
+    }
     if !dir.join("archive.json").exists() {
         bail!("No recovery archive: deletion paused")
     }
@@ -421,6 +609,7 @@ fn publish_at(
     atomic(&dir.join("cloud-archive.json"), &bytes)
 }
 pub fn sync(app: &AppHandle, cloud: &dyn Provider, token: &str, audio_enabled: bool) -> Result<()> {
+    sync_purges(app, cloud, token)?;
     let listing = cloud.list(token, Folder::Meetings)?;
     for item in &listing {
         let Some(id) = item
@@ -430,7 +619,7 @@ pub fn sync(app: &AppHandle, cloud: &dyn Provider, token: &str, audio_enabled: b
         else {
             continue;
         };
-        if !valid_id(id) {
+        if !valid_id(id) || purged_at(&root(app), id) {
             continue;
         }
         let dir = root(app).join(id);
@@ -528,6 +717,7 @@ mod tests {
     #[derive(Default)]
     struct Memory {
         files: Mutex<std::collections::HashMap<(Folder, String), Vec<u8>>>,
+        fail_delete: std::sync::atomic::AtomicBool,
     }
     impl Provider for Memory {
         fn id(&self) -> &'static str {
@@ -589,8 +779,17 @@ mod tests {
             fs::write(p, self.download(t, f, n)?)?;
             Ok(())
         }
-        fn delete(&self, _: &str, _: Folder, _: &str) -> Result<()> {
-            panic!("Archive code must never delete")
+        fn delete(&self, _: &str, folder: Folder, name: &str) -> Result<()> {
+            if self.fail_delete.load(std::sync::atomic::Ordering::Relaxed) {
+                bail!("synthetic interruption")
+            }
+            let mut files = self.files.lock().unwrap();
+            assert!(
+                files.contains_key(&(Folder::Meetings, purge_name("100"))),
+                "marker must be durable before payload deletion"
+            );
+            files.remove(&(folder, name.into()));
+            Ok(())
         }
     }
     fn fixture() -> (PathBuf, Memory) {
@@ -691,5 +890,116 @@ mod tests {
             b"old cache again"
         );
         fs::remove_dir_all(path).unwrap();
+    }
+    fn purge_fixture() -> (PathBuf, Memory) {
+        let (base, cloud) = fixture();
+        fs::create_dir_all(base.join("100")).unwrap();
+        fs::rename(base.join("archive.json"), base.join("100/archive.json")).unwrap();
+        fs::write(base.join("100/purge-request"), b"1").unwrap();
+        publish_at(&base.join("100"), 100, &cloud, "", false).unwrap();
+        (base, cloud)
+    }
+    #[test]
+    fn purge_is_durable_idempotent_and_preserves_unselected_items() {
+        let (base, cloud) = purge_fixture();
+        cloud
+            .upload("", Folder::Meetings, "trash-v1-101.json", b"unselected")
+            .unwrap();
+        cloud
+            .upload("", Folder::Audio, "100.wav", b"deleted original audio")
+            .unwrap();
+        purge_at(&base, &cloud, "").unwrap();
+        assert!(!base.join("100").exists());
+        assert!(purged_at(&base, "100"));
+        assert_eq!(
+            cloud
+                .download("", Folder::Meetings, &purge_name("100"))
+                .unwrap(),
+            b"{\"id\":\"100\",\"schema\":1}"
+        );
+        assert!(cloud.download("", Folder::Audio, "100.wav").is_err());
+        // A stale legacy client reintroduces its cache; the next pass removes it again.
+        cloud
+            .upload("", Folder::Meetings, &archive_name("100"), b"stale")
+            .unwrap();
+        purge_at(&base, &cloud, "").unwrap();
+        assert!(cloud
+            .download("", Folder::Meetings, &archive_name("100"))
+            .is_err());
+        assert_eq!(
+            cloud
+                .download("", Folder::Meetings, "trash-v1-101.json")
+                .unwrap(),
+            b"unselected"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn interrupted_purge_retains_local_payload_and_retries() {
+        let (base, cloud) = purge_fixture();
+        cloud
+            .fail_delete
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(purge_at(&base, &cloud, "").is_err());
+        assert!(base.join("100/archive.json").exists());
+        assert!(cloud
+            .download("", Folder::Meetings, &purge_name("100"))
+            .is_ok());
+        cloud
+            .fail_delete
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        purge_at(&base, &cloud, "").unwrap();
+        assert!(!base.join("100").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn invalid_purge_marker_cannot_remove_payload() {
+        let (base, cloud) = purge_fixture();
+        cloud
+            .upload(
+                "",
+                Folder::Meetings,
+                &purge_name("100"),
+                b"{\"id\":\"101\",\"schema\":1}",
+            )
+            .unwrap();
+        assert!(purge_at(&base, &cloud, "").is_err());
+        assert!(base.join("100/archive.json").exists());
+        assert!(cloud
+            .download("", Folder::Meetings, &archive_name("100"))
+            .is_ok());
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn restore_racing_with_confirmation_is_preserved() {
+        let (base, cloud) = purge_fixture();
+        let name = format!("{}.meta.json", restore_id("100"));
+        cloud
+            .upload("", Folder::Meetings, &name, b"restored recording")
+            .unwrap();
+        purge_at(&base, &cloud, "").unwrap();
+        assert!(!purged_at(&base, "100"));
+        assert!(!base.join("100/purge-request").exists());
+        assert_eq!(
+            cloud.download("", Folder::Meetings, &name).unwrap(),
+            b"restored recording"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn receiving_purge_without_local_request_removes_only_its_archive() {
+        let (base, cloud) = purge_fixture();
+        fs::remove_file(base.join("100/purge-request")).unwrap();
+        cloud
+            .upload(
+                "",
+                Folder::Meetings,
+                &purge_name("100"),
+                &purge_bytes("100"),
+            )
+            .unwrap();
+        purge_at(&base, &cloud, "").unwrap();
+        assert!(!base.join("100").exists());
+        fs::remove_dir_all(base).unwrap();
     }
 }

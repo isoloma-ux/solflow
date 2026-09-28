@@ -8,6 +8,25 @@
 // собирает на ходу, идут через t().
 
 const EN = {
+  "Значки в меню и счётчик записей в корзине. Кнопки восстановления видны рядом с каждой записью.": "Menu icons and a recording count in Trash. Each recording has a visible Restore button.",
+  "Очистка корзины из меню или самого раздела — с подтверждением. Окончательное удаление передаётся через выбранное облако.": "Empty Trash from the menu or the Trash screen, with confirmation. Permanent deletion syncs through the selected cloud.",
+  "Устройства без сети получают отметки окончательного удаления при следующей синхронизации. Уже восстановленные записи сохраняются.": "Offline devices receive permanent deletion markers on their next sync. Recordings already restored are kept.",
+
+  "Синхронизация": "Sync",
+  "Очистить корзину": "Empty trash",
+  "Очистить корзину?": "Empty trash?",
+  "Удалить навсегда": "Delete permanently",
+  "Записей для удаления: {0}": "Recordings to delete: {0}",
+  "Аудио и текст": "Audio and text",
+  "Текст": "Text",
+  "Удалено: {0}": "Deleted: {0}",
+  "Очистка ожидает синхронизации": "Clear awaiting sync",
+  "Удалённые записи появятся здесь. Их можно восстановить, пока корзина не очищена.": "Deleted recordings will appear here. You can restore them until the trash is emptied.",
+  "Аудио и расшифровки будут удалены безвозвратно из общей корзины выбранного облака и на остальных устройствах после синхронизации. Уже восстановленные записи сохранятся.": "Audio and transcripts will be permanently deleted from the shared trash in the selected cloud and on other devices after sync. Recordings already restored will be kept.",
+  "Аудио и расшифровки будут удалены безвозвратно из корзины этого устройства. Уже восстановленные записи сохранятся.": "Audio and transcripts will be permanently deleted from this device’s trash. Recordings already restored will be kept.",
+  "Очистка поставлена в очередь. Она завершится при синхронизации.": "Clear queued. It will finish on sync.",
+  "Корзина очищена.": "Trash emptied.",
+
   "Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.": "Deleted recordings enter the shared trash in the selected cloud: the archive is verified before deletion is shared.",
   "Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.": "Restoring returns a recording with a new identity; retrying does not create duplicates.",
   "Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.": "Archives never expire automatically. Older deletions without an archive cannot be restored from the cloud.",

@@ -7,6 +7,7 @@ import java.nio.file.Files
 
 class SharedTrashTest {
     private class Memory: Cloud.Provider {
+        var failDelete = false
         val files = mutableMapOf<Pair<Cloud.Folder,String>,ByteArray>()
         override val id="synthetic"; override val title="Synthetic"; override val configured=true
         override fun deviceCode(deviceName: String, deviceId: String): Cloud.DeviceCode = error("not used")
@@ -19,7 +20,7 @@ class SharedTrashTest {
         override fun uploadFile(token: String,folder: Cloud.Folder,name: String,file: File)=upload(token,folder,name,file.readBytes())
         override fun download(token: String,folder: Cloud.Folder,name: String)=files.getValue(folder to name)
         override fun downloadFile(token: String,folder: Cloud.Folder,name: String,target: File)=target.writeBytes(download(token,folder,name))
-        override fun delete(token: String,folder: Cloud.Folder,name: String) { error("Archive code must never delete") }
+        override fun delete(token: String,folder: Cloud.Folder,name: String) { check(!failDelete) { "synthetic interruption" }; check(files.containsKey(Cloud.Folder.MEETINGS to "trash-v1-100.purged.json")); files.remove(folder to name) }
     }
     private fun fixture(): File {
         val dir=Files.createTempDirectory("solflow-trash-").toFile()
@@ -62,6 +63,52 @@ class SharedTrashTest {
             assertThrows(IllegalStateException::class.java) { SharedTrash.ensureArchiveAudio(dir,archive,cloud,"") }
             assertEquals("old cache again",File(dir,"audio.wav").readText())
         } finally { dir.deleteRecursively() }
+    }
+
+    private fun purgeFixture(): Pair<File,Memory> {
+        val base=fixture(); val dir=File(base,"100"); dir.mkdirs()
+        check(File(base,"archive.json").renameTo(File(dir,"archive.json"))); File(dir,"purge-request").writeText("1")
+        val cloud=Memory(); SharedTrash.publishArchive(dir,100,cloud,"",false); return base to cloud
+    }
+    @Test fun durablePurgePreservesUnselectedAndRepairsStaleUpload() {
+        val (base,cloud)=purgeFixture(); try {
+            cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-101.json","unselected".toByteArray())
+            cloud.upload("",Cloud.Folder.AUDIO,"100.wav","original sound".toByteArray())
+            SharedTrash.purgeAt(base,cloud,"")
+            assertFalse(File(base,"100").exists()); assertTrue(File(base,"purged/100.json").exists())
+            assertEquals("""{"id":"100","schema":1}""",String(cloud.download("",Cloud.Folder.MEETINGS,"trash-v1-100.purged.json")))
+            assertFalse(cloud.files.containsKey(Cloud.Folder.AUDIO to "100.wav"))
+            cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-100.json","stale".toByteArray()); SharedTrash.purgeAt(base,cloud,"")
+            assertFalse(cloud.files.containsKey(Cloud.Folder.MEETINGS to "trash-v1-100.json"))
+            assertEquals("unselected",String(cloud.download("",Cloud.Folder.MEETINGS,"trash-v1-101.json")))
+        } finally { base.deleteRecursively() }
+    }
+    @Test fun interruptedPurgeKeepsLocalPayloadAndRetries() {
+        val (base,cloud)=purgeFixture(); try {
+            cloud.failDelete=true; assertThrows(IllegalStateException::class.java) { SharedTrash.purgeAt(base,cloud,"") }
+            assertTrue(File(base,"100/archive.json").exists()); assertTrue(cloud.files.containsKey(Cloud.Folder.MEETINGS to "trash-v1-100.purged.json"))
+            cloud.failDelete=false; SharedTrash.purgeAt(base,cloud,""); assertFalse(File(base,"100").exists())
+        } finally { base.deleteRecursively() }
+    }
+    @Test fun invalidPurgeMarkerCannotRemovePayload() {
+        val (base,cloud)=purgeFixture(); try {
+            cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-100.purged.json","""{"id":"101","schema":1}""".toByteArray())
+            assertThrows(IllegalStateException::class.java) { SharedTrash.purgeAt(base,cloud,"") }
+            assertTrue(File(base,"100/archive.json").exists()); assertTrue(cloud.files.containsKey(Cloud.Folder.MEETINGS to "trash-v1-100.json"))
+        } finally { base.deleteRecursively() }
+    }
+    @Test fun concurrentRestoreIsPreserved() {
+        val (base,cloud)=purgeFixture(); try {
+            val name="${SharedTrash.restoreId("100")}.meta.json"; cloud.upload("",Cloud.Folder.MEETINGS,name,"restored".toByteArray())
+            SharedTrash.purgeAt(base,cloud,""); assertFalse(File(base,"purged/100.json").exists()); assertFalse(File(base,"100/purge-request").exists())
+            assertEquals("restored",String(cloud.download("",Cloud.Folder.MEETINGS,name)))
+        } finally { base.deleteRecursively() }
+    }
+    @Test fun receivedPurgeClearsWithoutLocalRequest() {
+        val (base,cloud)=purgeFixture(); try {
+            File(base,"100/purge-request").delete(); cloud.upload("",Cloud.Folder.MEETINGS,"trash-v1-100.purged.json","""{"id":"100","schema":1}""".toByteArray())
+            SharedTrash.purgeAt(base,cloud,""); assertFalse(File(base,"100").exists())
+        } finally { base.deleteRecursively() }
     }
 
 }

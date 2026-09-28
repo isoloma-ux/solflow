@@ -1,3 +1,5 @@
+const SF_ICONS = {"mic": "<rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/><path d=\"M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8\"/>", "history": "<path d=\"M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v5l3 2\"/>", "library": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"17\" rx=\"2\"/><path d=\"M8 1v6M16 1v6M4 10h16M8 14h3M8 17h6\"/>", "folder": "<path d=\"M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z\"/>", "spark": "<path d=\"m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z\"/>", "plus": "<path d=\"M12 5v14M5 12h14\"/>", "trash": "<path d=\"M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7\"/>", "clear": "<path d=\"M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 11l4 5M14 11l-4 5\"/>", "sync": "<path d=\"M20 8a8 8 0 0 0-14-3L3 8M3 3v5h5M4 16a8 8 0 0 0 14 3l3-3M21 21v-5h-5\"/>", "settings": "<path d=\"m9 3-1 3-3 1v4l2 1v2l-2 1v3l3 1 1 2h5l1-2 3-1v-3l-2-1v-2l2-1V7l-3-1-1-3Z\"/><circle cx=\"11.5\" cy=\"12\" r=\"3\"/>", "model": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"3\"/><rect x=\"9\" y=\"9\" width=\"6\" height=\"6\" rx=\"1\"/><path d=\"M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3\"/>", "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7v.1\"/>", "restore": "<path d=\"M4 9a8 8 0 1 1 0 6M4 3v6h6M12 7v5l3 2\"/>", "audio": "<path d=\"M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4\"/>", "file": "<path d=\"M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9ZM13 2v7h7M8 13h8M8 17h5\"/>", "cloud": "<path d=\"M7 18H6a5 5 0 0 1-1-10 7 7 0 0 1 13-1 5.5 5.5 0 0 1 0 11h-1M9 16l3 3 3-3M12 19v-8\"/>", "check": "<path d=\"m5 12 4 4L19 6\"/>", "moon": "<path d=\"M20 14A9 9 0 0 1 10 3a9 9 0 1 0 10 11Z\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 1v2M12 21v2M1 12h2M21 12h2M4 4l2 2M18 18l2 2M4 20l2-2M18 6l2-2\"/>", "menu": "<path d=\"M4 6h16M4 12h16M4 18h16\"/>", "back": "<path d=\"m14 5-7 7 7 7\"/>", "signal": "<path d=\"M3 20v-3M8 20v-7M13 20V9M18 20V4\"/>", "battery": "<rect x=\"2\" y=\"7\" width=\"17\" height=\"10\" rx=\"2\"/><path d=\"M22 10v4M5 10h11v4H5Z\"/>", "dots": "<circle cx=\"5\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"19\" cy=\"12\" r=\"1\"/>"};
+function sfIcon(name) { return `<svg class="sf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SF_ICONS[name]}</svg>`; }
 // Окно Sol Flow: слушает состояние из Rust и рисует волну. Вся логика
 // записи и распознавания живёт на нативной стороне — окно можно закрыть,
 // хоткей продолжит работать.
@@ -871,7 +873,8 @@ function renderProjects() {
     const inside = meetRows.filter((m) => id === null || m.project === id);
     count.textContent = inside.length ? String(inside.length) : "";
 
-    item.append(twisty, name, count);
+    const folder = document.createElement("span"); folder.innerHTML = sfIcon("folder"); folder.className = "project-icon";
+    item.append(folder, name, count, twisty);
     item.onclick = () => {
       projectFilter = id;
       closeMeeting();
@@ -933,7 +936,7 @@ function renderProjects() {
 
   const plus = document.createElement("button");
   plus.className = "nav-item nav-add";
-  plus.textContent = t("+ Проект");
+  plus.innerHTML = sfIcon("plus"); const plusLabel = document.createElement("span"); plusLabel.textContent = t("Проект"); plus.append(plusLabel);
   plus.onclick = () => startInlineCreate(plus);
   box.appendChild(plus);
 
@@ -3916,7 +3919,7 @@ el("showIntro").addEventListener("click", showIntro);
 // Показывается один раз после смены версии. На первом запуске хватает
 // вводного экрана, поэтому окно молча помечает версию как увиденную.
 // Суффикс поднимают, когда текст обновился внутри той же версии.
-const WHATSNEW_REV = "-3";
+const WHATSNEW_REV = "-4";
 
 /** «1.2.3» новее «1.2.2»? Пустая или кривая строка считается древней. */
 function versionNewer(a, b) {
@@ -4294,26 +4297,75 @@ listen("solflow-map-cancelled",e=>{
 });
 
 async function deleteToTrash(command, args) {
-  try { await invoke(command, args); if (page === "trash") await refreshTrash(); }
+  try { await invoke(command, args); await refreshTrash(); }
   catch (error) { showPage("trash"); el("trashStatus").textContent = String(error); }
 }
+let trashRowsSnapshot = [];
+let trashRefreshSequence = 0;
 async function refreshTrash() {
+  const sequence = ++trashRefreshSequence;
   try {
-    const rows = await invoke("trash_list"); const box = el("trashRows"); box.replaceChildren();
+    const rows = await invoke("trash_list");
+    if (sequence !== trashRefreshSequence) return;
+    trashRowsSnapshot = rows;
+    const available = rows.filter(row => !row.restoring && !row.clearing);
+    el("trashBadge").hidden = !available.length;
+    el("trashBadge").textContent = String(available.length);
+    el("trashClearNav").disabled = el("trashClear").disabled = !available.length;
+    const box = el("trashRows"); box.replaceChildren();
     for (const row of rows) {
-      const card = document.createElement("section"); card.className = "panel";
+      const card = document.createElement("section"); card.className = "trash-card";
+      const file = document.createElement("span"); file.className = "trash-file"; file.innerHTML = sfIcon("file");
+      const body = document.createElement("div"); body.className = "trash-card-body";
       const title = document.createElement("h2"); title.textContent = row.title;
-      const date = document.createElement("p"); date.className = "muted small"; date.textContent = new Date(row.deleted_at).toLocaleString();
-      const restore = document.createElement("button"); restore.className = "pill-inset";
-      restore.textContent = t(row.restoring ? "Восстановление ожидает синхронизации" : "Восстановить"); restore.disabled = row.restoring;
+      const info = document.createElement("p"); info.className = "muted small";
+      const project = meetProjects.find(p => p.id === row.project)?.name || t("Без проекта");
+      info.textContent = project + " · " + t(row.audio ? "Аудио и текст" : "Текст");
+      const date = document.createElement("p"); date.className = "muted small";
+      date.textContent = t("Удалено: {0}", new Date(row.deleted_at).toLocaleString(UI_LANG === "en" ? "en-GB" : "ru-RU", {day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}));
+      body.append(title, info, date);
+      const restore = document.createElement("button"); restore.className = "pill-inset trash-restore";
+      restore.innerHTML = sfIcon("restore"); const label = document.createElement("span");
+      label.textContent = t(row.clearing ? "Очистка ожидает синхронизации" : row.restoring ? "Восстановление ожидает синхронизации" : "Восстановить");
+      restore.append(label); restore.disabled = row.restoring || row.clearing;
       restore.onclick = async () => {
         restore.disabled = true;
         try { await invoke("trash_restore", { id: row.id }); el("trashStatus").textContent = t("Запись восстановлена. Изменение передастся при синхронизации."); await refreshTrash(); }
         catch(error) { el("trashStatus").textContent = String(error); restore.disabled = false; }
       };
-      card.append(title,date,restore); box.append(card);
+      card.append(file, body, restore); box.append(card);
     }
-    if (!rows.length) { const empty = document.createElement("p"); empty.textContent = t("Корзина пуста"); box.append(empty); }
+    if (!rows.length) {
+      const empty = document.createElement("section"); empty.className = "trash-empty"; empty.innerHTML = sfIcon("trash");
+      const title = document.createElement("h2"); title.textContent = t("Корзина пуста");
+      const hint = document.createElement("p"); hint.className = "muted"; hint.textContent = t("Удалённые записи появятся здесь. Их можно восстановить, пока корзина не очищена.");
+      empty.append(title, hint); box.append(empty);
+    }
   } catch(error) { el("trashStatus").textContent = String(error); }
 }
-listen("solflow-meetings", () => { if(page === "trash") refreshTrash(); });
+async function confirmClearTrash() {
+  await refreshTrash();
+  const snapshot = trashRowsSnapshot.filter(row => !row.restoring && !row.clearing);
+  if (!snapshot.length) return;
+  const dialog = el("trashClearDialog");
+  if (dialog.open) return;
+  el("trashClearCount").textContent = t("Записей для удаления: {0}", snapshot.length);
+  const status = await invoke("sync_status");
+  el("trashClearScope").textContent = t(status.connected
+    ? "Аудио и расшифровки будут удалены безвозвратно из общей корзины выбранного облака и на остальных устройствах после синхронизации. Уже восстановленные записи сохранятся."
+    : "Аудио и расшифровки будут удалены безвозвратно из корзины этого устройства. Уже восстановленные записи сохранятся.");
+  el("trashClearCancel").onclick = () => dialog.close();
+  el("trashClearConfirm").onclick = async () => {
+    dialog.close();
+    try {
+      await invoke("trash_clear", {ids:snapshot.map(row => row.id), scope:snapshot[0].scope});
+      el("trashStatus").textContent = t(status.connected ? "Очистка поставлена в очередь. Она завершится при синхронизации." : "Корзина очищена.");
+      await refreshTrash();
+    } catch(error) { showPage("trash"); el("trashStatus").textContent = String(error); }
+  };
+  dialog.showModal(); el("trashClearCancel").focus();
+}
+el("trashClear").onclick = el("trashClearNav").onclick = () => confirmClearTrash().catch(error => { showPage("trash"); el("trashStatus").textContent = String(error); });
+el("navSync").onclick = async () => { const status = await invoke("sync_status"); if(status.connected) syncByHand(); else showPage("settings"); };
+listen("solflow-meetings", refreshTrash);
+refreshTrash();

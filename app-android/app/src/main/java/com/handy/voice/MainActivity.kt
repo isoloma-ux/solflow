@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.view.Gravity
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -173,6 +174,11 @@ class MainActivity : AppCompatActivity() {
         })
         renderDrawer()
 
+        for ((tab, icon) in listOf(ui.navDictation to R.drawable.ic_sf_mic, ui.navMeetings to R.drawable.ic_sf_library,
+            ui.navHistory to R.drawable.ic_sf_history, ui.navModels to R.drawable.ic_sf_model)) {
+            tab.setCompoundDrawablesRelativeWithIntrinsicBounds(0, icon, 0, 0)
+            tab.compoundDrawablePadding = (4 * resources.displayMetrics.density).toInt()
+        }
         ui.navDictation.setOnClickListener { show(Page.DICTATION) }
         ui.navMeetings.setOnClickListener { show(Page.MEETINGS) }
         ui.navHistory.setOnClickListener { show(Page.HISTORY) }
@@ -708,7 +714,7 @@ class MainActivity : AppCompatActivity() {
                 onLongTap = { projectSheet(project) },
             ) { pickProject(project.id) }
         }
-        drawerRow("+  " + getString(R.string.project_new_title), false, muted = true) {
+        drawerRow(getString(R.string.project_new_title), false, muted = true, iconRes = R.drawable.ic_sf_plus) {
             ui.drawer.closeDrawer(GravityCompat.START)
             askProjectName(null) { name ->
                 pickProject(MeetingStore.createProject(this, name).id)
@@ -717,7 +723,7 @@ class MainActivity : AppCompatActivity() {
 
         drawerDivider()
         drawerGroup(R.string.drawer_app)
-        drawerRow(syncRowLabel(), false, muted = !SyncManager.connected(this)) {
+        drawerRow(syncRowLabel(), false, muted = !SyncManager.connected(this), iconRes = R.drawable.ic_sf_sync) {
             if (SyncManager.connected(this)) {
                 ui.drawer.closeDrawer(GravityCompat.START)
                 syncByHand()
@@ -726,14 +732,36 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, SettingsActivity::class.java))
             }
         }
-        drawerRow(getString(R.string.shared_trash), false) {
+        val trashRows = SharedTrash.rows(this)
+        val count = trashRows.count { !it.restoring && !it.clearing }
+        val trashLine = drawerRow(getString(R.string.shared_trash), false, iconRes = R.drawable.ic_sf_trash) {
             ui.drawer.closeDrawer(GravityCompat.START); showTrash()
         }
-        drawerRow(getString(R.string.tab_settings), false) {
+        box.removeView(trashLine)
+        val trashGroup = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        trashGroup.addView(trashLine, LinearLayout.LayoutParams(0, (52 * resources.displayMetrics.density).toInt(), 1f))
+        if (count > 0) {
+            val badge = TextView(this).apply {
+                text = count.toString(); textSize = 12f; gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.ink)); typeface = resources.getFont(R.font.inter_medium)
+                background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 40f; setColor(getColor(R.color.graphite_2)) }
+                setPadding(12, 4, 12, 4)
+            }
+            trashGroup.addView(badge)
+        }
+        val clear = android.widget.ImageButton(this).apply {
+            setImageResource(R.drawable.ic_sf_clear); imageTintList = android.content.res.ColorStateList.valueOf(getColor(R.color.fog))
+            contentDescription = getString(R.string.trash_clear); isEnabled = count > 0; alpha = if (isEnabled) 1f else .35f
+            val value = android.util.TypedValue(); theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, value, true); setBackgroundResource(value.resourceId)
+            setOnClickListener { TrashActivity.confirmClear(this@MainActivity) { renderDrawer() } }
+        }
+        val touch = (48 * resources.displayMetrics.density).toInt()
+        trashGroup.addView(clear, LinearLayout.LayoutParams(touch, touch)); box.addView(trashGroup)
+        drawerRow(getString(R.string.tab_settings), false, iconRes = R.drawable.ic_sf_settings) {
             ui.drawer.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, SettingsActivity::class.java))
         }
-        drawerRow(getString(R.string.about_title), false) {
+        drawerRow(getString(R.string.about_title), false, iconRes = R.drawable.ic_sf_info) {
             ui.drawer.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, AboutActivity::class.java))
         }
@@ -824,6 +852,7 @@ class MainActivity : AppCompatActivity() {
         muted: Boolean = false,
         indent: Boolean = false,
         expanded: Boolean? = null,
+        iconRes: Int = if (indent) R.drawable.ic_sf_file else R.drawable.ic_sf_folder,
         onToggle: (() -> Unit)? = null,
         onLongTap: (() -> Unit)? = null,
         onTap: () -> Unit,
@@ -865,6 +894,10 @@ class MainActivity : AppCompatActivity() {
                 true
             }
         }
+        val icon = getDrawable(iconRes)?.mutate()?.apply { setTint(row.currentTextColor) }
+        val right = row.compoundDrawablesRelative[2]
+        row.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, right, null)
+        row.compoundDrawablePadding = (12 * density).toInt()
         ui.drawerList.addView(row)
         return row
     }
@@ -2484,20 +2517,7 @@ class MainActivity : AppCompatActivity() {
         copyToClipboard(text)
     }
 
-    private fun showTrash() {
-        val rows = SharedTrash.rows(this)
-        val builder = MaterialAlertDialogBuilder(this).setTitle(R.string.shared_trash).setNegativeButton(R.string.close, null)
-        if (rows.isEmpty()) builder.setMessage(R.string.trash_empty)
-        else builder.setItems(rows.map { it.title + if(it.restoring) " · " + getString(R.string.trash_pending) else "" }.toTypedArray()) { _, index ->
-            val row = rows[index]
-            MaterialAlertDialogBuilder(this).setTitle(row.title).setMessage(R.string.trash_restore_hint)
-                .setPositiveButton(R.string.trash_restore) { _, _ ->
-                    runCatching { SharedTrash.restore(this,row.id) }.onSuccess { renderMeetings(); renderDrawer() }
-                        .onFailure { Snackbar.make(ui.root,it.message ?: it.toString(),Snackbar.LENGTH_LONG).show() }
-                }.setNegativeButton(R.string.cancel,null).show()
-        }
-        builder.show()
-    }
+    private fun showTrash() { startActivity(Intent(this, TrashActivity::class.java)) }
     private fun moveToTrash(id: Long): Boolean = runCatching { MeetingStore.delete(this,id) }
         .onFailure { Snackbar.make(ui.root,it.message ?: it.toString(),Snackbar.LENGTH_LONG).show() }.isSuccess
 

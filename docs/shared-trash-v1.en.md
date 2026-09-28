@@ -17,3 +17,13 @@ Validation and boundaries:
 - iPhone passed 72 tests; physical 0.10.0 validation includes Google login, listing, upload, download, transcript and audio playback, then reconnection to Yandex. Automatic cross-device Google sync has not been separately verified.
 
 Physical Android–Mac trash acceptance is performed separately from build checks. No new public release or updater has been published as of this report. See [1.1.0 scope and limitations](release-1.1.0.en.md). Existing title-conflict fixes remain a separate work item.
+
+## Permanent clear (1.1.0)
+
+`meetings/trash-v1-<id>.purged.json` contains exactly `{"id":"<id>","schema":1}`. Content and checksum are verified before removing payloads. `<id>.deleted` remains. Only the archive, archive audio and original canonical files for that ID are removed; restored recordings with new IDs are unaffected.
+
+A durable account-scoped local request contains only confirmed snapshot IDs. Purge markers are applied before and after normal sync. Retry completes partial deletion and removes archives reuploaded by older clients. Small local and cloud markers have no expiry. Failed deletion retains the local payload until retry, but a permanently marked archive cannot be restored.
+
+An already started or completed cloud restore cancels the pending clear for that archive before publication. A concurrent local restored copy remains active. Older clients do not understand `purged`: update all devices, including a future separate iPhone build. Offline or old devices cannot be guaranteed to erase payloads before update and sync.
+
+Matching Rust/Kotlin tests cover marker-before-deletion ordering, interruption/retry, invalid marker identity, receiving deletion on another device, stale reupload, unselected archive preservation and concurrent restoration.

@@ -821,6 +821,7 @@ fn run(app: &AppHandle) -> Result<()> {
         state.save();
     }
 
+    crate::trash::sync_purges(app, cloud, &token)?;
     let remote: HashMap<String, provider::RemoteFile> = cloud.list(&token, Folder::Meetings)?
         .into_iter()
         .map(|f| (f.name.clone(), f))

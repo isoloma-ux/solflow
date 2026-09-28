@@ -8,7 +8,7 @@ import org.json.JSONArray
 
 /** Versioned archives are ignored by old clients; a tombstone is published only after verification. */
 object SharedTrash {
-    data class Row(val id: Long, val title: String, val deletedAt: Long, val restoring: Boolean)
+    data class Row(val id: Long, val title: String, val deletedAt: Long, val restoring: Boolean, val clearing: Boolean, val project: String, val audio: Boolean)
     fun validId(id: String) = id.isNotEmpty() && id.length <= 19 && id.all { it in '0'..'9' } && (id.toLongOrNull() ?: 0) > 0 && id.toLong().toString() == id
     fun restoreId(id: String): Long = 4_000_000_000_000_000L + MessageDigest.getInstance("SHA-256")
         .digest("solflow-trash-restore-v1:$id".toByteArray()).take(6).fold(0L) { a, b -> (a shl 8) or (b.toLong() and 255) }
@@ -45,9 +45,57 @@ object SharedTrash {
     private fun archiveName(id: String) = "trash-v1-$id.json"
     private fun audioName(id: String) = "trash-v1-$id.wav"
     private fun restoredName(id: String) = "trash-v1-$id.restored.json"
+    private fun purgeName(id: String) = "trash-v1-$id.purged.json"
+    private fun purgeBytes(id: String) = "{\"id\":\"$id\",\"schema\":1}".toByteArray()
+    private fun purgedAt(base: File, id: String) = File(base,"purged/$id.json").exists()
+    fun purged(context: Context, id: Long) = purgedAt(root(context),"$id")
+    fun clear(context: Context, ids: List<Long>, scope: String): Int = SyncManager.localChange {
+        val base=root(context); check(base.absolutePath==scope) { "Cloud account changed; reopen trash" }
+        var count=0
+        for(id in ids) {
+            require(id>0); val dir=File(base,"$id")
+            if(!File(dir,"archive.json").exists() || File(dir,"restored.json").exists() || File(dir,"restore-request").exists()) continue
+            atomic(File(dir,"purge-request"),byteArrayOf(49))
+            if(!SyncManager.connected(context)) { atomic(File(base,"purged/$id.json"),purgeBytes("$id")); check(dir.deleteRecursively()) }
+            count++
+        }
+        SyncManager.touch(context); MeetingService.onChange?.invoke(); count
+    }
+    internal fun purgeAt(base: File, cloud: Cloud.Provider, token: String) {
+        val listing=cloud.list(token,Cloud.Folder.MEETINGS); val ids=sortedSetOf<String>()
+        for(item in listing) {
+            if(!item.name.startsWith("trash-v1-") || !item.name.endsWith(".purged.json")) continue
+            val id=item.name.removePrefix("trash-v1-").removeSuffix(".purged.json"); if(!validId(id)) continue
+            val bytes=cloud.download(token,Cloud.Folder.MEETINGS,item.name); val v=JSONObject(String(bytes))
+            check(v.getInt("schema")==1 && v.getString("id")==id && SyncEngine.md5(bytes)==item.md5) { "Invalid permanent deletion marker" }
+            atomic(File(base,"purged/$id.json"),purgeBytes(id)); ids+=id
+        }
+        for(dir in base.listFiles() ?: emptyArray()) {
+            val id=dir.name; if(!validId(id) || !File(dir,"purge-request").exists()) continue
+            if(!purgedAt(base,id) && (listing.any { it.name==restoredName(id) || it.name=="${restoreId(id)}.meta.json" } || File(dir,"restore-request").exists())) {
+                check(File(dir,"purge-request").delete()); continue
+            }
+            put(cloud,token,Cloud.Folder.MEETINGS,purgeName(id),purgeBytes(id))
+            atomic(File(base,"purged/$id.json"),purgeBytes(id)); ids+=id
+        }
+        for(marker in File(base,"purged").listFiles() ?: emptyArray()) if(validId(marker.nameWithoutExtension)) ids+=marker.nameWithoutExtension
+        for(id in ids) {
+            put(cloud,token,Cloud.Folder.MEETINGS,purgeName(id),purgeBytes(id))
+            put(cloud,token,Cloud.Folder.MEETINGS,"$id.deleted","{}".toByteArray())
+            for((folder,names) in listOf(
+                Cloud.Folder.MEETINGS to listOf(archiveName(id),"$id.meta.json","$id.transcript.json"),
+                Cloud.Folder.AUDIO to listOf(audioName(id),"$id.wav"))) {
+                val existing=cloud.list(token,folder)
+                for(name in names) if(existing.any { it.name==name }) cloud.delete(token,folder,name)
+            }
+            val dir=File(base,id); if(dir.exists()) check(dir.deleteRecursively()) { "Could not clear local trash" }
+        }
+    }
+    fun syncPurges(context: Context,cloud: Cloud.Provider,token: String) = purgeAt(root(context),cloud,token)
     fun retain(context: Context, id: Long, outgoing: Boolean) {
         require(id > 0)
         val source = MeetingStore.dir(context, id); val target = File(root(context), "$id")
+        if(purged(context,id)) { if(source.exists()) check(source.deleteRecursively()); return }
         if (source.exists()) {
             val meta = JSONObject(File(source,"meta.json").readText())
             val text = File(source,"transcript.json").takeIf { it.exists() }?.readText()?.let(::JSONArray) ?: JSONArray()
@@ -62,15 +110,15 @@ object SharedTrash {
         if(outgoing) { check(File(target,"archive.json").exists()); atomic(File(target,"outgoing"),byteArrayOf(49)) }
     }
     fun rows(context: Context): List<Row> = (root(context).listFiles() ?: emptyArray()).mapNotNull { dir ->
-        if(File(dir,"restored.json").exists()) null else runCatching {
+        if(File(dir,"restored.json").exists() || purgedAt(root(context),dir.name)) null else runCatching {
             val a=decode(File(dir,"archive.json").readBytes())
-            Row(a.getString("id").toLong(),a.getJSONObject("meta").optString("title",a.getString("id")),a.getLong("deleted_at"),File(dir,"restore-request").exists())
+            Row(a.getString("id").toLong(),a.getJSONObject("meta").optString("title",a.getString("id")),a.getLong("deleted_at"),File(dir,"restore-request").exists(),File(dir,"purge-request").exists(),a.getJSONObject("meta").optString("project",""),!a.isNull("audio_md5"))
         }.getOrNull()
     }.sortedByDescending { it.deletedAt }
     fun pending(context: Context): List<Long> = (root(context).listFiles() ?: emptyArray()).filter { File(it,"outgoing").exists() && !File(it,"deleted-sent").exists() }.mapNotNull { it.name.toLongOrNull() }
     fun deletedSent(context: Context,id: Long) { val dir=File(root(context),"$id"); if(dir.exists()) atomic(File(dir,"deleted-sent"),byteArrayOf(49)) }
     fun restore(context: Context, id: Long): Long = SyncManager.localChange {
-        val dir=File(root(context),"$id"); val a=decode((File(dir,"cloud-archive.json").takeIf { it.exists() } ?: File(dir,"archive.json")).readBytes()); val newId=restoreId(a.getString("id")); val target=MeetingStore.dir(context,newId)
+        val dir=File(root(context),"$id"); check(!purged(context,id) && !File(dir,"purge-request").exists()) { "Recording is being permanently deleted" }; val a=decode((File(dir,"cloud-archive.json").takeIf { it.exists() } ?: File(dir,"archive.json")).readBytes()); val newId=restoreId(a.getString("id")); val target=MeetingStore.dir(context,newId)
         if(!target.exists()) {
             val stage=File(root(context),"restore-$newId"); stage.mkdirs()
             val meta=a.getJSONObject("meta").put("updated",a.getLong("deleted_at")).put("restored_from","$id")
@@ -88,9 +136,11 @@ object SharedTrash {
         val check=cloud.list(token,folder).first { it.name==name }; check(check.md5==hash && check.size==bytes.size.toLong()) { "Archive verification failed" }
     }
     fun publish(context: Context,id: Long,cloud: Cloud.Provider,token: String,includeAudio: Boolean) {
+        if(purged(context,id)) return
         publishArchive(File(root(context),"$id"),id,cloud,token,includeAudio)
     }
     internal fun publishArchive(dir: File,id: Long,cloud: Cloud.Provider,token: String,includeAudio: Boolean) {
+        if(cloud.list(token,Cloud.Folder.MEETINGS).any { it.name==purgeName("$id") }) return
         val existing=cloud.list(token,Cloud.Folder.MEETINGS).find { it.name==archiveName("$id") }
         if(existing!=null) {
             val bytes=cloud.download(token,Cloud.Folder.MEETINGS,existing.name); check(SyncEngine.md5(bytes)==existing.md5)
@@ -121,10 +171,11 @@ object SharedTrash {
         put(cloud,token,Cloud.Folder.MEETINGS,archiveName("$id"),bytes); atomic(File(dir,"cloud-archive.json"),bytes)
     }
     fun sync(context: Context,cloud: Cloud.Provider,token: String,includeAudio: Boolean) {
+        syncPurges(context,cloud,token)
         val listing=cloud.list(token,Cloud.Folder.MEETINGS)
         for(item in listing) {
             val match=Regex("trash-v1-([0-9]+)\\.json").matchEntire(item.name) ?: continue
-            val id=match.groupValues[1]; if(!validId(id)) continue
+            val id=match.groupValues[1]; if(!validId(id) || purgedAt(root(context),id)) continue
             val bytes=cloud.download(token,Cloud.Folder.MEETINGS,item.name); check(SyncEngine.md5(bytes)==item.md5)
             val a=decode(bytes); check(a.getString("id")==id); val dir=File(root(context),id); dir.mkdirs()
             if(!File(dir,"archive.json").exists()) atomic(File(dir,"archive.json"),bytes)

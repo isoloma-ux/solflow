@@ -231,6 +231,7 @@ object SyncEngine {
             state.save(context)
         }
 
+        SharedTrash.syncPurges(context, cloud, token)
         val remote = cloud.list(token, Cloud.Folder.MEETINGS).associateBy { it.name }
         for(id in SharedTrash.pending(context)) if(id !in state.pendingDeletes) state.pendingDeletes += id
         val ids = sortedSetOf<Long>()

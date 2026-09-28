@@ -1802,3 +1802,38 @@ textarea {
 .nav-ai-badge { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 10px; font-weight: 700; line-height: 1; padding: 4px 5px; border: 1px solid currentColor; border-radius: 6px; }
 .nav-ai-badge svg { width: 12px; height: 12px; }
 .nav-project.mcp-enabled .nav-count { color: inherit; opacity: .8; }
+
+/* Shared navigation and trash, 1.1.0. Outlines never change layout. */
+.sf-icon { width:20px; height:20px; flex:none; vertical-align:middle; }
+.nav > .nav-item, .trash-nav > .nav-item { display:flex; align-items:center; gap:10px; }
+.trash-nav { display:flex; align-items:center; gap:4px; }
+.trash-nav > .nav-item { flex:1; min-width:0; }
+.trash-badge { margin-left:auto; background:var(--graphite-2); color:var(--ink); border-radius:20px; min-width:24px; padding:2px 7px; font-size:12px; text-align:center; }
+.trash-clear-icon { width:36px; height:44px; flex:none; padding:8px; border:0; background:transparent; color:var(--fog); border-radius:10px; cursor:pointer; }
+.project-icon { display:flex; align-items:center; }
+.trash-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+.trash-heading h1 { margin-bottom:12px; }
+.trash-heading button, .trash-restore { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; }
+.trash-card { display:flex; align-items:center; gap:16px; background:var(--graphite); border:1px solid var(--hairline); border-radius:16px; padding:22px; margin:14px 0; }
+.trash-file { color:var(--fog); align-self:flex-start; padding-top:5px; }
+.trash-card-body { flex:1; min-width:0; }
+.trash-card h2 { margin:0 0 8px; font-size:20px; overflow-wrap:anywhere; }
+.trash-card p { margin:3px 0; }
+.trash-restore { max-width:260px; flex-shrink:0; }
+.trash-empty { text-align:center; padding:72px 24px; border:1px dashed var(--hairline); border-radius:16px; }
+.trash-empty > svg { width:40px; height:40px; color:var(--fog); }
+.trash-dialog { background:var(--graphite); color:var(--ink); border:1px solid var(--hairline); border-radius:20px; padding:28px; width:min(520px,85vw); }
+.trash-dialog::backdrop { background:rgba(0,0,0,.6); }
+.trash-dialog-actions { display:flex; justify-content:flex-end; gap:12px; margin-top:28px; }
+button { transition:background-color .15s, outline-color .15s, color .15s; }
+button:not(:disabled):hover { outline:1px solid var(--accent); outline-offset:-1px; }
+button:not(:disabled):focus-visible, [role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button.pill-inset:not(:disabled):hover, button.nav-item:not(:disabled):hover { background:color-mix(in srgb,var(--accent) 9%,transparent); }
+button.danger { color:var(--danger); }
+button.danger:not(:disabled):hover, button.danger:focus-visible { outline-color:var(--danger); background:color-mix(in srgb,var(--danger) 10%,transparent); }
+button:disabled { cursor:default; }
+@media(max-width:850px) { .trash-card { flex-wrap:wrap; } .trash-restore { margin-left:36px; } }
+
+#pageTrash > .muted, .trash-dialog .muted, .trash-empty .muted { color:var(--fog); font-size:14px; line-height:1.6; }
+.trash-card .muted { color:var(--fog); font-size:13px; line-height:1.5; }
+#navProjects > button { display:flex; align-items:center; gap:10px; }
