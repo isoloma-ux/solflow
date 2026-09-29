@@ -919,5 +919,7 @@ function systemLanguage() {
 function languageMatches(query, code, ...names) {
   const normalize = value => String(value).trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const needle = normalize(query);
+  // The Russian backend catalog supplies Russian names; retain English search there too.
+  try { names.push(new Intl.DisplayNames(["en"], {type:"language"}).of(code)); } catch (_) {}
   return !needle || normalize(code).startsWith(needle) || names.some(name => normalize(name).includes(needle));
 }

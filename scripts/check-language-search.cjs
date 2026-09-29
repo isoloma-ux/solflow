@@ -9,4 +9,6 @@ for (const [code,name] of [['zh','Chinese'],['ko','Korean']]) {
 }
 for(const [q,code,name] of [[' KO ','ko','Korean'],['francais','fr','Français'],['中','zh','中文'],['한국','ko','한국어'],['','ja','日本語']]) assert(ctx.languageMatches(q,code,name));
 assert(!ctx.languageMatches('xyz','ko','Korean'));
+assert(ctx.languageMatches('Chinese','zh','Китайский'));
+assert(ctx.languageMatches('Korean','ko','Корейский'));
 console.log('PASS: language search stays consistent for every prefix, case, accents, CJK and ISO codes');
