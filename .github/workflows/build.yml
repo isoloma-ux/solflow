@@ -12,6 +12,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  ui-locales:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bundled translations and language search
+        run: |
+          python3 scripts/build-ui-locales.py --check
+          node scripts/check-language-search.cjs
+          node scripts/check-ui-locales.cjs
+
   windows:
     runs-on: windows-latest
     defaults:

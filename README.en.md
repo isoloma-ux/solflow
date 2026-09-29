@@ -50,6 +50,15 @@ After installing, open Models and download one for your language. For
 Russian — GigaAM v3, about 270 MB; for English — Parakeet TDT 0.6B. The app
 finds updates itself and offers to install them.
 
+## New in 1.1.1
+
+- Six new interface languages: Simplified Chinese, Korean, Japanese, German, French and Spanish.
+- Language search now works from the first letter.
+- Resizable desktop sidebar, smaller AI badges and compact mobile project menus.
+- Mobile settings and About information are organized into sections.
+
+[Update details](docs/release-1.1.1.en.md).
+
 ## New in 1.1.0
 
 - Shared recording trash through the selected provider: Yandex Disk or Google Drive.

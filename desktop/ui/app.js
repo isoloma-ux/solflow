@@ -12,8 +12,16 @@ const el = (id) => document.getElementById(id);
 // Язык применяем до первой отрисовки: настройки приедут из Rust чуть позже,
 // а показывать полсекунды русский текст английскому человеку не хочется.
 // Поэтому выбор запоминается ещё и здесь, рядом с окном.
-UI_LANG = localStorage.getItem("solflow-lang") || systemLanguage();
+UI_LANG = normalizeUiLanguage(localStorage.getItem("solflow-lang") || systemLanguage());
+document.documentElement.lang = UI_LANG;
 translateDocument();
+// Keep the shortcut as a styled node while translating the entire sentence.
+{
+  const shortcut = el("hotkeyLabel");
+  const [before, after] = t("В любом приложении нажмите {0}: первое нажатие начинает запись, второе вставляет текст в активное поле. Или зажмите, говорите и отпустите.").split("{0}");
+  shortcut.parentElement.replaceChildren(document.createTextNode(before), shortcut, document.createTextNode(after));
+}
+
 
 // Какая система под окном: значки клавиш, «Универсальный доступ» и часть
 // подписей на Windows выглядят иначе. Берём из user-agent — он приходит
@@ -322,7 +330,7 @@ function renderModels() {
   el("topHead").textContent = languageFilter
     ? t(
         "Что взять: {0} язык",
-        UI_LANG === "en" ? languageName(languageFilter) : languageName(languageFilter).toLowerCase()
+        UI_LANG === "ru" ? languageName(languageFilter).toLowerCase() : languageName(languageFilter)
       )
     : t("Что взять");
   el("modelAdvice").textContent = modelAdvice(modelRows);
@@ -415,6 +423,11 @@ let modelStructure = "";
 
 async function refreshModels() {
   modelRows = await invoke("list_models");
+  if (UI_LANG !== "ru" && UI_LANG !== "en") modelRows = modelRows.map(row => ({...row,
+    description: translateEnglish(row.description), note: translateEnglish(row.note),
+    languages: row.language_count === 1 ? localizedLanguageName(row.language_codes[0],row.languages)
+      : translateEnglish("Languages: {0}").replace("{0}",row.language_count)
+  }));
   // Загрузка шлёт проценты часто; список пересобираем, только когда
   // изменилось что-то кроме них — иначе строки мерцали.
   const structure = JSON.stringify(
@@ -530,7 +543,7 @@ function renderLanguages() {
 
   if (!needle) addRow(t("Любой язык"), null, null);
   const matches = languageRows.filter(
-    (l) => !needle || l.name.startsWith(needle) || l.code === needle
+    (l) => languageMatches(needle, l.code, l.name, l.searchName || l.name)
   );
   for (const lang of matches) addRow(lang.name, lang.models, lang.code);
   if (!matches.length && needle) {
@@ -717,7 +730,7 @@ el("toTop").addEventListener("click", () => {
 function plural(n, one, few, many) {
   // В английском форм две, и правило простое; русские три формы приходят
   // сюда уже переведёнными, поэтому выбираем из них по-английски.
-  if (UI_LANG === "en") return `${n} ${n === 1 ? one : many}`;
+  if (UI_LANG !== "ru") return `${n} ${new Intl.PluralRules(UI_LANG).select(n) === "one" ? one : many}`;
 
   const mod100 = n % 100;
   const mod10 = n % 10;
@@ -1509,7 +1522,7 @@ async function runBulkExport(format, combined) {
   el("meetStatus").textContent = t("Готовлю {0}", plural(ids.length, t("файл"), t("файла"), t("файлов")));
   try {
     if (combined) {
-      const date = new Intl.DateTimeFormat(UI_LANG === "ru" ? "ru" : "en", {
+      const date = new Intl.DateTimeFormat(UI_LANG, {
         day: "numeric",
         month: "long",
         hour: "2-digit",
@@ -3339,7 +3352,7 @@ async function refreshSettings(reloadDevices = false) {
   // перезагружается один раз и дальше держит его.
   const wanted = settings.language === "auto" || !settings.language
     ? systemLanguage()
-    : settings.language;
+    : normalizeUiLanguage(settings.language);
   if (wanted !== UI_LANG) {
     localStorage.setItem("solflow-lang", wanted);
     location.reload();
@@ -3909,7 +3922,7 @@ document.querySelectorAll(".link[data-url]").forEach((button) => {
  * Локальное руководство для первого запуска и повторного открытия из «О проекте».
  */
 function showIntro() {
-  const lang = typeof UI_LANG !== 'undefined' && UI_LANG === 'en' ? 'en' : 'ru';
+  const lang = UI_LANG;
   el("guideFrame").src = `guide/guide.html?lang=${lang}&platform=${IS_MAC ? 'mac' : 'windows'}`;
   if (!el("intro").open) el("intro").showModal();
 }
@@ -4128,7 +4141,7 @@ invoke("app_version").then((version) => {
 languageReady.then(() => {
   refreshModels();
   invoke("list_languages").then((rows) => {
-    languageRows = rows;
+    languageRows = rows.map(row => ({...row, searchName: row.name, name: localizedLanguageName(row.code, row.name)}));
     renderFilters();
   });
 });
@@ -4136,8 +4149,7 @@ languageReady.then(() => {
 // действительно мерили, поэтому названа именно она.
 invoke("machine_chip").then((chip) => {
   el("chipHint").textContent =
-    t("Зеленым помечена активная. У вас {0}: GigaAM считает на нем ", chip) +
-    t("примерно в 115 раз быстрее речи. Скачивание идет в фоне.");
+    t("Зелёным отмечена активная модель. На вашем {0} GigaAM работает примерно в 115 раз быстрее речи. Скачивание идёт в фоне.", chip);
 });
 refreshMeetings();
 refreshHistory();
@@ -4332,7 +4344,7 @@ async function refreshTrash() {
       const project = meetProjects.find(p => p.id === row.project)?.name || t("Без проекта");
       info.textContent = project + " · " + t(row.audio ? "Аудио и текст" : "Текст");
       const date = document.createElement("p"); date.className = "muted small";
-      date.textContent = t("Удалено: {0}", new Date(row.deleted_at).toLocaleString(UI_LANG === "en" ? "en-GB" : "ru-RU", {day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}));
+      date.textContent = t("Удалено: {0}", new Date(row.deleted_at).toLocaleString(UI_LANG, {day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}));
       body.append(title, info, date);
       const restore = document.createElement("button"); restore.className = "pill-inset trash-restore";
       restore.innerHTML = sfIcon("restore"); const label = document.createElement("span");

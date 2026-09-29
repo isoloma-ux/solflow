@@ -29,6 +29,7 @@ import com.handy.voice.databinding.ActivitySettingsBinding
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var ui: ActivitySettingsBinding
+    private lateinit var section: android.widget.LinearLayout
 
     /** Системный выбор папки экспорта: доступ запоминается насовсем. */
     private val pickExportDir = registerForActivityResult(
@@ -372,9 +373,28 @@ class SettingsActivity : AppCompatActivity() {
     // --- заготовки строк --------------------------------------------------
 
     private fun group(title: Int) {
-        val view = layoutInflater.inflate(R.layout.item_setting_group, ui.settingsList, false)
-        (view as TextView).setText(title)
-        ui.settingsList.addView(view)
+        val density = resources.displayMetrics.density
+        section = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((14 * density).toInt(), (4 * density).toInt(), (14 * density).toInt(), (4 * density).toInt())
+            setBackgroundResource(R.drawable.bg_section)
+        }
+        ui.settingsList.addView(section, android.widget.LinearLayout.LayoutParams(-1, -2).apply { topMargin = (16 * density).toInt() })
+        val view = layoutInflater.inflate(R.layout.item_setting_group, section, false) as TextView
+        view.setText(title); view.textSize = 13f; view.isAllCaps = false
+        view.typeface = resources.getFont(R.font.inter_medium)
+        view.setTextColor(getColor(R.color.ink))
+        (view.layoutParams as android.widget.LinearLayout.LayoutParams).topMargin = (12 * density).toInt()
+        ViewCompat.setAccessibilityHeading(view, true)
+        section.addView(view)
+    }
+
+    private fun addSetting(view: View) {
+        if (section.childCount > 1) {
+            section.addView(View(this).apply { setBackgroundColor(getColor(R.color.hairline)) },
+                android.widget.LinearLayout.LayoutParams(-1, resources.displayMetrics.density.toInt().coerceAtLeast(1)))
+        }
+        section.addView(view)
     }
 
     private fun switch(title: Int, hint: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
@@ -388,7 +408,7 @@ class SettingsActivity : AppCompatActivity() {
         // на ходу тяжело.
         view.setOnClickListener { toggle.toggle() }
         view.isClickable = true
-        ui.settingsList.addView(view)
+        addSetting(view)
     }
 
     private fun choice(
@@ -407,7 +427,7 @@ class SettingsActivity : AppCompatActivity() {
         view.setOnClickListener {
             optionSheet(getString(title), options, selected, onPick = onPick)
         }
-        ui.settingsList.addView(view)
+        addSetting(view)
     }
 
     private fun link(title: Int, hint: Int, onTap: () -> Unit) =
@@ -423,7 +443,7 @@ class SettingsActivity : AppCompatActivity() {
         view.findViewById<TextView>(R.id.hint).text = hint
         view.findViewById<TextView>(R.id.value).visibility = View.GONE
         view.setOnClickListener { onTap() }
-        ui.settingsList.addView(view)
+        addSetting(view)
     }
 
     // --- наборы вариантов -------------------------------------------------
@@ -440,6 +460,12 @@ class SettingsActivity : AppCompatActivity() {
         LANGUAGE_SYSTEM to getString(R.string.language_system),
         "ru" to "Русский",
         "en" to "English",
+        "zh" to "简体中文",
+        "ko" to "한국어",
+        "ja" to "日本語",
+        "de" to "Deutsch",
+        "fr" to "Français",
+        "es" to "Español",
     )
 
     private fun themeOptions() = listOf(

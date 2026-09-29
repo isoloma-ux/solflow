@@ -76,7 +76,7 @@ class RecordingMapActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
                 WebResourceResponse("text/plain", "UTF-8", "".byteInputStream())
             override fun onPageFinished(view: WebView, url: String) {
-                val lang = if (resources.configuration.locales[0].language == "ru") "ru" else "en"
+                val lang = resources.configuration.locales[0].language
                 val data = runCatching { canonical(map) }.getOrElse {
                     Toast.makeText(this@RecordingMapActivity, R.string.map_changed, Toast.LENGTH_LONG).show()
                     finish(); return
@@ -86,14 +86,14 @@ class RecordingMapActivity : AppCompatActivity() {
             }
         }
         web.addJavascriptInterface(Bridge(), "MapHost")
-        val js = assets.open("map-fonts.js").bufferedReader().use { it.readText() } + "\n" + assets.open("mindmap.js").bufferedReader().use { it.readText() }
+        val js = assets.open("locales.js").bufferedReader().use { it.readText() } + "\n" + assets.open("map-fonts.js").bufferedReader().use { it.readText() } + "\n" + assets.open("mindmap.js").bufferedReader().use { it.readText() }
         val css = assets.open("mindmap.css").bufferedReader().use { it.readText() }
         // No transcript text is interpolated into HTML. The only scripts are bundled app code.
         val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob: data:; font-src data:;"><style>body{margin:0;background:#f4f3f1}$css</style></head><body><div id="map"></div><script>$js</script><script>
         function showMap(raw,lang,stale) {
           SolFlowMap.mount(document.getElementById('map'),JSON.parse(raw),{lang,stale,
             save:async(next,expected)=>{const r=JSON.parse(MapHost.save(JSON.stringify(next),JSON.stringify(expected)));if(r.error)throw Error(r.error);return r.map;},
-            export:async(bytes,format,title)=>{let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));MapHost.exportImage(btoa(s),format,title);return lang==='ru'?'Выберите файл в системном окне сохранения.':'Choose a file in the system save dialog.';}
+            export:async(bytes,format,title)=>{let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));MapHost.exportImage(btoa(s),format,title);return lang==='ru'?'Выберите файл в системном окне сохранения.':(globalThis.SOLFLOW_LOCALES?.[lang]?.['Choose a file in the system save dialog.']||'Choose a file in the system save dialog.');}
           });
         }</script></body></html>"""
         web.loadDataWithBaseURL("https://solflow.invalid/", html, "text/html", "UTF-8", null)

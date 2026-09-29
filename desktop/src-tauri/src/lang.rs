@@ -16,23 +16,30 @@ impl Language {
     }
 }
 
-/// Английский язык интерфейса включён?
+/// Use the English catalog as the source for all non-Russian UI translations.
 pub fn is_english(app: &tauri::AppHandle) -> bool {
     use tauri::Manager;
     app.try_state::<Language>()
-        .map(|l| l.0.lock().map(|v| *v == "en").unwrap_or(false))
+        .map(|l| l.0.lock().map(|v| *v != "ru").unwrap_or(false))
         .unwrap_or(false)
 }
 
 /// Перевод строки для текущего языка окна.
 pub fn t(app: &tauri::AppHandle, text: &str) -> String {
+    use tauri::Manager;
     if !is_english(app) {
         return text.to_string();
     }
-    EN.iter()
+    let english = EN.iter()
         .find(|(ru, _)| *ru == text)
-        .map(|(_, en)| en.to_string())
-        .unwrap_or_else(|| text.to_string())
+        .map(|(_, en)| *en)
+        .unwrap_or(text);
+    let language = app.try_state::<Language>()
+        .and_then(|state| state.0.lock().ok().map(|value| value.clone()))
+        .unwrap_or_else(|| "en".to_string());
+    static DICTIONARIES: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+    let dictionaries = DICTIONARIES.get_or_init(|| serde_json::from_str(include_str!("../../ui/guide/locales.json")).expect("validated UI translations"));
+    dictionaries.get(&language).and_then(|dictionary| dictionary.get(english)).and_then(|value| value.as_str()).unwrap_or(english).to_string()
 }
 
 /// Строки, которые человек видит из Rust.

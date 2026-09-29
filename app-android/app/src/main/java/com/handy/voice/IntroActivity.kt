@@ -37,7 +37,7 @@ class IntroActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
                 val url = request.url
                 val path = url.path.orEmpty().removePrefix("/")
-                val allowed = path in setOf("guide.css", "guide.js", "guide-content.js") ||
+                val allowed = path in setOf("guide.css", "guide.js", "guide-content.js", "locales.js") ||
                     path.matches(Regex("shots/[a-z-]+[.]png"))
                 if (url.scheme != "https" || url.host != "guide.solflow.invalid" || !allowed) {
                     return WebResourceResponse("text/plain", "UTF-8", "".byteInputStream())
@@ -51,7 +51,7 @@ class IntroActivity : AppCompatActivity() {
                     .getOrElse { WebResourceResponse("text/plain", "UTF-8", "".byteInputStream()) }
             }
         }
-        val lang = if (resources.configuration.locales[0].language == "ru") "ru" else "en"
+        val lang = resources.configuration.locales[0].language.takeIf { it in setOf("ru","en","zh","ko","ja","de","fr","es") } ?: "en"
         web.loadDataWithBaseURL("https://guide.solflow.invalid/guide.html?platform=android&lang=$lang",
             assets.open("guide.html").bufferedReader().use { it.readText() }, "text/html", "UTF-8", null)
         onBackPressedDispatcher.addCallback(this) { done() }

@@ -62,9 +62,12 @@ data class SheetOption(
     val label: String,
     val icon: Int? = null,
     val danger: Boolean = false,
+    val ai: Boolean = false,
+    val isHeading: Boolean = false,
 ) {
     companion object {
         val DIVIDER = SheetOption("", "")
+        fun heading(label: String) = SheetOption("", label, isHeading = true)
     }
 }
 
@@ -76,6 +79,7 @@ data class SheetOption(
 fun Activity.actionSheet(
     title: String,
     options: List<SheetOption>,
+    selected: String? = null,
     onPick: (String) -> Unit,
 ) {
     val sheet = BottomSheetDialog(this)
@@ -86,6 +90,14 @@ fun Activity.actionSheet(
     val box = view.findViewById<LinearLayout>(R.id.sheetOptions)
     val density = resources.displayMetrics.density
     for (option in options) {
+        if (option.isHeading) {
+            val heading = TextView(this).apply {
+                text = option.label; textSize = 12f; setTextColor(ContextCompat.getColor(this@actionSheet, R.color.fog))
+                setPadding(0, (18 * density).toInt(), 0, (8 * density).toInt())
+                androidx.core.view.ViewCompat.setAccessibilityHeading(this, true)
+            }
+            box.addView(heading); continue
+        }
         if (option == SheetOption.DIVIDER) {
             val line = View(this)
             line.setBackgroundColor(ContextCompat.getColor(this, R.color.hairline))
@@ -102,17 +114,35 @@ fun Activity.actionSheet(
         }
         val row = LayoutInflater.from(this)
             .inflate(R.layout.item_sheet_option, box, false) as TextView
-        row.text = option.label
-        val color = ContextCompat.getColor(this, if (option.danger) R.color.danger else R.color.fog)
+        row.text = if (option.ai) android.text.SpannableString("${option.label}  ${getString(R.string.ai_badge)}").apply {
+            setSpan(android.text.style.RelativeSizeSpan(0.72f), option.label.length + 2, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } else option.label
+        row.textSize = 14f
+        row.isSelected = option.value == selected
+        val color = ContextCompat.getColor(this, when {
+            option.danger -> R.color.danger
+            option.ai -> R.color.ai_purple
+            row.isSelected -> R.color.accent
+            else -> R.color.ink
+        })
+        row.setTextColor(color)
+        if (option.ai) { row.setBackgroundResource(R.drawable.bg_ai_project); row.contentDescription = "${option.label}. ${getString(R.string.ai_enabled)}" }
+        if (row.isSelected) {
+            row.typeface = resources.getFont(R.font.inter_medium)
+            val check = ContextCompat.getDrawable(this, R.drawable.ic_check)?.mutate()?.apply {
+                setTint(color); val size = (18 * density).toInt(); setBounds(0, 0, size, size)
+            }
+            row.setCompoundDrawablesRelative(null, null, check, null)
+        }
         if (option.icon != null) {
             // Один размер для всех: у векторов разная собственная величина,
             // а ряд иконок должен читаться как ряд.
-            val size = (22 * density).toInt()
-            val icon = ContextCompat.getDrawable(this, option.icon)?.mutate()?.apply {
+            val size = (18 * density).toInt()
+            val icon = ContextCompat.getDrawable(this, if (option.ai) R.drawable.ic_ai else option.icon)?.mutate()?.apply {
                 setBounds(0, 0, size, size)
             }
-            row.setCompoundDrawablesRelative(icon, null, null, null)
-            row.compoundDrawablePadding = (16 * density).toInt()
+            row.setCompoundDrawablesRelative(icon, null, row.compoundDrawablesRelative[2], null)
+            row.compoundDrawablePadding = (10 * density).toInt()
             TextViewCompat.setCompoundDrawableTintList(row, android.content.res.ColorStateList.valueOf(color))
         }
         if (option.danger) row.setTextColor(color)

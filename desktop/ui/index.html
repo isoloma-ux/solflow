@@ -8,7 +8,7 @@
 </head>
 <body>
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <p class="brand">Sol Flow</p>
 
       <nav class="nav">
@@ -45,6 +45,7 @@
         </button>
       </div>
     </aside>
+    <div id="sidebarResize" class="sidebar-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="sidebar" aria-label="Ширина бокового меню" title="Потяните для изменения ширины; двойной щелчок — сброс"></div>
 
     <div class="content" id="content">
       <!-- Диктовка -->
@@ -662,7 +663,7 @@
               <span id="useGpuLabel">Включено</span>
             </button>
           </div>
-          <div class="perm">
+          <div class="perm language-setting">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
                  aria-hidden="true">
@@ -675,8 +676,14 @@
             </div>
             <div class="segments" id="languageSegments">
               <button class="segment" data-language="auto">Как в системе</button>
-              <button class="segment" data-language="ru">Русский</button>
+              <button class="segment" data-native-language data-language="ru">Русский</button>
               <button class="segment" data-language="en">English</button>
+              <button class="segment" data-language="zh">简体中文</button>
+              <button class="segment" data-language="ko">한국어</button>
+              <button class="segment" data-language="ja">日本語</button>
+              <button class="segment" data-language="de">Deutsch</button>
+              <button class="segment" data-language="fr">Français</button>
+              <button class="segment" data-language="es">Español</button>
             </div>
           </div>
           <div class="perm">
@@ -1249,6 +1256,7 @@
         <div class="intro-body">
           <p class="intro-title" id="whatsnewTitle"></p>
           <div class="whatsnew-scroll">
+          <div data-whatsnew-version="1.1.1"><ul class="whatsnew-list"><li>Интерфейс на китайском, корейском, японском, немецком, французском и испанском языках.</li><li>Поиск языков работает с первой буквы независимо от регистра.</li><li>Ширину бокового меню на компьютере можно менять, перетягивая его край. Значки ИИ занимают меньше места.</li><li>На телефоне компактнее меню проектов, видны отметки ИИ при выборе проекта, настройки и сведения о приложении разделены на блоки.</li><li>У действий с проектом появились иконки; удаление выделено красным и требует подтверждения.</li></ul></div>
           <div data-whatsnew-version="1.1.0"><ul class="whatsnew-list"><li>Удалённые записи попадают в общую корзину выбранного облака: сначала проверяется архив, затем передаётся удаление.</li><li>Восстановление возвращает запись под новым идентификатором; повторная попытка не создаёт дубликаты.</li><li>Архивы не очищаются автоматически. Ранее удалённые без архива записи восстановить из облака нельзя.</li><li>Значки в меню и счётчик записей в корзине. Кнопки восстановления видны рядом с каждой записью.</li><li>Очистка корзины из меню или самого раздела — с подтверждением. Окончательное удаление передаётся через выбранное облако.</li><li>Устройства без сети получают отметки окончательного удаления при следующей синхронизации. Уже восстановленные записи сохраняются.</li></ul></div>
           <div data-whatsnew-version="1.0.0"><ul class="whatsnew-list"><li>Подключайте выбранные проекты к ИИ через MCP: доступ только к разрешённым текстам, с возможностью отключения.</li><li>Фиолетовый цвет и значок ИИ показывают открытые для ИИ проекты. Доступ можно менять в панели проекта и его контекстном меню.</li><li>Разрешения проектов синхронизируются между устройствами. Изменения действуют после синхронизации обоих устройств.</li><li>Готовый запрос помогает настроить подключение к клиенту ИИ на компьютере. Команда и аргументы также копируются отдельно.</li><li>Обновлённое руководство на русском и английском с отдельными инструкциями и снимками интерфейса Android.</li></ul></div>
           <div data-whatsnew-version="0.9.9"><ul class="whatsnew-list"><li>При ошибке подключения к Rutube появится подсказка о VPN и прокси с кнопкой «Повторить».</li><li>Удаление записи подтверждается вторым нажатием без закрытия меню. Остальные действия выполняются одним нажатием.</li></ul></div>
@@ -1412,8 +1420,10 @@
   <link rel="stylesheet" href="map/mindmap.css">
   <script src="map/map-fonts.js"></script>
   <script src="map/mindmap.js"></script>
+  <script src="guide/locales.js"></script>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
+  <script src="sidebar-resize.js"></script>
   <script src="mcp-setup.js"></script>
   <script src="mcp-ui.js"></script>
 </body>
