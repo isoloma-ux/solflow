@@ -10,7 +10,10 @@ import androidx.recyclerview.widget.RecyclerView
 /** «174 МБ» или «1.2 ГБ» — байты в списке моделей читать невозможно. */
 fun formatSize(bytes: Long): String {
     val mb = bytes / 1_048_576.0
-    return if (mb >= 1024) "%.1f ГБ".format(mb / 1024) else "%.0f МБ".format(mb)
+    val russian = java.util.Locale.getDefault().language == "ru"
+    val gbUnit = if (russian) "ГБ" else "GB"
+    val mbUnit = if (russian) "МБ" else "MB"
+    return if (mb >= 1024) "%.1f %s".format(mb / 1024, gbUnit) else "%.0f %s".format(mb, mbUnit)
 }
 
 class ModelAdapter(

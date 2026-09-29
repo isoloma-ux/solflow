@@ -39,7 +39,7 @@ data class CatalogModel(
  * transcribe.cpp. Лежит в ассетах, чтобы список открывался без сети.
  */
 /** Язык из каталога: код, русское название и сколько моделей его знают. */
-data class CatalogLanguage(val code: String, val name: String, val models: Int)
+data class CatalogLanguage(val code: String, val name: String, val models: Int, val englishName: String = name)
 
 /**
  * Поле каталога на языке интерфейса.
@@ -49,11 +49,11 @@ data class CatalogLanguage(val code: String, val name: String, val models: Int)
  * окне нельзя. Английский вариант хранится рядом с суффиксом `_en`; если
  * его нет, остаётся русский — это лучше пустого места.
  */
-private fun JSONObject.localized(field: String): String {
-    val english = java.util.Locale.getDefault().language == "en"
+private fun JSONObject.localized(field: String, context: Context): String {
+    val english = context.resources.configuration.locales[0].language != "ru"
     if (english) {
         val value = optString("${field}_en")
-        if (value.isNotBlank()) return value
+        if (value.isNotBlank()) return UiTranslations.english(context, value)
     }
     return optString(field)
 }
@@ -63,8 +63,11 @@ object Catalog {
     private var cached: List<CatalogModel>? = null
     private var mirrors: List<String> = emptyList()
     private var languages: List<CatalogLanguage> = emptyList()
+    private var cachedLocale: String? = null
 
     fun models(context: Context): List<CatalogModel> {
+        val locale = context.resources.configuration.locales[0]
+        if (cachedLocale != locale.toLanguageTag()) { cached = null; cachedLocale = locale.toLanguageTag() }
         cached?.let { return it }
 
         val raw = context.assets.open("catalog.json").bufferedReader().use { it.readText() }
@@ -77,7 +80,8 @@ object Catalog {
         val langObj = root.optJSONObject("languages")
         languages = langObj?.keys()?.asSequence()?.map { code ->
             val item = langObj.getJSONObject(code)
-            CatalogLanguage(code, item.localized("name"), item.getInt("models"))
+            val display = java.util.Locale.forLanguageTag(code).getDisplayLanguage(locale)
+            CatalogLanguage(code, display.takeIf { it != code && it.isNotBlank() } ?: item.localized("name", context), item.getInt("models"), item.optString("name_en"))
         }?.sortedByDescending { it.models }?.toList().orEmpty()
 
         val arr = root.getJSONArray("models")
@@ -90,13 +94,13 @@ object Catalog {
                 revision = m.getString("revision"),
                 name = m.getString("name"),
                 architecture = m.getString("architecture"),
-                description = m.localized("description"),
+                description = m.localized("description", context),
                 license = m.optString("license"),
                 languages = langsArr?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
                 languageCount = m.optInt("language_count"),
                 speedScore = m.optInt("speed_score"),
                 accuracyScore = m.optInt("accuracy_score"),
-                speedNote = m.localized("speed_note"),
+                speedNote = m.localized("speed_note", context),
                 defaultQuant = m.optString("default_quant"),
                 files = (0 until filesArr.length()).map { j ->
                     val f = filesArr.getJSONObject(j)

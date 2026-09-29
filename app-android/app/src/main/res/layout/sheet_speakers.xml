@@ -39,11 +39,13 @@
         android:visibility="gone"
         android:text="@string/diarize_download_hint" />
 
+    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="false">
     <LinearLayout
         android:id="@+id/sheetOptions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:orientation="vertical" />
+    </androidx.core.widget.NestedScrollView>
 
 </LinearLayout>

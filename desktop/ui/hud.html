@@ -73,12 +73,14 @@
   </style>
 </head>
 <body>
-  <div class="pill" id="pill" title="Нажмите, чтобы остановить">
+  <div class="pill" id="pill" title="Остановить">
     <span id="dot"></span>
     <canvas id="wave" width="192" height="44"></canvas>
     <span id="timer">0:00</span>
     <span id="note" hidden></span>
   </div>
+  <script src="guide/locales.js"></script>
+  <script src="i18n.js"></script>
   <script>
     const { invoke } = window.__TAURI__.core;
     const { listen } = window.__TAURI__.event;
@@ -91,6 +93,13 @@
     const note = document.getElementById("note");
     const pill = document.getElementById("pill");
 
+    function refreshHudLanguage() {
+      UI_LANG = normalizeUiLanguage(localStorage.getItem("solflow-lang") || systemLanguage());
+      document.documentElement.lang = UI_LANG;
+      pill.title = t("Остановить");
+      note.textContent = t("Распознаю");
+    }
+    refreshHudLanguage();
     let startedAt = null;
 
     function draw() {
@@ -138,6 +147,7 @@
     listen("solflow-hud-close", () => document.body.classList.remove("open"));
 
     listen("solflow-state", (e) => {
+      refreshHudLanguage();
       const phase = e.payload.phase;
       if (phase === "recording") {
         openPill();
@@ -151,7 +161,7 @@
         document.body.classList.remove("rec");
         wave.hidden = true;
         timer.hidden = true;
-        note.textContent = "Распознаю";
+        note.textContent = t("Распознаю");
         note.hidden = false;
       } else {
         startedAt = null;

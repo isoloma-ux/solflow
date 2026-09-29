@@ -58,11 +58,15 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/about_pitch" />
 
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="16dp" android:padding="16dp" android:background="@drawable/bg_section">
             <TextView
                 style="@style/Text.Eyebrow"
+                android:textAllCaps="false"
+                android:textColor="@color/ink"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="0dp"
                 android:text="@string/about_author_kicker" />
 
             <TextView
@@ -120,11 +124,17 @@
                 android:layout_marginTop="8dp"
                 android:text="@string/link_mail" />
 
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="16dp" android:padding="16dp" android:background="@drawable/bg_section">
             <TextView
                 style="@style/Text.Eyebrow"
+                android:textAllCaps="false"
+                android:textColor="@color/ink"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="0dp"
                 android:text="@string/support_kicker" />
 
             <TextView
@@ -150,11 +160,17 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/support_button" />
 
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="16dp" android:padding="16dp" android:background="@drawable/bg_section">
             <TextView
                 style="@style/Text.Eyebrow"
+                android:textAllCaps="false"
+                android:textColor="@color/ink"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="0dp"
                 android:text="@string/about_version_kicker" />
 
             <TextView
@@ -181,11 +197,17 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/update_check" />
 
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="16dp" android:padding="16dp" android:background="@drawable/bg_section">
             <TextView
                 style="@style/Text.Eyebrow"
+                android:textAllCaps="false"
+                android:textColor="@color/ink"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="0dp"
                 android:text="@string/about_stack_kicker" />
 
             <TextView
@@ -204,11 +226,17 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/link_engine" />
 
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="16dp" android:padding="16dp" android:background="@drawable/bg_section">
             <TextView
                 style="@style/Text.Eyebrow"
+                android:textAllCaps="false"
+                android:textColor="@color/ink"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="0dp"
                 android:text="@string/about_bug_kicker" />
 
             <TextView
@@ -264,6 +292,8 @@
                 android:layout_height="46dp"
                 android:layout_marginTop="32dp"
                 android:text="@string/intro_again" />
+            </LinearLayout>
+
         </LinearLayout>
     </ScrollView>
 

@@ -253,6 +253,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showWhatsNew(lastSeenCode: Int) {
         val history = listOf(
+            Triple(49, "1.1.1", R.string.whatsnew_body_111),
             Triple(48, "1.1.0", R.string.whatsnew_body_110),
             Triple(46, "1.0.0", R.string.whatsnew_body_100),
             Triple(45, "0.9.9", R.string.whatsnew_body_099),
@@ -894,10 +895,12 @@ class MainActivity : AppCompatActivity() {
                 true
             }
         }
-        val icon = getDrawable(iconRes)?.mutate()?.apply { setTint(row.currentTextColor) }
+        val icon = getDrawable(iconRes)?.mutate()?.apply {
+            setTint(row.currentTextColor); val size = (18 * density).toInt(); setBounds(0, 0, size, size)
+        }
         val right = row.compoundDrawablesRelative[2]
-        row.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, right, null)
-        row.compoundDrawablePadding = (12 * density).toInt()
+        row.setCompoundDrawablesRelative(icon, null, right, null)
+        row.compoundDrawablePadding = (8 * density).toInt()
         ui.drawerList.addView(row)
         return row
     }
@@ -927,12 +930,14 @@ class MainActivity : AppCompatActivity() {
             onTap = onTap,
         )
         if (ai) {
-            projectRow.text = "$title  · ${getString(R.string.ai_badge)}"
+            projectRow.text = projectBadgeText(title)
             projectRow.setTextColor(getColor(R.color.ai_purple))
             projectRow.setBackgroundResource(R.drawable.bg_ai_project)
-            projectRow.compoundDrawablePadding = (8 * resources.displayMetrics.density).toInt()
-            projectRow.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_ai, 0,
-                if (expanded) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, 0)
+            val size = (16 * resources.displayMetrics.density).toInt()
+            val icon = getDrawable(R.drawable.ic_ai)?.mutate()?.apply {
+                setTint(getColor(R.color.ai_purple)); setBounds(0, 0, size, size)
+            }
+            projectRow.setCompoundDrawablesRelative(icon, null, projectRow.compoundDrawablesRelative[2], null)
             projectRow.contentDescription = "$title. ${getString(R.string.ai_enabled)}"
         }
         if (!expanded) return
@@ -1455,22 +1460,33 @@ class MainActivity : AppCompatActivity() {
      * Папка-фильтр над списком. Переименование и удаление проекта живут в
      * том же листе: отдельная кнопка ради двух редких действий не нужна.
      */
+    private fun projectOption(project: MeetingStore.Project) = SheetOption(
+        project.id, project.name, R.drawable.ic_sf_folder,
+        ai = AiAccess.grant(this, project.id).enabled,
+    )
+
+    private fun projectBadgeText(title: String): CharSequence = android.text.SpannableString(
+        "$title  ${getString(R.string.ai_badge)}",
+    ).apply {
+        setSpan(android.text.style.RelativeSizeSpan(0.72f), title.length + 2, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+
     private fun chooseProject() {
         val projects = MeetingStore.projects(this)
         val options = buildList {
-            add(ALL_PROJECTS to getString(R.string.project_all))
-            add(NO_PROJECT to getString(R.string.project_none))
-            for (p in projects) add(p.id to p.name)
-            add(NEW_PROJECT to getString(R.string.project_new))
+            add(SheetOption(ALL_PROJECTS, getString(R.string.project_all), R.drawable.ic_sf_library))
+            add(SheetOption(NO_PROJECT, getString(R.string.project_none), R.drawable.ic_sf_folder))
+            add(SheetOption.heading(getString(R.string.drawer_projects)))
+            for (p in projects) add(projectOption(p))
+            add(SheetOption.heading(getString(R.string.project_actions)))
+            add(SheetOption(NEW_PROJECT, getString(R.string.project_new), R.drawable.ic_sf_plus))
             projectFilter?.takeIf { it != NO_PROJECT }?.let {
-                add(RENAME_PROJECT to getString(R.string.project_rename))
-                add(DELETE_PROJECT to getString(R.string.project_delete))
+                add(SheetOption(RENAME_PROJECT, getString(R.string.project_rename), R.drawable.ic_edit))
+                add(SheetOption(DELETE_PROJECT, getString(R.string.project_delete), R.drawable.ic_sf_trash, danger = true))
             }
         }
-        optionSheet(
-            getString(R.string.project_pick),
-            options,
-            projectFilter ?: ALL_PROJECTS,
+        actionSheet(
+            getString(R.string.project_pick), options, selected = projectFilter ?: ALL_PROJECTS,
         ) { value ->
             when (value) {
                 ALL_PROJECTS -> projectFilter = null
@@ -1497,9 +1513,9 @@ class MainActivity : AppCompatActivity() {
         if (ids.isEmpty()) return
         val options = buildList {
             add(SheetOption(NO_PROJECT, getString(R.string.project_none), R.drawable.ic_folder))
-            for (p in MeetingStore.projects(this@MainActivity)) add(SheetOption(p.id, p.name, R.drawable.ic_folder))
+            for (p in MeetingStore.projects(this@MainActivity)) add(projectOption(p))
             add(SheetOption.DIVIDER)
-            add(SheetOption(NEW_PROJECT, getString(R.string.project_new), R.drawable.ic_edit))
+            add(SheetOption(NEW_PROJECT, getString(R.string.project_new), R.drawable.ic_sf_plus))
         }
         actionSheet(getString(R.string.selection_project), options) { value ->
             fun move(project: String?) {
@@ -1537,7 +1553,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun confirmProjectDelete(id: String) {
-        MaterialAlertDialogBuilder(this)
+        val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.project_delete)
             .setMessage(R.string.project_delete_message)
             .setPositiveButton(R.string.meeting_delete) { _, _ ->
@@ -1547,6 +1563,8 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+            .setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.danger))
     }
 
     private fun transcribeSelected() {
@@ -2966,10 +2984,14 @@ class MainActivity : AppCompatActivity() {
             val needle = query.trim().lowercase()
             if (needle.isEmpty()) addRow(getString(R.string.language_any), null, null)
             val matches = Catalog.languages(this)
-                .filter { needle.isEmpty() || it.name.startsWith(needle) || it.code == needle }
+                .filter { LanguageSearch.matches(query, it.code, it.name, it.englishName) }
             for (lang in matches) addRow(lang.name, lang.models, lang.code)
             if (matches.isEmpty() && needle.isNotEmpty()) {
-                addRow(getString(R.string.language_nothing), null, languageFilter)
+                list.addView(TextView(this).apply {
+                    text = getString(R.string.language_nothing)
+                    setTextColor(getColor(R.color.fog))
+                    setPadding(0, (16 * resources.displayMetrics.density).toInt(), 0, 0)
+                })
             }
         }
 

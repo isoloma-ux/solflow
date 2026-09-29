@@ -8,6 +8,23 @@
 // собирает на ходу, идут через t().
 
 const EN = {
+  "Копировать": "Copy",
+  "В любом приложении нажмите {0}: первое нажатие начинает запись, второе вставляет текст в активное поле. Или зажмите, говорите и отпустите.": "In any app, press {0}: press once to start recording, then again to paste the text into the active field. Or hold, speak and release.",
+  "Зелёным отмечена активная модель. На вашем {0} GigaAM работает примерно в 115 раз быстрее речи. Скачивание идёт в фоне.": "The active model is marked green. On your {0}, GigaAM runs about 115 times faster than speech. Downloads run in the background.",
+
+  "Остановить": "Stop",
+  "Записать": "Record",
+  "Закрыть": "Close",
+  "Очистить": "Clear",
+  "Пробел": "Space",
+  "Интерфейс на китайском, корейском, японском, немецком, французском и испанском языках.": "Chinese, Korean, Japanese, German, French and Spanish interface languages.",
+  "Поиск языков работает с первой буквы независимо от регистра.": "Language search now works from the first letter, regardless of case.",
+  "Ширину бокового меню на компьютере можно менять, перетягивая его край. Значки ИИ занимают меньше места.": "Resize the desktop sidebar by dragging its edge. AI badges take up less space.",
+  "На телефоне компактнее меню проектов, видны отметки ИИ при выборе проекта, настройки и сведения о приложении разделены на блоки.": "More compact project menus, AI markers in project pickers, and clearer settings and About sections on mobile.",
+  "У действий с проектом появились иконки; удаление выделено красным и требует подтверждения.": "Project actions have icons; deletion is highlighted in red and requires confirmation.",
+
+  "Ширина бокового меню": "Sidebar width",
+  "Потяните для изменения ширины; двойной щелчок — сброс": "Drag to resize; double-click to reset",
   "Все изменения сохранены": "All changes saved",
   "Проект": "Project",
   "Значки в меню и счётчик записей в корзине. Кнопки восстановления видны рядом с каждой записью.": "Menu icons and a recording count in Trash. Each recording has a visible Restore button.",
@@ -848,10 +865,22 @@ const EN = {
 
 /** Язык интерфейса: "ru" или "en". Меняется только при запуске и в настройках. */
 let UI_LANG = "ru";
+const UI_LANGUAGES = ["ru", "en", "zh", "ko", "ja", "de", "fr", "es"];
+function normalizeUiLanguage(value) {
+  const code = String(value || "").toLowerCase().split(/[-_]/)[0];
+  return UI_LANGUAGES.includes(code) ? code : "en";
+}
+function translateEnglish(text, language = UI_LANG) {
+  return globalThis.SOLFLOW_LOCALES?.[language]?.[text] || text;
+}
+function localizedLanguageName(code, fallback) {
+  try { return new Intl.DisplayNames([UI_LANG], {type:"language"}).of(code) || fallback; }
+  catch (_) { return translateEnglish(fallback); }
+}
 
 /** Перевод строки. Без перевода возвращается сама строка — по-русски. */
 function t(text, ...vars) {
-  let out = UI_LANG === "en" && EN[text] ? EN[text] : text;
+  let out = UI_LANG === "ru" ? text : translateEnglish(EN[text] || text);
   vars.forEach((value, i) => {
     out = out.split(`{${i}}`).join(String(value));
   });
@@ -860,25 +889,37 @@ function t(text, ...vars) {
 
 /** Переводит уже показанную разметку: текстовые узлы и подписи полей. */
 function translateDocument(root = document.body) {
-  if (UI_LANG !== "en") return;
+  if (UI_LANG === "ru") return;
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
+    if (node.parentElement?.closest("[data-native-language]")) continue;
     const key = node.nodeValue.trim().replace(/\s+/g, " ");
-    if (key && EN[key]) node.nodeValue = EN[key];
+    if (key && EN[key]) {
+      const leading = node.nodeValue.match(/^\s*/)[0], trailing = node.nodeValue.match(/\s*$/)[0];
+      node.nodeValue = leading + t(key) + trailing;
+    } else if (key === "⌥ Пробел") node.nodeValue = "⌥ " + t("Пробел");
   }
 
-  for (const node of root.querySelectorAll("[placeholder], [title]")) {
-    for (const attr of ["placeholder", "title"]) {
+  for (const node of root.querySelectorAll("[placeholder], [title], [aria-label]")) {
+    for (const attr of ["placeholder", "title", "aria-label"]) {
       const value = node.getAttribute(attr);
-      if (value && EN[value]) node.setAttribute(attr, EN[value]);
+      if (value && EN[value]) node.setAttribute(attr, t(value));
     }
   }
 }
 
 /** Язык системы: ru — только если система русская. */
 function systemLanguage() {
-  return (navigator.language || "en").toLowerCase().startsWith("ru") ? "ru" : "en";
+  return normalizeUiLanguage(navigator.language);
+}
+
+function languageMatches(query, code, ...names) {
+  const normalize = value => String(value).trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const needle = normalize(query);
+  // The Russian backend catalog supplies Russian names; retain English search there too.
+  try { names.push(new Intl.DisplayNames(["en"], {type:"language"}).of(code)); } catch (_) {}
+  return !needle || normalize(code).startsWith(needle) || names.some(name => normalize(name).includes(needle));
 }

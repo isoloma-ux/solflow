@@ -520,4 +520,6 @@
     <string name="trash_audio_text">Audio and text</string>
     <string name="trash_text_only">Text</string>
     <string name="trash_description">Deletions and restores sync through the selected cloud. Archives never expire automatically.</string>
+    <string name="project_actions">Project actions</string>
+    <string name="whatsnew_body_111">• Chinese, Korean, Japanese, German, French and Spanish interface languages.\n• Language search now works from the first letter, regardless of case.\n• More compact project menus, AI markers in project pickers, and clearer settings and About sections on mobile.\n• Project actions have icons; deletion is highlighted in red and requires confirmation.</string>
 </resources>

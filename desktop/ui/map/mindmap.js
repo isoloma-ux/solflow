@@ -80,7 +80,7 @@
   }
   const words={en:{'Карта сохранена в записи. PNG/SVG — отдельный экспорт в файл.':'The map is saved in this recording. PNG/SVG exports a separate file.','Экспорт отменен. Карта остается в записи.':'Export cancelled. The map remains in the recording.','Карта записи':'Recording map','Изменить':'Edit','Сохранить':'Save','Отмена':'Cancel','По ширине':'Fit width','Сверьте выводы с расшифровкой.':'Check the map against the transcript.','Расшифровка изменилась. Создайте карту заново.':'The transcript has changed. Generate a new map.','Заголовок':'Title','Подтема':'Topic','Пункты — по одному на строку':'One point per line','Сохранено':'Saved','Закрыть':'Close','Масштаб':'Zoom'}};
   function mount(root, initial, options={}) {
-    const t=s=>words[options.lang]?.[s]||s;
+    const t=s=>options.lang==='ru'?s:(globalThis.SOLFLOW_LOCALES?.[options.lang]?.[words.en[s]]||words.en[s]||s);
     let model=JSON.parse(JSON.stringify(validate(initial))), zoom=1,editing=false;
     root.textContent='';root.classList.add('sf-map');
     const toolbar=document.createElement('div');toolbar.className='sf-map-toolbar';root.append(toolbar);
